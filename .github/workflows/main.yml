@@ -1,0 +1,52 @@
+#
+# This is free software, lisence use MIT.
+# 
+# Copyright (C) 2019 KFERMercer <KFER.Mercer@gmail.com>
+# 
+# <https://github.com/KFERMercer/OpenWrt-CI>
+#
+
+name: Merge-upstream
+
+on:
+  schedule:
+    - cron: '10 */8 * * *'
+  watch:
+    types:
+      - 'started'
+
+jobs:
+  merge:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+
+    - name: Set git identity
+      run : |
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
+
+    - name: Load new hi-freq IPs
+      run:  |
+        curl https://www.cloudflare.com/ips-v6 | xargs -n1 -i echo "ip6tables -A zone_lan_forward -j zone_wan_dest_REJECT -d {}" > luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
+        cp luci-app-ssr-plus/root/etc/config/shadowsocksr.init luci-app-ssr-plus/root/etc/config/shadowsocksr
+        curl https://www.cloudflare.com/ips-v4 | xargs -n1 -i echo -e "\tlist wan_fw_ips '{}'" >> luci-app-ssr-plus/root/etc/config/shadowsocksr
+        sleep 1
+        curl https://api.bgpview.io/asn/44907/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' | xargs -n1 -i echo -e "\tlist wan_fw_ips '{}'" >> luci-app-ssr-plus/root/etc/config/shadowsocksr
+        sleep 1
+        curl https://api.bgpview.io/asn/59930/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' | xargs -n1 -i echo -e "\tlist wan_fw_ips '{}'" >> luci-app-ssr-plus/root/etc/config/shadowsocksr
+        sleep 1
+        curl https://api.bgpview.io/asn/62014/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' | xargs -n1 -i echo -e "\tlist wan_fw_ips '{}'" >> luci-app-ssr-plus/root/etc/config/shadowsocksr
+        sleep 1
+        curl https://api.bgpview.io/asn/62041/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' | xargs -n1 -i echo -e "\tlist wan_fw_ips '{}'" >> luci-app-ssr-plus/root/etc/config/shadowsocksr
+        git add luci-app-ssr-plus/root/etc/config/shadowsocksr luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
+        git commit -am 'update cloudflare and telegram IPs' || true
+
+    - name: Push Commits
+      run: git push

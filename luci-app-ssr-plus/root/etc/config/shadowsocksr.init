@@ -1,0 +1,3 @@
+config access_control
+	option lan_ac_mode '0'
+	option router_proxy '1'
