@@ -283,8 +283,8 @@ local function check_filer(result)
   do 
     local filter_word = split(filter_words, "/")
     for i, v in pairs(filter_word) do
-        if result.alias:find(v) then
-          log('订阅节点关键字过滤:“' .. v ..'” ，该节点被丢弃')
+        if not result.alias:find(v) then
+          log('订阅节点关键字过滤:“' .. v ..'” ，该节点被保留')
           return true
         end
     end 
