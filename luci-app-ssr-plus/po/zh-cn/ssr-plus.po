@@ -434,7 +434,7 @@ msgid "Subscribe Filter Words"
 msgstr "订阅节点关键字过滤"
 
 msgid "Filter Words splited by /"
-msgstr "命中关键字的节点将被丢弃。多个关键字用 / 分隔"
+msgstr "命中关键字的节点将被保留。多个关键字用 / 分隔"
 
 msgid "Update"
 msgstr "更新"
