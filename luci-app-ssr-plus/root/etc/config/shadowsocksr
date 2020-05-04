@@ -15,7 +15,7 @@ config global
 	option chnroute_url 'https://ispip.clang.cn/all_cn.txt'
 	option nfip_url 'https://raw.githubusercontent.com/QiuSimons/Netflix_IP/master/NF_only.txt'
 	option adblock_url 'https://gitee.com/privacy-protection-tools/anti-ad/raw/master/anti-ad-for-dnsmasq.conf'
-	option netflix_server 'same'
+	option netflix_server 'nil'
 	option threads '0'
 
 config socks5_proxy
@@ -24,7 +24,7 @@ config socks5_proxy
 	option local_address '0.0.0.0'
 
 config access_control
-	option wan_bp_list '/etc/china_ssr.txt'
+	option wan_bp_list '/etc/ssr/china_ssr.txt'
 	option lan_ac_mode 'b'
 	option router_proxy '1'
 	list wan_fw_ips '149.154.160.0/20'
