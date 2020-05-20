@@ -59,7 +59,7 @@ check_proxy() {
 test_proxy() {
 	local servername=$(uci_get_by_name $1 server)
 	local serverport=$(uci_get_by_name $1 server_port)
-	ret=$(ping -c 3 $servername | grep 'loss' | awk -F ',' '{ print $3 }' | awk -F "%" '{ print $1 }')
+	ret=$(tcpping -c 3 -p $serverport $servername | grep 'loss' | awk -F ',' '{ print $3 }' | awk -F "%" '{ print $1 }' | awk -F "." '{ print $1 }')
 	[ -z "$ret" ] && return 1
 	[ "$ret" -gt "50" ] && return 1
 	ipset add ss_spec_wan_ac $servername 2>/dev/null
