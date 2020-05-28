@@ -125,6 +125,9 @@ ipset_r() {
 	ipset -N blacklist hash:net 2>/dev/null
 	$IPT -I SS_SPEC_WAN_AC -m set --match-set blacklist dst -j SS_SPEC_WAN_FW
 	$IPT -I SS_SPEC_WAN_AC -m set --match-set whitelist dst -j RETURN
+	if [ $(ipset list music -name -quiet | grep music) ]; then
+   $IPT -I SS_SPEC_WAN_AC -m set --match-set music dst -j RETURN 2>/dev/null
+	fi
 	for ip in $WAN_BP_IP; do ipset -! add whitelist $ip; done
 	for ip in $WAN_FW_IP; do ipset -! add blacklist $ip; done
 	if [ "$NETFLIX" != "0" ]; then
