@@ -56,7 +56,7 @@ outbound = {
 	streamSettings = {
 		network = server.transport,
 		security = (server.tls == '1') and "tls" or "none",
-		tlsSettings = {allowInsecure = (server.insecure ~= "0") and true or false,serverName=server.tls_host,},
+		tlsSettings = {allowInsecure = (server.insecure == '1'), serverName = server.tls_host},
 		tcpSettings = (server.transport == "tcp") and {
 			header = {
 				type = server.tcp_guise,
