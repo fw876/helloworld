@@ -76,7 +76,7 @@ get_host_ip() {
 clean_log() {
 	logsnum=$(cat /tmp/ssrplus.log 2>/dev/null | wc -l)
 	[ "$logsnum" -gt 1000 ] && {
-		echo "$(date "+%Y-%m-%d %H:%M:%S") 日志文件过长，清空处理！" >/tmp/ssrplus.log
+		echo "$(date "+%Y-%m-%d %H:%M:%S") 鏃ュ織鏂囦欢杩囬暱锛屾竻绌哄鐞嗭紒" >/tmp/ssrplus.log
 	}
 }
 
@@ -742,11 +742,12 @@ stop() {
 	if [ -z "$switch_server" ]; then
 		ps -w | grep -v "grep" | grep ssr-switch | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 &
 		rm -f /var/lock/ssr-switch.lock
+		killall -q -9 kcptun-client
 	fi
 	ps -w | grep -v "grep" | grep ssr-monitor | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 &
 	ps -w | grep -v "grep" | grep "sleep $(uci_get_by_type global switch_time)s" | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 &
 	ps -w | grep -v "grep" | grep "sleep 30s" | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 &
-	killall -q -9 ss-redir ss-local obfs-local ssr-redir ssr-local ssr-server v2ray v2ray-plugin trojan microsocks ipt2socks dns2socks redsocks2 pdnsd kcptun-client
+	killall -q -9 ss-redir ss-local obfs-local ssr-redir ssr-local ssr-server v2ray v2ray-plugin trojan microsocks ipt2socks dns2socks redsocks2 pdnsd
 	rm -f /var/lock/ssr-chinaipset.lock /var/lock/ssr-monitor.lock
 	if [ -f "/tmp/dnsmasq.d/dnsmasq-ssr.conf" ]; then
 		rm -rf /tmp/dnsmasq.d/dnsmasq-ssr.conf /tmp/dnsmasq.ssr /tmp/dnsmasq.oversea
