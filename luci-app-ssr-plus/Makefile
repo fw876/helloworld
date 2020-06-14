@@ -32,6 +32,10 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_ShadowsocksR_Server
 	default y if i386||x86_64||arm||aarch64
 endef
 
+define Package/$(PKG_NAME)/conffiles
+/etc/config/shadowsocksr
+endef
+
 LUCI_TITLE:=SS/SSR/V2Ray/Trojan/Socks5/Tun LuCI interface
 LUCI_PKGARCH:=all
 LUCI_DEPENDS:=+shadowsocksr-libev-alt +ipset +ip-full +iptables-mod-tproxy +dnsmasq-full +coreutils +coreutils-base64 +pdnsd-alt +wget +lua +libuci-lua \
