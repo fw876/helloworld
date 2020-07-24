@@ -454,7 +454,7 @@ msgstr "更新"
 msgid "Server Count"
 msgstr "服务器节点数量"
 
-msgid "IP black-and-white list"
+msgid "Block and Allow List"
 msgstr "禁止/通行名单"
 
 msgid "WAN IP AC"
