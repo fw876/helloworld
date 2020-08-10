@@ -21,11 +21,11 @@ touch /etc/ssr/gfw_list.conf
 touch /etc/ssr/deny.list
 #chmod 0755 /etc/init.d/shadowsocksr /usr/bin/ssr-* /usr/share/shadowsocksr/*.sh
 #chmod 0644 /etc/ssr/* \
-/usr/share/shadowsocksr/*.lua \
-/usr/share/rpcd/acl.d/luci-app-ssr-plus.json \
-/usr/lib/lua/luci/controller/shadowsocksr.lua \
-/usr/lib/lua/luci/model/cbi/shadowsocksr/*.lua \
-/usr/lib/lua/luci/view/shadowsocksr/*.htm
+#/usr/share/shadowsocksr/*.lua \
+#/usr/share/rpcd/acl.d/luci-app-ssr-plus.json \
+#/usr/lib/lua/luci/controller/shadowsocksr.lua \
+#/usr/lib/lua/luci/model/cbi/shadowsocksr/*.lua \
+#/usr/lib/lua/luci/view/shadowsocksr/*.htm
 #chmod 0600 /etc/config/shadowsocksr
 rm -rf /tmp/luci-modulecache /tmp/luci-indexcache
 exit 0
