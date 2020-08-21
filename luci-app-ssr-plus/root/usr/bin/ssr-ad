@@ -1,9 +1,7 @@
 #!/bin/sh -e
-if [ -f /tmp/adnew.conf ]; then
-	if (grep -wq "address=" /tmp/adnew.conf); then
-		cp /tmp/adnew.conf /tmp/ssr-update.$1
-	else
-		cat /tmp/adnew.conf | grep ^\|\|[^\*]*\^$ | sed -e 's:||:address\=\/:' -e 's:\^:/0\.0\.0\.0:' >/tmp/ssr-update.$1
-	fi
+cp /tmp/ssr-update.$1 /tmp/adnew.conf
+if ! (grep -wq "address=" /tmp/adnew.conf); then
+	cat /tmp/adnew.conf | grep ^\|\|[^\*]*\^$ | sed -e 's:||:address\=\/:' -e 's:\^:/:' >/tmp/ssr-update.$1
 fi
+for line in $(cat /etc/ssr/allow.list); do sed -i "/^address\=\/$line\//d" /tmp/ssr-update.$1; done
 rm -f /tmp/adnew.conf
