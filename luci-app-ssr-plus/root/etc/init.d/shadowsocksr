@@ -702,6 +702,10 @@ start() {
 	EOF
 	if [ "$(uci_get_by_type global adblock 0)" == "1" ]; then
 		cp -rf /etc/ssr/ad.conf /tmp/dnsmasq.ssr/
+		for line in $(cat /etc/ssr/allow.list); do sed -i "/^$line$/d" /etc/ssr/deny.list; done
+		awk '!/^$/&&!/^#/{printf("address=/%s/''\n",$0)}' /etc/ssr/deny.list >/tmp/dnsmasq.ssr/denylist.conf
+	else
+		for line in $(cat /etc/ssr/allow.list); do sed -i "/^$line$/d" /etc/ssr/deny.list; done
 		awk '!/^$/&&!/^#/{printf("address=/%s/''\n",$0)}' /etc/ssr/deny.list >/tmp/dnsmasq.ssr/denylist.conf
 	fi
 	if rules; then
