@@ -108,7 +108,7 @@ function refresh_data()
 		luci.sys.exec("rm -f /tmp/ssr-update." .. type)
 	end
 	if set == "gfw_data" then
-		update(uci:get_first("shadowsocksr", "global", "gfwlist_url", "https://cdn.jsdelivr.net/gh/gfwlist/gfwlist/gfwlist.txt"), "/etc/ssr/gfw_list.conf", set, "/tmp/dnsmasq.ssr/gfw_list.conf")
+		update(uci:get_first("shadowsocksr", "global", "gfwlist_url", "https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt"), "/etc/ssr/gfw_list.conf", set, "/tmp/dnsmasq.ssr/gfw_list.conf")
 	end
 	if set == "ip_data" then
 		update(uci:get_first("shadowsocksr", "global", "chnroute_url","https://ispip.clang.cn/all_cn.txt"), "/etc/ssr/china_ssr.txt", set)
