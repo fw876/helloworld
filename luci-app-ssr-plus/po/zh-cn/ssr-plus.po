@@ -675,3 +675,6 @@ msgstr "警告！请不要重复使用端口！"
 
 msgid "Deny Domain List"
 msgstr "禁止连接的域名"
+
+msgid "Allow Domain List"
+msgstr "剔除被禁域名"
