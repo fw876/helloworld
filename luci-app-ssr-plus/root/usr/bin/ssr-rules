@@ -143,7 +143,9 @@ ipset_r() {
 			ipset -! add whitelist $NETFLIX_IP
 		fi
 		;;
-	2) $IPT -I SS_SPEC_WAN_AC -p tcp -m set --match-set netflix dst -j REDIRECT --to-ports $local_port ;;
+	2)
+		$IPT -I SS_SPEC_WAN_AC -p tcp -m set --match-set netflix dst -j REDIRECT --to-ports $local_port
+		;;
 	esac
 	return $?
 }
@@ -404,7 +406,9 @@ while getopts ":s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUfgrczh" arg; do
 		flush_r
 		exit 0
 		;;
-	h) usage 0 ;;
+	h)
+		usage 0
+		;;
 	esac
 done
 
