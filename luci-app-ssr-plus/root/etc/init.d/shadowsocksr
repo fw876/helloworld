@@ -627,7 +627,6 @@ start_rules() {
 	else
 		proxyport="-m multiport --dports 22,53,587,465,995,993,143,80,443,853"
 	fi
-	NETFLIX_SERVER=$(uci_get_by_type global netflix_server nil)
 	if [ "$NETFLIX_SERVER" != "nil" ]; then
 		if [ "$NETFLIX_SERVER" != "$GLOBAL_SERVER" ]; then
 			netflix="1"
