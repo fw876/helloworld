@@ -109,7 +109,7 @@ function refresh_data()
 		update(uci:get_first("shadowsocksr", "global", "chnroute_url","https://ispip.clang.cn/all_cn.txt"), "/etc/ssr/china_ssr.txt", set)
 	end
 	if set == "ad_data" then
-		update(uci:get_first("shadowsocksr", "global", "adblock_url","https://easylist-downloads.adblockplus.org/easylistchina+easylist.txt"), "/etc/ssr/ad.conf", set, "/tmp/dnsmasq.ssr/ad.conf")
+		update(uci:get_first("shadowsocksr", "global", "adblock_url","https://easylist-downloads.adblockplus.org/easylistchina+easylist.txt"), "/etc/ssr/ad.conf", set)
 	end
 	if set == "nfip_data" then
 		update(uci:get_first("shadowsocksr", "global", "nfip_url","https://cdn.jsdelivr.net/gh/QiuSimons/Netflix_IP/NF_only.txt"), "/etc/ssr/netflixip.list", set)
