@@ -45,7 +45,7 @@ log("正在更新【国内IP段】数据库")
 update(uci:get_first("shadowsocksr", "global", "chnroute_url","https://ispip.clang.cn/all_cn.txt"), "/etc/ssr/china_ssr.txt", "ip_data")
 if uci:get_first("shadowsocksr", "global", "adblock","0") == "1" then
 	log("正在更新【广告屏蔽】数据库")
-	update(uci:get_first("shadowsocksr", "global", "adblock_url","https://easylist-downloads.adblockplus.org/easylistchina+easylist.txt"), "/etc/ssr/ad.conf", "ad_data", "/tmp/dnsmasq.ssr/ad.conf")
+	update(uci:get_first("shadowsocksr", "global", "adblock_url","https://easylist-downloads.adblockplus.org/easylistchina+easylist.txt"), "/etc/ssr/ad.conf", "ad_data")
 end
 -- log("正在更新【Netflix IP段】数据库")
 -- update(uci:get_first("shadowsocksr", "global", "nfip_url","https://cdn.jsdelivr.net/gh/QiuSimons/Netflix_IP/NF_only.txt"), "/etc/ssr/netflixip.list", "nfip_data")
