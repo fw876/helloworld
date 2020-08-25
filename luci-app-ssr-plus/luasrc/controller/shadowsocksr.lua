@@ -96,11 +96,6 @@ function refresh_data()
 				luci.sys.exec("cp -f /tmp/ssr-update." .. type .. " " .. file)
 				if file2 then luci.sys.exec("cp -f /tmp/ssr-update." .. type .. " " .. file2) end
 				retstring = tostring(tonumber(icount)/Num)
-				if type == "gfw_data" or type == "ad_data" then
-					luci.sys.exec("/usr/share/shadowsocksr/gfw2ipset.sh gfw_data")
-				else
-					luci.sys.exec("/etc/init.d/shadowsocksr restart &")
-				end
 			end
 		else
 			retstring = "-1"
@@ -117,7 +112,7 @@ function refresh_data()
 		update(uci:get_first("shadowsocksr", "global", "adblock_url","https://easylist-downloads.adblockplus.org/easylistchina+easylist.txt"), "/etc/ssr/ad.conf", set, "/tmp/dnsmasq.ssr/ad.conf")
 	end
 	if set == "nfip_data" then
-		update(uci:get_first("shadowsocksr", "global", "nfip_url","https://raw.githubusercontent.com/QiuSimons/Netflix_IP/master/NF_only.txt"), "/etc/ssr/netflixip.list", set)
+		update(uci:get_first("shadowsocksr", "global", "nfip_url","https://cdn.jsdelivr.net/gh/QiuSimons/Netflix_IP/NF_only.txt"), "/etc/ssr/netflixip.list", set)
 	end
 	luci.http.prepare_content("application/json")
 	luci.http.write_json({ret = retstring,retcount = icount})

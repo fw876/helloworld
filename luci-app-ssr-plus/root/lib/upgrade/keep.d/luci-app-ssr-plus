@@ -7,3 +7,4 @@
 /etc/ssr/gfw_list.conf
 /etc/ssr/ad.conf
 /etc/ssr/deny.list
+/etc/ssr/allow.list
