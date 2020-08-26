@@ -115,6 +115,22 @@ o.remove = function(self, section, value)
 	nixio.fs.writefile(denydomainconf, "")
 end
 
+s:tab("allowdomain", translate("Allow Domain List"))
+local allowdomainconf = "/etc/ssr/allow.list"
+o = s:taboption("allowdomain", TextValue, "allowdomainconf")
+o.rows = 13
+o.wrap = "off"
+o.rmempty = true
+o.cfgvalue = function(self, section)
+	return nixio.fs.readfile(allowdomainconf) or " "
+end
+o.write = function(self, section, value)
+	nixio.fs.writefile(allowdomainconf, value:gsub("\r\n", "\n"))
+end
+o.remove = function(self, section, value)
+	nixio.fs.writefile(allowdomainconf, "")
+end
+
 s:tab("netflix", translate("Netflix Domain List"))
 local netflixconf = "/etc/ssr/netflix.list"
 o = s:taboption("netflix", TextValue, "netflixconf")

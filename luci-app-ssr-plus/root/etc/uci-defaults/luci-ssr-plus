@@ -19,6 +19,7 @@ touch /etc/ssr/netflixip.list
 touch /etc/ssr/ad.conf
 touch /etc/ssr/gfw_list.conf
 touch /etc/ssr/deny.list
+touch /etc/ssr/allow.list
 #chmod 0755 /etc/init.d/shadowsocksr /usr/bin/ssr-* /usr/share/shadowsocksr/*.sh
 #chmod 0644 /etc/ssr/* \
 #/usr/share/shadowsocksr/*.lua \
