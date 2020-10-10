@@ -451,6 +451,9 @@ msgstr "SS/SSR/V2/TROJAN订阅URL"
 msgid "Subscribe Filter Words"
 msgstr "订阅节点关键字过滤"
 
+msgid "Subscribe Pass Words"
+msgstr "订阅节点白名单过滤"
+
 msgid "Filter Words splited by /"
 msgstr "命中关键字的节点将被丢弃。多个关键字用 / 分隔"
 

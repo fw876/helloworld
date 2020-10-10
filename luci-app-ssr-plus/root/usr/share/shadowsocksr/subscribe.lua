@@ -23,6 +23,7 @@ local proxy = ucic:get_first(name, 'server_subscribe', 'proxy', '0')
 local switch = ucic:get_first(name, 'server_subscribe', 'switch', '1')
 local subscribe_url = ucic:get_first(name, 'server_subscribe', 'subscribe_url', {})
 local filter_words = ucic:get_first(name, 'server_subscribe', 'filter_words', '过期时间/剩余流量')
+local pass_words = ucic:get_first(name, 'server_subscribe', 'pass_words', '')
 local log = function(...)
 	print(os.date("%Y-%m-%d %H:%M:%S ") .. table.concat({ ... }, " "))
 end
@@ -286,12 +287,28 @@ local function check_filer(result)
 	do
 		local filter_word = split(filter_words, "/")
 		for i, v in pairs(filter_word) do
-			if result.alias:find(v) then
+			if result.alias:find(v, nil, true) then
 				log('订阅节点关键字过滤:“' .. v ..'” ，该节点被丢弃')
 				return true
 			end
 		end
 	end
+end
+
+local function check_pass(result)
+    if pass_words == "" then
+        return true
+    end
+
+    do
+            local pass_words = split(pass_words, "/")
+            for i, v in pairs(pass_words) do
+                    if result.alias:find(v, nil, true) then
+                            log('订阅节点通过白名单通过:“' .. v ..'” ，该节点待加入')
+                            return true
+                    end
+            end
+    end
 end
 
 local execute = function()
@@ -358,16 +375,22 @@ local execute = function()
 							if
 								not result.server or
 								not result.server_port or
-								result.alias == "NULL" or
-								check_filer(result) or
+								result.alias == "NULL" or                                                           
 								result.server:match("[^0-9a-zA-Z%-%.%s]") -- 中文做地址的 也没有人拿中文域名搞，就算中文域也有Puny Code SB 机场
 								then
 								log('丢弃无效节点: ' .. result.type ..' 节点, ' .. result.alias)
 							else
-								log('成功解析: ' .. result.type ..' 节点, ' .. result.alias)
-								result.grouphashkey = groupHash
-								tinsert(nodeResult[index], result)
-								cache[groupHash][result.hashkey] = nodeResult[index][#nodeResult[index]]
+								if
+									not check_filer(result) and
+									check_pass(result)
+									then
+										log('成功解析: ' .. result.type ..' 节点, ' .. result.alias)
+										result.grouphashkey = groupHash
+										tinsert(nodeResult[index], result)
+										cache[groupHash][result.hashkey] = nodeResult[index][#nodeResult[index]]
+								else
+									log('丢弃未匹配节点: ' .. result.type ..' 节点, ' .. result.alias)
+								end
 							end
 						end
 					end
