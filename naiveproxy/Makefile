@@ -63,31 +63,30 @@ ifneq ($(CONFIG_CCACHE),)
 endif
 
 AFDO_VER:=86.0.4237.0_rc-r1-merged
-AFDO_FILE:=chromeos-chrome-amd64-$$(AFDO_VER).afdo.bz2
+AFDO_FILE:=chromeos-chrome-amd64-$(AFDO_VER).afdo.bz2
 define Download/AFDO_PROF
 	URL:=https://storage.googleapis.com.cnpmjs.org/chromeos-prebuilt/afdo-job/llvm \
 	     https://storage.googleapis.com/chromeos-prebuilt/afdo-job/llvm
-	URL_FILE:=$$(AFDO_FILE)
-	FILE:=$$(URL_FILE)
+	URL_FILE:=$(AFDO_FILE)
+	FILE:=$(AFDO_FILE)
 	HASH:=d5730bd681766bcf4fd22c0e560ad500b2d6eb09164a9b80146cc327a156c98c
 endef
 
 CLANG_VER:=llvmorg-12-init-3492-ga1caa302-1
-CLANG_FILE:=clang-$$(CLANG_VER).tgz
+CLANG_FILE:=clang-$(CLANG_VER).tgz
 define Download/CLANG
 	URL:=https://commondatastorage.googleapis.com/chromium-browser-clang/Linux_x64
-	URL_FILE:=$$(CLANG_FILE)
-	FILE:=$$(URL_FILE)
+	URL_FILE:=$(CLANG_FILE)
+	FILE:=$(CLANG_FILE)
 	HASH:=05df154999115386fb390a5ec7e6ca9e28aeae2ea1cbf76435247c0eee5b9ef3
 endef
 
-COLON:= :
-GN_VER:=git_revision$$(COLON)e327ffdc503815916db2543ec000226a8df45163
-GN_FILE:=gn-$$(GN_VER).zip
+GN_VER:=e327ffdc503815916db2543ec000226a8df45163
+GN_FILE:=gn-git_revision_$(GN_VER).zip
 define Download/GN_TOOL
 	URL:=https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+
-	URL_FILE:=$$(GN_VER)
-	FILE:=$$(GN_FILE)
+	URL_FILE:=git_revision:$(GN_VER)
+	FILE:=$(GN_FILE)
 	HASH:=6d141b84a541e31ed7d3cd4d938987fdfa7988d5081d3089bc1509a43d6b742f
 endef
 
