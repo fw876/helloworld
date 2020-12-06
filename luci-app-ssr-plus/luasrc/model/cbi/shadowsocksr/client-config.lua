@@ -103,7 +103,9 @@ local flows = {
 "xtls-rprx-origin",
 "xtls-rprx-origin-udp443",
 "xtls-rprx-direct",
-"xtls-rprx-direct-udp443"
+"xtls-rprx-direct-udp443",
+"xtls-rprx-splice",
+"xtls-rprx-splice-udp443"
 }
 
 m = Map(shadowsocksr, translate("Edit ShadowSocksR Server"))
