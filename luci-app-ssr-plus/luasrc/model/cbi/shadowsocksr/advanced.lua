@@ -45,6 +45,15 @@ o.datatype = "uinteger"
 o:depends("enable_switch", "1")
 o.default = 3
 
+o = s:option(ListValue, "v2ray_type", translate("v2ray to run the program"))
+if nixio.fs.access("/usr/bin/xray") or nixio.fs.access("/usr/bin/xray/xray") then
+o:value("xray", translate("Xray"))
+end
+if nixio.fs.access("/usr/bin/v2ray") or nixio.fs.access("/usr/bin/v2ray/v2ray") then
+o:value("v2ray", translate("v2ray"))
+end
+o.default = "xray"
+
 o = s:option(Flag, "adblock", translate("Enable adblock"))
 o.rmempty = false
 

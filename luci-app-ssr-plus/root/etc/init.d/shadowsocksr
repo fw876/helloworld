@@ -115,10 +115,13 @@ find_bin() {
 	ssr-local) ret="/usr/bin/ssr-local" ;;
 	ssr-server) ret="/usr/bin/ssr-server" ;;
 	v2ray | vless)
-	ret="/usr/bin/xray"
-	[ ! -f "$ret" ] && ret="/usr/bin/xray/xray"
-	[ ! -f "$ret" ] && ret="/usr/bin/v2ray"
-	[ ! -f "$ret" ] && ret="/usr/bin/v2ray/v2ray"
+	if [[ "$(uci_get_by_type global v2ray_type xray)" == "xray" || "$2" == "1" ]]; then
+		ret="/usr/bin/xray"
+		[ ! -f "$ret" ] && ret="/usr/bin/xray/xray"
+		else
+		ret="/usr/bin/v2ray"
+		[ ! -f "$ret" ] && ret="/usr/bin/v2ray/v2ray"
+	fi
 	;;
 	trojan) ret="/usr/sbin/trojan" ;;
 	naiveproxy) ret="/usr/bin/naive" ;;
@@ -326,7 +329,7 @@ start_dns() {
 
 start_redir_tcp() {
 	local type=$(uci_get_by_name $GLOBAL_SERVER type)
-	local bin=$(find_bin $type)
+	local bin=$(find_bin $type $(uci_get_by_name $GLOBAL_SERVER xtls 0))
 	redir_tcp=1
 	[ ! -f "$bin" ] && echo "$(date "+%Y-%m-%d %H:%M:%S") Main node:Can't find $bin program, can't start!" >>/tmp/ssrplus.log && redir_tcp=0 && return 1
 	case "$(uci_get_by_name $GLOBAL_SERVER auth_enable)" in
@@ -402,7 +405,7 @@ start_redir_udp() {
 	if [ -n "$UDP_RELAY_SERVER" ]; then
 		redir_udp=1
 		local type=$(uci_get_by_name $UDP_RELAY_SERVER type)
-		local bin=$(find_bin $type)
+		local bin=$(find_bin $type $(uci_get_by_name $UDP_RELAY_SERVER xtls 0))
 		[ ! -f "$bin" ] && echo "$(date "+%Y-%m-%d %H:%M:%S") UDP TPROXY Relay:Can't find $bin program, can't start!" >>/tmp/ssrplus.log && redir_udp=0 && return 1
 		case "$type" in
 		ss | ssr)
@@ -453,7 +456,7 @@ start_redir_udp() {
 start_shunt() {
 	if [ "$NETFLIX_SERVER" != "nil" ] && [ "$NETFLIX_SERVER" != "$GLOBAL_SERVER" ]; then
 		local type=$(uci_get_by_name $NETFLIX_SERVER type)
-		local bin=$(find_bin $type)
+		local bin=$(find_bin $type $(uci_get_by_name $NETFLIX_SERVER xtls 0))
 		[ ! -f "$bin" ] && echo "$(date "+%Y-%m-%d %H:%M:%S") Netflix shunt:Can't find $bin program, can't start!" >>/tmp/ssrplus.log && return 1
 		case "$type" in
 		ss | ssr)
@@ -519,7 +522,7 @@ start_local() {
 	[ "$local_server" == "same" ] && local_server=$GLOBAL_SERVER
 	[ "$local_server" == "nil" ] && return 1
 	local type=$(uci_get_by_name $local_server type)
-	local bin=$(find_bin $type)
+	local bin=$(find_bin $type $(uci_get_by_name $local_server xtls 0))
 	[ ! -f "$bin" ] && echo "$(date "+%Y-%m-%d %H:%M:%S") Global_Socks5:Can't find $bin program, can't start!" >>/tmp/ssrplus.log && local_enable=0 && return 1
 	case "$type" in
 	ss | ssr)
