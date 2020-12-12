@@ -739,14 +739,18 @@ start() {
 			/usr/bin/ssr-rules -f
 		fi
 	else
-		sed '/.*/s/.*/address=\/&\//' /etc/ssr/deny.list >/tmp/dnsmasq.ssr/denylist.conf
+		echo "$(date "+%Y-%m-%d %H:%M:%S") 未启动主节点，禁止连接的域名正在加载。" >>/tmp/ssrplus.log
+		sed "/.*/s/.*/address=\/&\//" /etc/ssr/deny.list >/tmp/dnsmasq.ssr/denylist.conf
+		echo "$(date "+%Y-%m-%d %H:%M:%S") 禁止连接的域名加载完毕。" >>/tmp/ssrplus.log
 		if [ "$(uci_get_by_type global adblock 0)" == "1" ]; then
+			echo "$(date "+%Y-%m-%d %H:%M:%S") 未启动主节点，广告过滤正在加载。" >>/tmp/ssrplus.log
 			[ "$1" == "" ] && cp -f /etc/ssr/ad.conf /tmp/dnsmasq.ssr/
 			if [ -f "/tmp/dnsmasq.ssr/ad.conf" ]; then
 				for line in $(cat /etc/ssr/black.list); do sed -i "/$line/d" /tmp/dnsmasq.ssr/ad.conf; done
 				for line in $(cat /etc/ssr/white.list); do sed -i "/$line/d" /tmp/dnsmasq.ssr/ad.conf; done
 				for line in $(cat /etc/ssr/deny.list); do sed -i "/$line/d" /tmp/dnsmasq.ssr/ad.conf; done
 			fi
+			echo "$(date "+%Y-%m-%d %H:%M:%S") 广告过滤加载完毕。" >>/tmp/ssrplus.log
 		fi
 	fi
 	/etc/init.d/dnsmasq restart >/dev/null 2>&1
@@ -761,6 +765,7 @@ start() {
 
 boot() {
 	echo "$(date "+%Y-%m-%d %H:%M:%S") boot！" >/tmp/ssrplus.log
+	mkdir -p /var/lock /tmp/dnsmasq.d /tmp/dnsmasq.ssr /var/run /var/etc
 	ulimit -n 65535
 	start
 }
@@ -780,8 +785,7 @@ stop() {
 		killall -q -9 kcptun-client
 	fi
 	ps -w | grep -v "grep" | grep ssr-monitor | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 &
-	ps -w | grep -v "grep" | grep "sleep $(uci_get_by_type global switch_time)s" | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 &
-	ps -w | grep -v "grep" | grep "sleep 30s" | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 &
+	ps -w | grep -v "grep" | grep "sleep 0000" | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 &
 	killall -q -9 ss-redir ss-local obfs-local ssr-redir ssr-local ssr-server v2ray v2ray-plugin xray trojan naive microsocks ipt2socks dns2socks redsocks2 pdnsd
 	rm -f /var/lock/ssr-monitor.lock
 	if [ -f "/tmp/dnsmasq.d/dnsmasq-ssr.conf" ]; then
