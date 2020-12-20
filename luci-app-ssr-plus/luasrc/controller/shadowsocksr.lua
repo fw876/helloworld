@@ -77,7 +77,7 @@ function refresh_data()
 	local retstring = 0
 	local function update(url, file, type, file2)
 		local Num = 1
-		refresh_cmd = "wget-ssl --no-check-certificate -t 3 -T 10 -O- " .. url .. " > /tmp/ssr-update." .. type
+		refresh_cmd = "wget --no-check-certificate -t 3 -T 10 -O- " .. url .. " > /tmp/ssr-update." .. type
 		sret = luci.sys.call(refresh_cmd .. " 2>/dev/null")
 		if sret == 0 then
 			if type == "gfw_data" then
