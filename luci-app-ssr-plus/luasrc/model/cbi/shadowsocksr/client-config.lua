@@ -4,7 +4,7 @@
 require "nixio.fs"
 require "luci.sys"
 require "luci.http"
-local m, s, o,kcp_enable
+local m, s, o, kcp_enable
 local shadowsocksr = "shadowsocksr"
 local sid = arg[1]
 local uuid = luci.sys.exec("cat /proc/sys/kernel/random/uuid")
@@ -120,10 +120,10 @@ s = m:section(NamedSection, sid, "servers")
 s.anonymous = true
 s.addremove = false
 
-o = s:option(DummyValue,"ssr_url","SS/SSR/V2RAY/TROJAN URL")
+o = s:option(DummyValue, "ssr_url", "SS/SSR/V2RAY/TROJAN URL")
 o.rawhtml = true
 o.template = "shadowsocksr/ssrurl"
-o.value =sid
+o.value = sid
 
 o = s:option(ListValue, "type", translate("Server Node Type"))
 o:value("ssr", translate("ShadowsocksR"))
@@ -131,7 +131,7 @@ if nixio.fs.access("/usr/bin/ss-redir") then
 o:value("ss", translate("Shadowsocks New Version"))
 end
 if nixio.fs.access("/usr/bin/xray") or nixio.fs.access("/usr/bin/xray/xray") or nixio.fs.access("/usr/bin/v2ray/v2ray") or nixio.fs.access("/usr/bin/v2ray") then
-o:value("v2ray", translate("V2Ray"))
+o:value("vmess", translate("Vmess"))
 o:value("vless", translate("VLESS"))
 end
 if nixio.fs.access("/usr/sbin/trojan") then
@@ -149,9 +149,7 @@ o.description = translate("Using incorrect encryption mothod may causes service 
 o = s:option(Value, "alias", translate("Alias(optional)"))
 
 o = s:option(ListValue, "iface", translate("Network interface to use"))
-for _, e in ipairs(luci.sys.net.devices()) do
-if e ~= "lo" then o:value(e) end
-end
+for _, e in ipairs(luci.sys.net.devices()) do if e ~= "lo" then o:value(e) end end
 o:depends("type", "tun")
 o.description = translate("Redirect traffic to this network interface")
 
@@ -160,7 +158,7 @@ o.datatype = "host"
 o.rmempty = false
 o:depends("type", "ssr")
 o:depends("type", "ss")
-o:depends("type", "v2ray")
+o:depends("type", "vmess")
 o:depends("type", "vless")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
@@ -171,7 +169,7 @@ o.datatype = "port"
 o.rmempty = false
 o:depends("type", "ssr")
 o:depends("type", "ss")
-o:depends("type", "v2ray")
+o:depends("type", "vmess")
 o:depends("type", "vless")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
@@ -185,7 +183,7 @@ o:depends("type", "socks5")
 o = s:option(Value, "username", translate("Username"))
 o.rmempty = true
 o:depends("type", "naiveproxy")
-o:depends("type", "socks5")
+o:depends({type = "socks5", auth_enable = true})
 
 o = s:option(Value, "password", translate("Password"))
 o.password = true
@@ -194,7 +192,7 @@ o:depends("type", "ssr")
 o:depends("type", "ss")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
-o:depends("type", "socks5")
+o:depends({type = "socks5", auth_enable = true})
 
 o = s:option(ListValue, "encrypt_method", translate("Encrypt Method"))
 for _, v in ipairs(encrypt_methods) do o:value(v) end
@@ -236,13 +234,13 @@ o = s:option(Value, "alter_id", translate("AlterId"))
 o.datatype = "port"
 o.default = 16
 o.rmempty = true
-o:depends("type", "v2ray")
+o:depends("type", "vmess")
 
 -- VmessId
 o = s:option(Value, "vmess_id", translate("Vmess/VLESS ID (UUID)"))
 o.rmempty = true
 o.default = uuid
-o:depends("type", "v2ray")
+o:depends("type", "vmess")
 o:depends("type", "vless")
 
 -- VLESS Encryption
@@ -255,7 +253,7 @@ o:depends("type", "vless")
 o = s:option(ListValue, "security", translate("Encrypt Method"))
 for _, v in ipairs(securitys) do o:value(v, v:upper()) end
 o.rmempty = true
-o:depends("type", "v2ray")
+o:depends("type", "vmess")
 
 -- 传输协议
 o = s:option(ListValue, "transport", translate("Transport"))
@@ -265,7 +263,7 @@ o:value("ws", "WebSocket")
 o:value("h2", "HTTP/2")
 o:value("quic", "QUIC")
 o.rmempty = true
-o:depends("type", "v2ray")
+o:depends("type", "vmess")
 o:depends("type", "vless")
 
 -- [[ TCP部分 ]]--
@@ -291,7 +289,7 @@ o.rmempty = true
 
 -- WS域名
 o = s:option(Value, "ws_host", translate("WebSocket Host"))
-o:depends("transport", "ws")
+o:depends({transport = "ws", tls = false})
 o.rmempty = true
 
 -- WS路径
@@ -383,55 +381,54 @@ o.default = 2
 o.rmempty = true
 
 o = s:option(Value, "seed", translate("Obfuscate password (optional)"))
-o:depends({type="vless", transport="kcp"})
+o:depends({type = "vless", transport = "kcp"})
 o.rmempty = true
 
 o = s:option(Flag, "congestion", translate("Congestion"))
 o:depends("transport", "kcp")
 o.rmempty = true
 
--- [[ allowInsecure ]]--
-o = s:option(Flag, "insecure", translate("allowInsecure"))
-o.rmempty = false
-o:depends("type", "v2ray")
-o:depends("type", "vless")
-o:depends("type", "trojan")
-o.default = "0"
-o.description = translate("If true, allowss insecure connection at TLS client, e.g., TLS server uses unverifiable certificates.")
 -- [[ TLS ]]--
 o = s:option(Flag, "tls", translate("TLS"))
 o.rmempty = true
 o.default = "0"
-o:depends("type", "v2ray")
-o:depends("type", "vless")
+o:depends("type", "vmess")
+o:depends({type = "vless", xtls = false})
 o:depends("type", "trojan")
-
-o = s:option(Value, "tls_host", translate("TLS Host"))
---o:depends("type", "trojan")
-o:depends("tls", "1")
-o.rmempty = true
 
 -- XTLS
 if nixio.fs.access("/usr/bin/xray") or nixio.fs.access("/usr/bin/xray/xray") then
 o = s:option(Flag, "xtls", translate("XTLS"))
 o.rmempty = true
 o.default = "0"
-o:depends({type="vless", tls=true})
+o:depends({type = "vless", transport = "tcp", tls = false})
 end
 
 -- Flow
 o = s:option(Value, "vless_flow", translate("Flow"))
 for _, v in ipairs(flows) do o:value(v, v) end
 o.rmempty = true
-o.default = "xtls-rprx-origin"
-o:depends("xtls", "1")
+o.default = "xtls-rprx-splice"
+o:depends("xtls", true)
+
+o = s:option(Value, "tls_host", translate("TLS Host"))
+o:depends("type", "trojan")
+o:depends("tls", true)
+o:depends("xtls", true)
+o.rmempty = true
+
+-- [[ allowInsecure ]]--
+o = s:option(Flag, "insecure", translate("allowInsecure"))
+o.rmempty = false
+o:depends("tls", true)
+o:depends("xtls", true)
+o.description = translate("If true, allowss insecure connection at TLS client, e.g., TLS server uses unverifiable certificates.")
 
 -- [[ Mux ]]--
 o = s:option(Flag, "mux", translate("Mux"))
-o.rmempty = true
-o.default = "0"
-o:depends("type", "v2ray")
-o:depends({type="vless", xtls=false})
+o.rmempty = false
+o:depends("type", "vmess")
+o:depends({type = "vless", xtls = false})
 
 o = s:option(Value, "concurrency", translate("Concurrency"))
 o.datatype = "uinteger"
@@ -444,7 +441,7 @@ o = s:option(Flag, "certificate", translate("Self-signed Certificate"))
 o.rmempty = true
 o.default = "0"
 o:depends("type", "trojan")
-o:depends("type", "v2ray")
+o:depends("type", "vmess")
 o:depends("type", "vless")
 o.description = translate("If you have a self-signed certificate,please check the box")
 
@@ -455,8 +452,7 @@ o:depends("certificate", 1)
 cert_dir = "/etc/ssl/private/"
 local path
 
-luci.http.setfilehandler(
-function(meta, chunk, eof)
+luci.http.setfilehandler(function(meta, chunk, eof)
 if not fd then
 if (not meta) or (not meta.name) or (not meta.file) then return end
 fd = nixio.open(cert_dir .. meta.file, "w")
@@ -465,21 +461,16 @@ path = translate("Create upload file error.")
 return
 end
 end
-if chunk and fd then
-fd:write(chunk)
-end
+if chunk and fd then fd:write(chunk) end
 if eof and fd then
 fd:close()
 fd = nil
 path = '/etc/ssl/private/' .. meta.file .. ''
 end
-end
-)
+end)
 if luci.http.formvalue("upload") then
 local f = luci.http.formvalue("ulfile")
-if #f <= 0 then
-path = translate("No specify upload file.")
-end
+if #f <= 0 then path = translate("No specify upload file.") end
 end
 
 o = s:option(Value, "certpath", translate("Current Certificate Path"))
@@ -515,7 +506,7 @@ o = s:option(Value, "kcp_port", translate("KcpTun Port"))
 o.datatype = "port"
 o.default = 4000
 function o.validate(self, value, section)
-local kcp_file="/usr/bin/kcptun-client"
+local kcp_file = "/usr/bin/kcptun-client"
 local enable = kcp_enable:formvalue(section) or kcp_enable.disabled
 if enable == kcp_enable.enabled then
 if not nixio.fs.access(kcp_file) then

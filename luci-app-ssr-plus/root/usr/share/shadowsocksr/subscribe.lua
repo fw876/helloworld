@@ -122,7 +122,7 @@ local function processData(szType, content)
 		result.alias = result.alias .. base64Decode(params.remarks)
 	elseif szType == 'vmess' then
 		local info = jsonParse(content)
-		result.type = 'v2ray'
+		result.type = 'vmess'
 		result.server = info.add
 		result.server_port = info.port
 		result.transport = info.net
@@ -287,7 +287,7 @@ local function check_filer(result)
 		local filter_word = split(filter_words, "/")
 		for i, v in pairs(filter_word) do
 			if result.alias:find(v) then
-				log('订阅节点关键字过滤:“' .. v ..'” ，该节点被丢弃')
+				-- log('订阅节点关键字过滤:“' .. v ..'” ，该节点被丢弃')
 				return true
 			end
 		end
@@ -364,7 +364,7 @@ local execute = function()
 								then
 								log('丢弃无效节点: ' .. result.type ..' 节点, ' .. result.alias)
 							else
-								log('成功解析: ' .. result.type ..' 节点, ' .. result.alias)
+								-- log('成功解析: ' .. result.type ..' 节点, ' .. result.alias)
 								result.grouphashkey = groupHash
 								tinsert(nodeResult[index], result)
 								cache[groupHash][result.hashkey] = nodeResult[index][#nodeResult[index]]
