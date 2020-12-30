@@ -512,7 +512,7 @@ Start_Run() {
 		;;
 	trojan)
 		gen_config_file $GLOBAL_SERVER $type 1 $tcp_port
-			ln_start_bin $(first_type ${type}-go ${type}) $type --config $tcp_config_file
+		ln_start_bin $(first_type ${type}-go ${type}) $type --config $tcp_config_file
 		echolog "Main node:$($(first_type $type) --version 2>&1 | head -1) Started!"
 		;;
 	naiveproxy)
@@ -589,12 +589,14 @@ load_config() {
 		LOCAL_SERVER=$GLOBAL_SERVER
 		local_config_file=$TMP_PATH/tcp-udp-ssr-local.json
 		start_local
+		local_enable=0
 		;;
 	*)
 		if [ "$LOCAL_SERVER" == "$GLOBAL_SERVER" ]; then
 			_local="1"
 			local_config_file=$TMP_PATH/tcp-udp-ssr-local.json
 			start_local
+			local_enable=0
 		else
 			_local="2"
 			local_config_file=$TMP_PATH/tcp-udp-ssr-local.json
@@ -840,6 +842,7 @@ stop() {
 
 reset() {
 	stop
+	set_lock
 	rm -rf /etc/config/shadowsocksr $LOG_FILE
 	touch /etc/config/shadowsocksr $LOG_FILE
 	uci -q batch <<-EOF >/dev/null
@@ -857,7 +860,7 @@ reset() {
 		set shadowsocksr.@global[0].switch_time='667'
 		set shadowsocksr.@global[0].switch_timeout='5'
 		set shadowsocksr.@global[0].switch_try_count='3'
-		set shadowsocksr.@global[0].gfwlist_url='https://cdn.jsdelivr.net/gh/v2fly/domain-list-community@release/gfwlist.txt'
+		set shadowsocksr.@global[0].gfwlist_url='https://cdn.jsdelivr.net/gh/YW5vbnltb3Vz/domain-list-community@release/gfwlist.txt'
 		set shadowsocksr.@global[0].chnroute_url='https://ispip.clang.cn/all_cn.txt'
 		set shadowsocksr.@global[0].nfip_url='https://cdn.jsdelivr.net/gh/QiuSimons/Netflix_IP/getflix.txt'
 		set shadowsocksr.@global[0].adblock_url='https://anti-ad.net/anti-ad-for-dnsmasq.conf'
@@ -882,4 +885,5 @@ reset() {
 		set shadowsocksr.@server_global[0].enable_server='0'
 		commit shadowsocksr
 	EOF
+	unset_lock
 }
