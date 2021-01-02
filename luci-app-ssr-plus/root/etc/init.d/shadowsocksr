@@ -676,7 +676,7 @@ start_rules() {
 	if [ $dports == "1" ]; then
 		proxyport=" "
 	else
-		proxyport="-m multiport --dports 22,53,587,465,995,993,143,80,443,853"
+		proxyport="-m multiport --dports 22,53,587,465,995,993,143,80,443,853,9418"
 	fi
 	if [ "$NETFLIX_SERVER" != "nil" ]; then
 		if [ "$NETFLIX_SERVER" != "$GLOBAL_SERVER" ]; then
