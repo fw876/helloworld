@@ -5,6 +5,60 @@ local proto = arg[2]
 local local_port = arg[3] or "0"
 local socks_port = arg[4] or "0"
 local server = ucursor:get_all("shadowsocksr", server_section)
+
+local outbound_settings = nil
+if (server.v2ray_protocol == "vmess" or server.v2ray_protocol == "vless")
+then
+	outbound_settings = {
+		vnext = {
+			{
+				address = server.server,
+				port = tonumber(server.server_port),
+				users = {
+					{
+						id = server.vmess_id,
+						alterId = (server.v2ray_protocol == "vmess") and tonumber(server.alter_id) or nil,
+						security = (server.v2ray_protocol == "vmess") and server.security or nil,
+						encryption = (server.v2ray_protocol == "vless") and server.vless_encryption or nil,
+						flow = (server.xtls == '1') and (server.vless_flow and server.vless_flow or "xtls-rprx-splice") or nil,
+					}
+				}
+			}
+		}
+	}
+
+elseif (server.v2ray_protocol == "trojan" or server.v2ray_protocol == "shadowsocks")
+then
+	outbound_settings = {
+		servers = {
+			{
+				address = server.server,
+				port = tonumber(server.server_port),
+				password = server.password,
+				method = (server.v2ray_protocol == "shadowsocks") and server.encrypt_method_v2ray_ss or nil,
+			}
+		}
+	}
+
+elseif (server.v2ray_protocol == "socks" or server.v2ray_protocol == "http")
+then
+	outbound_settings = {
+		servers = {
+			{
+				address = server.server,
+				port = tonumber(server.server_port),
+				users = (server.auth_enable == "1") and {
+					{
+						user = server.username,
+						pass = server.password,
+					}
+				} or nil,
+			}
+		}
+	}
+end
+
+
 local Xray = {
 log = {
 -- error = "/var/ssrplus.log",
@@ -36,24 +90,8 @@ inboundDetour = (proto == "tcp" and socks_port ~= "0") and {
 } or nil,
 -- 传出连接
 outbound = {
-	protocol = server.type,
-	settings = {
-		vnext = {
-			{
-				address = server.server,
-				port = tonumber(server.server_port),
-				users = {
-					{
-						id = server.vmess_id,
-						alterId = (server.type == "vmess") and tonumber(server.alter_id) or nil,
-						security = (server.type == "vmess") and server.security or nil,
-						encryption = (server.type == "vless") and server.vless_encryption or nil,
-						flow = (server.xtls == '1') and (server.vless_flow and server.vless_flow or "xtls-rprx-splice") or nil,
-					}
-				}
-			}
-		}
-	},
+	protocol = server.v2ray_protocol,
+	settings = outbound_settings,
 -- 底层传输配置
 	streamSettings = {
 		network = server.transport,

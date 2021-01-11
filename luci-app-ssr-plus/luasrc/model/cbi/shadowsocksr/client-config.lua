@@ -70,6 +70,14 @@ local encrypt_methods_ss = {
 "chacha20-ietf",
 }
 
+local encrypt_methods_v2ray_ss = {
+-- aead
+"aes-128-gcm",
+"aes-256-gcm",
+"chacha20-ietf-poly1305",
+"none"
+}
+
 local protocol = {
 "origin",
 "verify_deflate",
@@ -131,8 +139,7 @@ if nixio.fs.access("/usr/bin/ss-redir") then
 o:value("ss", translate("Shadowsocks New Version"))
 end
 if nixio.fs.access("/usr/bin/xray") or nixio.fs.access("/usr/bin/xray/xray") or nixio.fs.access("/usr/bin/v2ray/v2ray") or nixio.fs.access("/usr/bin/v2ray") then
-o:value("vmess", translate("Vmess"))
-o:value("vless", translate("VLESS"))
+o:value("v2ray", translate("V2Ray/XRay"))
 end
 if nixio.fs.access("/usr/sbin/trojan") then
 o:value("trojan", translate("Trojan"))
@@ -153,13 +160,21 @@ for _, e in ipairs(luci.sys.net.devices()) do if e ~= "lo" then o:value(e) end e
 o:depends("type", "tun")
 o.description = translate("Redirect traffic to this network interface")
 
+o = s:option(ListValue, "v2ray_protocol", translate("V2Ray/XRay protocol"))
+o:value("vmess", translate("Vmess"))
+o:value("vless", translate("VLESS"))
+o:value("http", translate("HTTP"))
+o:value("socks", translate("Socks"))
+o:value("shadowsocks", translate("Shadowsocks"))
+o:value("trojan", translate("Trojan"))
+o:depends("type", "v2ray")
+
 o = s:option(Value, "server", translate("Server Address"))
 o.datatype = "host"
 o.rmempty = false
 o:depends("type", "ssr")
 o:depends("type", "ss")
-o:depends("type", "vmess")
-o:depends("type", "vless")
+o:depends("type", "v2ray")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
 o:depends("type", "socks5")
@@ -169,8 +184,7 @@ o.datatype = "port"
 o.rmempty = false
 o:depends("type", "ssr")
 o:depends("type", "ss")
-o:depends("type", "vmess")
-o:depends("type", "vless")
+o:depends("type", "v2ray")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
 o:depends("type", "socks5")
@@ -179,11 +193,15 @@ o = s:option(Flag, "auth_enable", translate("Enable Authentication"))
 o.rmempty = false
 o.default = "0"
 o:depends("type", "socks5")
+o:depends({type = "v2ray", v2ray_protocol = "http"})
+o:depends({type = "v2ray", v2ray_protocol = "socks"})
 
 o = s:option(Value, "username", translate("Username"))
 o.rmempty = true
 o:depends("type", "naiveproxy")
 o:depends({type = "socks5", auth_enable = true})
+o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
+o:depends({type = "v2ray", v2ray_protocol = "socks", auth_enable = true})
 
 o = s:option(Value, "password", translate("Password"))
 o.password = true
@@ -193,6 +211,10 @@ o:depends("type", "ss")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
 o:depends({type = "socks5", auth_enable = true})
+o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
+o:depends({type = "v2ray", v2ray_protocol = "socks", auth_enable = true})
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
+o:depends({type = "v2ray", v2ray_protocol = "trojan"})
 
 o = s:option(ListValue, "encrypt_method", translate("Encrypt Method"))
 for _, v in ipairs(encrypt_methods) do o:value(v) end
@@ -203,6 +225,11 @@ o = s:option(ListValue, "encrypt_method_ss", translate("Encrypt Method"))
 for _, v in ipairs(encrypt_methods_ss) do o:value(v) end
 o.rmempty = true
 o:depends("type", "ss")
+
+o = s:option(ListValue, "encrypt_method_v2ray_ss", translate("Encrypt Method"))
+for _, v in ipairs(encrypt_methods_v2ray_ss) do o:value(v) end
+o.rmempty = true
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 
 -- Shadowsocks Plugin
 o = s:option(Value, "plugin", translate("Plugin"))
@@ -234,26 +261,26 @@ o = s:option(Value, "alter_id", translate("AlterId"))
 o.datatype = "port"
 o.default = 16
 o.rmempty = true
-o:depends("type", "vmess")
+o:depends({type = "v2ray", v2ray_protocol = "vmess"})
 
 -- VmessId
 o = s:option(Value, "vmess_id", translate("Vmess/VLESS ID (UUID)"))
 o.rmempty = true
 o.default = uuid
-o:depends("type", "vmess")
-o:depends("type", "vless")
+o:depends({type = "v2ray", v2ray_protocol = "vmess"})
+o:depends({type = "v2ray", v2ray_protocol = "vless"})
 
 -- VLESS Encryption
 o = s:option(Value, "vless_encryption", translate("VLESS Encryption"))
 o.rmempty = true
 o.default = "none"
-o:depends("type", "vless")
+o:depends({type = "v2ray", v2ray_protocol = "vless"})
 
 -- 加密方式
 o = s:option(ListValue, "security", translate("Encrypt Method"))
 for _, v in ipairs(securitys) do o:value(v, v:upper()) end
 o.rmempty = true
-o:depends("type", "vmess")
+o:depends({type = "v2ray", v2ray_protocol = "vmess"})
 
 -- 传输协议
 o = s:option(ListValue, "transport", translate("Transport"))
@@ -263,8 +290,7 @@ o:value("ws", "WebSocket")
 o:value("h2", "HTTP/2")
 o:value("quic", "QUIC")
 o.rmempty = true
-o:depends("type", "vmess")
-o:depends("type", "vless")
+o:depends("type", "v2ray")
 
 -- [[ TCP部分 ]]--
 
@@ -392,8 +418,8 @@ o.rmempty = true
 o = s:option(Flag, "tls", translate("TLS"))
 o.rmempty = true
 o.default = "0"
-o:depends("type", "vmess")
-o:depends({type = "vless", xtls = false})
+o:depends({type = "v2ray", xtls = false})
+-- o:depends({type = "v2ray", v2ray_protocol = "vless", xtls = false})
 o:depends("type", "trojan")
 
 -- XTLS
@@ -401,7 +427,12 @@ if nixio.fs.access("/usr/bin/xray") or nixio.fs.access("/usr/bin/xray/xray") the
 o = s:option(Flag, "xtls", translate("XTLS"))
 o.rmempty = true
 o.default = "0"
-o:depends({type = "vless", transport = "tcp", tls = false})
+o:depends({type = "v2ray", v2ray_protocol = "vmess", transport = "tcp", tls = false})
+o:depends({type = "v2ray", v2ray_protocol = "vmess", transport = "kcp", tls = false})
+o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "tcp", tls = false})
+o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "kcp", tls = false})
+o:depends({type = "v2ray", v2ray_protocol = "trojan", transport = "tcp", tls = false})
+o:depends({type = "v2ray", v2ray_protocol = "trojan", transport = "kcp", tls = false})
 end
 
 -- Flow
@@ -427,8 +458,7 @@ o.description = translate("If true, allowss insecure connection at TLS client, e
 -- [[ Mux ]]--
 o = s:option(Flag, "mux", translate("Mux"))
 o.rmempty = false
-o:depends("type", "vmess")
-o:depends({type = "vless", xtls = false})
+o:depends({type = "v2ray", xtls = false})
 
 o = s:option(Value, "concurrency", translate("Concurrency"))
 o.datatype = "uinteger"
@@ -441,8 +471,7 @@ o = s:option(Flag, "certificate", translate("Self-signed Certificate"))
 o.rmempty = true
 o.default = "0"
 o:depends("type", "trojan")
-o:depends("type", "vmess")
-o:depends("type", "vless")
+o:depends("type", "v2ray")
 o.description = translate("If you have a self-signed certificate,please check the box")
 
 o = s:option(DummyValue, "upload", translate("Upload"))

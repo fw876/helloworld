@@ -122,7 +122,8 @@ local function processData(szType, content)
 		result.alias = result.alias .. base64Decode(params.remarks)
 	elseif szType == 'vmess' then
 		local info = jsonParse(content)
-		result.type = 'vmess'
+		result.type = 'v2ray'
+		result.v2ray_protocol = 'vmess'
 		result.server = info.add
 		result.server_port = info.port
 		result.transport = info.net
