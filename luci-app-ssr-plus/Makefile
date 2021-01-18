@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-ssr-plus
 PKG_VERSION:=182
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 
 define Package/$(PKG_NAME)/conffiles
 /etc/config/shadowsocksr
@@ -16,7 +16,7 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_Xray
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Trojan
 	bool "Include Trojan"
-	default y if i386||x86_64||arm||aarch64
+	default n if i386||x86_64||arm||aarch64
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Redsocks2
 	bool "Include Redsocks2"
@@ -32,8 +32,8 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_V2ray
 	default n
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Trojan-go
-	bool "Include trojan-go"
-	default n
+	bool "Include Trojan-go"
+	default y if i386||x86_64||arm||aarch64
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Kcptun
 	bool "Include Kcptun"
