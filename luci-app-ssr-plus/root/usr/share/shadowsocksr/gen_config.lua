@@ -6,7 +6,7 @@ local local_port = arg[3] or "0"
 local socks_port = arg[4] or "0"
 local server = ucursor:get_all("shadowsocksr", server_section)
 local outbound_settings = nil
-if (server.v2ray_protocol == "vmess" or server.v2ray_protocol == "vless")
+if (server.v2ray_protocol == "vmess" or server.v2ray_protocol == "vless" or not server.v2ray_protocol)
 then
 	outbound_settings = {
 		vnext = {
@@ -16,8 +16,8 @@ then
 				users = {
 					{
 						id = server.vmess_id,
-						alterId = (server.v2ray_protocol == "vmess") and tonumber(server.alter_id) or nil,
-						security = (server.v2ray_protocol == "vmess") and server.security or nil,
+						alterId = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and tonumber(server.alter_id) or nil,
+						security = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and server.security or nil,
 						encryption = (server.v2ray_protocol == "vless") and server.vless_encryption or nil,
 						flow = (server.xtls == '1') and (server.vless_flow and server.vless_flow or "xtls-rprx-splice") or nil,
 					}
@@ -78,7 +78,7 @@ local Xray = {
 	} or nil,
 	-- 传出连接
 	outbound = {
-		protocol = server.v2ray_protocol,
+		protocol = server.v2ray_protocol or "vmess",
 		settings = outbound_settings,
 		-- 底层传输配置
 		streamSettings = {
