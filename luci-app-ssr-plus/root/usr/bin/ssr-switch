@@ -109,22 +109,6 @@ start() {
 	while [ "1" == "1" ]; do #死循环
 		sleep 0000$cycle_time
 		LOGTIME=$(date "+%Y-%m-%d %H:%M:%S")
-		#判断当前代理是否为缺省服务器
-		if [ "$CURRENT_SERVER" != "$DEFAULT_SERVER" ]; then
-			#echo "not default proxy"
-			echolog "Current server is not default Main server, try to switch back."
-			#检查缺省服务器是否正常
-			if test_proxy $DEFAULT_SERVER; then
-				#echo "switch to default proxy"
-				echolog "Main server is avilable."
-				#缺省服务器正常，切换回来
-				CURRENT_SERVER=$DEFAULT_SERVER
-				switch_proxy $CURRENT_SERVER
-				echolog "switch to default "$(uci_get_by_name $CURRENT_SERVER alias)" proxy!"
-			else
-				echolog "Main server is NOT avilable.Continue using current server."
-			fi
-		fi
 		#判断当前代理是否正常
 		#echolog "Start checking if the current server is available."
 		check_proxy
