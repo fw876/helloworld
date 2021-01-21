@@ -312,7 +312,6 @@ gen_config_file() { #server1 type2 code3 local_port4 socks_port5 threads5
 			;;
 		esac
 		;;
-
 	naiveproxy)
 		case "$3" in
 		1)
