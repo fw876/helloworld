@@ -44,7 +44,6 @@ CRON_FILE=/etc/crontabs/root
 EXTRA_COMMANDS='reset'
 EXTRA_HELP="        reset   Reset to default settings"
 #extra_command "reset" "Reset to default settings"
-trap 'rm -f "$LOCK_FILE"; exit $?' INT TERM EXIT
 
 uci_get_by_name() {
 	local ret=$(uci get $NAME.$1.$2 2>/dev/null)
