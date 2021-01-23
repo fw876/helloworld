@@ -129,6 +129,7 @@ define Build/Compile
 endef
 
 define Package/naiveproxy/conffiles
+        /etc/config/naiveproxy
 endef
 
 define Package/naiveproxy/install
