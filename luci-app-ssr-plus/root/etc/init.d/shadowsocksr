@@ -536,6 +536,7 @@ Start_Run() {
 	fi
 	local tcp_port=$(uci_get_by_name $GLOBAL_SERVER local_port)
 	local type=$(uci_get_by_name $GLOBAL_SERVER type)
+	[ "$mode" == "tcp" ] && ARG_OTA=""
 	case "$type" in
 	ss | ssr)
 		gen_config_file $GLOBAL_SERVER $type 1 $tcp_port
@@ -598,7 +599,7 @@ load_config() {
 	case "$UDP_RELAY_SERVER" in
 	nil)
 		mode="tcp"
-		ARG_OTA="-u"
+		ARG_OTA=""
 		;;
 	same)
 		mode="tcp,udp"
