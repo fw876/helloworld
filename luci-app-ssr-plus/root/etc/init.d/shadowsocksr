@@ -84,7 +84,7 @@ get_host_ip() {
 }
 
 clean_log() {
-	logsnum=$(cat $LOG_FILE 2>/dev/null | wc -l)
+	local logsnum=$(cat $LOG_FILE 2>/dev/null | wc -l)
 	[ "$logsnum" -gt 1000 ] && {
 		echo "$(date "+%Y-%m-%d %H:%M:%S") 日志文件过长，清空处理！" >$LOG_FILE
 	}
@@ -139,8 +139,8 @@ _exit() {
 }
 
 first_type() {
-	local path_name=${1}
-	type -t -p "/bin/${path_name}" -p "${TMP_BIN_PATH}/${path_name}" -p "${path_name}" "$@" | head -n1
+	local ret=$(which "/bin/${path_name}" "${TMP_BIN_PATH}/${path_name}" "${path_name}" "$@" | head -n1)
+	echo ${ret:=$@}
 }
 
 ln_start_bin() {
@@ -152,10 +152,14 @@ ln_start_bin() {
 			ln -s "${file_func}" "${TMP_BIN_PATH}/${ln_name}" >/dev/null 2>&1
 			file_func="${TMP_BIN_PATH}/${ln_name}"
 		}
-		[ -x "${file_func}" ] || echolog "  - $(readlink ${file_func}) 没有执行权限，无法启动：${file_func} $*"
+		[ -x "${file_func}" ] || echolog "$(readlink ${file_func}) 没有执行权限，无法启动：${file_func} $*"
 	fi
 	#echo "${file_func} $*" >&2
-	[ -n "${file_func}" ] || echolog "  - 找不到 ${ln_name}，无法启动..."
+	[ -x "${file_func}" ] || {
+		echolog "找不到 ${file_func}，无法启动..."
+		echolog "-----------end------------"
+		_exit 2
+	}
 	${file_func:-echolog "  - ${ln_name}"} "$@" >/dev/null 2>&1 &
 }
 
@@ -536,7 +540,6 @@ Start_Run() {
 	fi
 	local tcp_port=$(uci_get_by_name $GLOBAL_SERVER local_port)
 	local type=$(uci_get_by_name $GLOBAL_SERVER type)
-	[ "$mode" == "tcp" ] && ARG_OTA=""
 	case "$type" in
 	ss | ssr)
 		gen_config_file $GLOBAL_SERVER $type 1 $tcp_port
@@ -599,7 +602,6 @@ load_config() {
 	case "$UDP_RELAY_SERVER" in
 	nil)
 		mode="tcp"
-		ARG_OTA=""
 		;;
 	same)
 		mode="tcp,udp"
@@ -620,6 +622,7 @@ load_config() {
 			ARG_UDP="-U"
 			ARG_OTA="-U"
 			start_udp
+			ARG_OTA=""
 			mode="tcp"
 		fi
 		;;
