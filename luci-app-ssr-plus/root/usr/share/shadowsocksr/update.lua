@@ -105,32 +105,7 @@ local function update(url, file, type, file2)
 	local sret = luci.sys.call(refresh_cmd)
 	if sret == 0 then
 		if type == "gfw_data" then
-			local gfwlist = io.open("/tmp/ssr-update." .. type, "r")
-			local decode = gfwlist:read("*a")
-			if not decode:find("google") then
-				decode = base64_dec(decode)
-			end
-			gfwlist:close()
-			-- 写回gfwlist
-			gfwlist = io.open("/tmp/ssr-update.tmp", "w")
-			gfwlist:write(decode)
-			gfwlist:close()
-			generate_gfwlist(type)
 			Num = 2
-		end
-		if type == "ad_data" then
-			local adblock = io.open("/tmp/ssr-update." .. type, "r")
-			local decode = adblock:read("*a")
-			if decode:find("address=") then
-				adblock:close()
-			else
-				adblock:close()
-				-- 写回adblock
-				adblock = io.open("/tmp/ssr-update.tmp", "w")
-				adblock:write(decode)
-				adblock:close()
-				generate_adblock(type)
-			end
 		end
 		local new_md5 = luci.sys.exec("echo -n $([ -f '/tmp/ssr-update." .. type .. "' ] && md5sum /tmp/ssr-update." .. type .. " | awk '{print $1}')")
 		local old_md5 = luci.sys.exec("echo -n $([ -f '" .. file .. "' ] && md5sum " .. file .. " | awk '{print $1}')")
