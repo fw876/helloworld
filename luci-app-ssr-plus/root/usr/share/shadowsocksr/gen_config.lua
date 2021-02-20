@@ -194,7 +194,7 @@ local trojan = {
 	ssl = {
 		verify = (server.insecure == "0") and true or false,
 		verify_hostname = (server.tls == "1") and true or false,
-		cert = "",
+		cert = (server.certificate) and server.certpath or nil,
 		cipher = cipher,
 		cipher_tls13 = cipher13,
 		sni = server.tls_host,
