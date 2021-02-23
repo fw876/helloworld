@@ -74,7 +74,7 @@ function o.cfgvalue(...)
 end
 o.rmempty = false
 
-o = sec:option(DummyValue, "type", translate("Server Type"))
+o = sec:option(DummyValue, "v2ray_protocol", translate("Server Type"))
 function o.cfgvalue(...)
 	return Value.cfgvalue(...) or "ssr"
 end
