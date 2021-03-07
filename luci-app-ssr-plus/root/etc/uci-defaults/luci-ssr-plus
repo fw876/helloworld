@@ -11,21 +11,22 @@ set firewall.shadowsocksr.path=/var/etc/shadowsocksr.include
 set firewall.shadowsocksr.reload=1
 commit firewall
 EOF
-chmod 0755 /etc/init.d/shadowsocksr /usr/bin/ssr-* /usr/share/shadowsocksr/*.sh
-chmod 0644 /etc/ssr/* \
-/usr/share/shadowsocksr/*.lua \
-/usr/share/rpcd/acl.d/luci-app-ssr-plus.json \
-/usr/lib/upgrade/keep.d/luci-app-ssr-plus\
-/usr/lib/lua/luci/controller/shadowsocksr.lua \
-/usr/lib/lua/luci/model/cbi/shadowsocksr/*.lua \
-/usr/lib/lua/luci/view/shadowsocksr/*.htm
-chmod 0600 /etc/config/shadowsocksr
-touch /etc/ssr/china_ssr.txt
-touch /etc/ssr/white.list
-touch /etc/ssr/black.list
-touch /etc/ssr/netflix.list
-touch /etc/ssr/netflixip.list
-touch /etc/ssr/ad.conf
-touch /etc/ssr/gfw_list.conf
+rm -rf /etc/config/shadowsocksr-opkg /etc/ssrplus/*opkg
+touch /etc/ssrplus/china_ssr.txt
+touch /etc/ssrplus/deny.list
+touch /etc/ssrplus/white.list
+touch /etc/ssrplus/black.list
+touch /etc/ssrplus/netflix.list
+touch /etc/ssrplus/netflixip.list
+touch /etc/ssrplus/gfw_base.conf
+touch /etc/ssrplus/gfw_list.conf
+touch /etc/ssrplus/oversea_list.conf
+touch /etc/ssrplus/ad.conf
+touch /etc/config/shadowsocksr
+if [ ! -s "/etc/config/shadowsocksr" ]; then
+/etc/init.d/shadowsocksr reset
+fi
+sed -i "s/option type 'vmess'"/"option type 'v2ray'\n\toption v2ray_protocol 'vmess'/g" /etc/config/shadowsocksr
+sed -i "s/option type 'vless'"/"option type 'v2ray'\n\toption v2ray_protocol 'vless'/g" /etc/config/shadowsocksr
 rm -rf /tmp/luci-modulecache /tmp/luci-indexcache
 exit 0
