@@ -7,7 +7,7 @@ function index()
 		call("act_reset")
 	end
 	local page
-	page = entry({"admin", "services", "shadowsocksr"}, alias("admin", "services", "shadowsocksr", "client"), _("ShadowSocksR Plus+"), 10)
+	page = entry({"admin", "services", "shadowsocksr"}, alias("admin", "services", "shadowsocksr", "client"), _("ShadowSocksR Plus+"), 0)
 	page.dependent = true
 	page.acl_depends = { "luci-app-ssr-plus" }
 	entry({"admin", "services", "shadowsocksr", "client"}, cbi("shadowsocksr/client"), _("SSR Client"), 10).leaf = true
