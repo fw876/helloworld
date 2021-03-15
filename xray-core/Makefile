@@ -1,19 +1,18 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=xray-core
-PKG_VERSION:=1.3.1
+PKG_VERSION:=1.4.0
 PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/XTLS/xray-core/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=5b860144c470c3f7c6b71ffdf0c3830980f1f6ce431fbe6bf10249c1f0e991a7
+PKG_HASH:=09fcfec0b6e9362d36fb358fe781431a6c2baae71a7864eaeb1379977aa22ca9
 
 PKG_MAINTAINER:=Tianling Shen <cnsztl@project-openwrt.eu.org>
 PKG_LICENSE:=MPL-2.0
 PKG_LICENSE_FILES:=LICENSE
 
 PKG_CONFIG_DEPENDS:= \
-	CONFIG_XRAY_CORE_PROVIDE_V2RAY_CORE \
 	CONFIG_XRAY_CORE_COMPRESS_GOPROXY \
 	CONFIG_XRAY_CORE_COMPRESS_UPX \
 
@@ -70,10 +69,6 @@ define Package/xray-core/config
 menu "Xray-core Configuration"
 	depends on PACKAGE_xray-core
 
-config XRAY_CORE_PROVIDE_V2RAY_CORE
-	bool "Provide V2Ray binary using XRay"
-	default y
-
 config XRAY_CORE_COMPRESS_GOPROXY
 	bool "Compiling with GOPROXY proxy"
 	default n
@@ -84,24 +79,24 @@ config XRAY_CORE_COMPRESS_UPX
 endmenu
 endef
 
-GEOIP_VER:=202102250625
+GEOIP_VER:=202103110015
 GEOIP_FILE:=geoip.dat.$(GEOIP_VER)
 
 define Download/geoip
   URL:=https://github.com/v2fly/geoip/releases/download/$(GEOIP_VER)/
   URL_FILE:=geoip.dat
   FILE:=$(GEOIP_FILE)
-  HASH:=ee41b3c624e27a47b611d7cbee9da605fb9cda7c23bec1326969eb137ca6ebe7
+  HASH:=8d2e8beaafd9aa07fce4900cc079cddf873d24658d1874de53417df33ab7f4b3
 endef
 
-GEOSITE_VER:=20210226210728
+GEOSITE_VER:=20210314064711
 GEOSITE_FILE:=dlc.dat.$(GEOSITE_VER)
 
 define Download/geosite
   URL:=https://github.com/v2fly/domain-list-community/releases/download/$(GEOSITE_VER)/
   URL_FILE:=dlc.dat
   FILE:=$(GEOSITE_FILE)
-  HASH:=ef9c30bacc6989a0b9fae6043dcef1ec15af96c01eddfa1f1d1ad93d14864f81
+  HASH:=8b89b59b0a826cb24d6b18a4e5e1db2b990faa8a9a8fef0eb000a692a7cbf7bb
 endef
 
 ifneq ($(CONFIG_XRAY_CORE_COMPRESS_GOPROXY),)
@@ -126,12 +121,9 @@ endef
 
 define Package/xray-core/install
 	$(call GoPackage/Package/Install/Bin,$(PKG_INSTALL_DIR))
-
 	$(INSTALL_DIR) $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/main $(1)/usr/bin/xray
-ifneq ($(CONFIG_XRAY_CORE_PROVIDE_V2RAY_CORE),)
 	$(LN) xray $(1)/usr/bin/v2ray
-endif
 endef
 
 define Package/xray-geodata/install
