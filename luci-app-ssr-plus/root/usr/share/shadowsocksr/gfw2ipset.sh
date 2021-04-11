@@ -1,5 +1,6 @@
 #!/bin/sh
 . $IPKG_INSTROOT/etc/init.d/shadowsocksr
+GLOBAL_SERVER=$1
 netflix() {
 	if [ -f "$TMP_DNSMASQ_PATH/gfw_list.conf" ]; then
 		for line in $(cat /etc/ssrplus/netflix.list); do sed -i "/$line/d" $TMP_DNSMASQ_PATH/gfw_list.conf; done
@@ -18,7 +19,7 @@ case "$(uci_get_by_type global netflix_server nil)" in
 nil)
 	rm -f $TMP_DNSMASQ_PATH/netflix_forward.conf
 	;;
-$(uci_get_by_type global global_server nil) | same)
+$GLOBAL_SERVER | same)
 	netflix $dns_port
 	;;
 *)
