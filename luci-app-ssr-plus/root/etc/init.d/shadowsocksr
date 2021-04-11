@@ -772,7 +772,7 @@ start_rules() {
 		2) echo "-O" ;;
 		esac
 	}
-	/usr/share/shadowsocksr/gfw2ipset.sh
+	/usr/share/shadowsocksr/gfw2ipset.sh $GLOBAL_SERVER
 	/usr/bin/ssr-rules \
 		-s "$server" \
 		-l "$local_port" \
