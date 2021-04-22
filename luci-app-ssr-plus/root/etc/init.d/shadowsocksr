@@ -460,8 +460,40 @@ start_shunt() {
 	return 0
 }
 
+load_local_config() {
+	if [ 0$mode != 0 ]; then
+		localmode=$mode
+	else
+		localmode="tcp,udp"
+	fi
+	case "$LOCAL_SERVER" in
+	nil)
+		_local="0"
+		mode="$localmode"
+		;;
+	$GLOBAL_SERVER | same)
+		_local="1"
+		mode="$localmode"
+		LOCAL_SERVER=$GLOBAL_SERVER
+		local_config_file=$TMP_PATH/tcp-udp-ssr-local.json
+		local_enable=0
+		;;
+	*)
+		_local="2"
+		mode="$localmode"
+		local_config_file=$TMP_PATH/tcp-udp-ssr-local.json
+		;;
+	esac
+}
+
 start_local() {
 	local local_port=$(uci_get_by_type socks5_proxy local_port)
+	GLOBAL_SERVER=$(uci_get_by_type global global_server nil)
+	LOCAL_SERVER=$(uci_get_by_type socks5_proxy server nil)
+	[ "$LOCAL_SERVER" = "nil" ] && return 1
+
+	load_local_config
+
 	[ "$LOCAL_SERVER" == "$SHUNT_SERVER" ] && tmp_local_port=$local_port
 	local type=$(uci_get_by_name $LOCAL_SERVER type)
 	case "$type" in
@@ -605,23 +637,9 @@ load_config() {
 		mode="tcp"
 		;;
 	esac
-	case "$LOCAL_SERVER" in
-	nil)
-		_local="0"
-		;;
-	$GLOBAL_SERVER | same)
-		_local="1"
-		LOCAL_SERVER=$GLOBAL_SERVER
-		local_config_file=$TMP_PATH/tcp-udp-ssr-local.json
-		start_local
-		local_enable=0
-		;;
-	*)
-		_local="2"
-		local_config_file=$TMP_PATH/tcp-udp-ssr-local.json
-		start_local
-		;;
-	esac
+
+	load_local_config
+
 	case "$SHUNT_SERVER" in
 	nil)
 		shunt="0"
@@ -811,6 +829,7 @@ start() {
 	/etc/init.d/dnsmasq restart >/dev/null 2>&1
 	check_server
 	start_server
+	start_local
 	start_monitor
 	clean_log
 	echolog "-----------end------------"
