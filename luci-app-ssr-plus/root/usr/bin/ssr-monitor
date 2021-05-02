@@ -74,10 +74,12 @@ while [ "1" == "1" ]; do #死循环
 	#localsocks
 	if [ "$local_process" -gt 0 ]; then
 		icount=$(busybox ps -w | grep ssr-local | grep -v grep | wc -l)
-		if [ "$icount" -lt "$local_process" ]; then #如果进程挂掉就重启它
+		icount1=$(busybox ps -w | grep local-ssr | grep -v grep | wc -l)
+		if [ "$icount" || "$icount1" -lt "$local_process" ]; then #如果进程挂掉就重启它
 			logger -t "$NAME" "global socks server error.restart!"
 			echolog "global socks server error.restart!"
 			kill -9 $(busybox ps -w | grep ssr-local | grep -v grep | awk '{print $1}') >/dev/null 2>&1
+			kill -9 $(busybox ps -w | grep local-ssr | grep -v grep | awk '{print $1}') >/dev/null 2>&1
 			/etc/init.d/shadowsocksr restart
 			exit 0
 		fi
