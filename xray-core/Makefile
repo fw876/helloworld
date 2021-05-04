@@ -41,7 +41,6 @@ endef
 define Package/xray-core
   $(call Package/xray/template)
   DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle
-  PROVIDES:=v2ray-core
 endef
 
 define Package/xray-geodata
