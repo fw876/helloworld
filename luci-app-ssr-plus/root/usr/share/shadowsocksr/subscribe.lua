@@ -248,7 +248,7 @@ local function processData(szType, content)
 			result.password = password
 		else
 			-- 1202 年了还不支持 SS AEAD 的屑机场
-			result = nil
+			result.server = nil
 		end
 	elseif szType == "ssd" then
 		result.type = "ss"
