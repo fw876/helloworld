@@ -462,7 +462,7 @@ local execute = function()
 						-- log(result)
 						if result then
 							-- 中文做地址的 也没有人拿中文域名搞，就算中文域也有Puny Code SB 机场
-							if not result.server or not result.server_port or result.alias == "NULL" or check_filer(result) or result.server:match("[^0-9a-zA-Z%-%.%s]") then
+							if not result.server or not result.server_port or result.alias == "NULL" or check_filer(result) or result.server:match("[^0-9a-zA-Z%-%.%s]") or cache[groupHash][result.hashkey] then
 								log('丢弃无效节点: ' .. result.type .. ' 节点, ' .. result.alias)
 							else
 								-- log('成功解析: ' .. result.type ..' 节点, ' .. result.alias)
