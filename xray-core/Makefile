@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=xray-core
 PKG_VERSION:=1.4.2
-PKG_RELEASE:=2
+PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/XTLS/xray-core/tar.gz/v$(PKG_VERSION)?
@@ -78,24 +78,24 @@ config XRAY_CORE_COMPRESS_UPX
 endmenu
 endef
 
-GEOIP_VER:=202103250007
+GEOIP_VER:=202106030115
 GEOIP_FILE:=geoip.dat.$(GEOIP_VER)
 
 define Download/geoip
   URL:=https://github.com/v2fly/geoip/releases/download/$(GEOIP_VER)/
   URL_FILE:=geoip.dat
   FILE:=$(GEOIP_FILE)
-  HASH:=eca0b25e528167dbdec6c130b6a5240284ce20b28158d1448f8dbeddace2e8cf
+  HASH:=acf231d7c6461d088ae479fe0c1cb143b5ee3cf7048a897c5a9b7807ab7005df
 endef
 
-GEOSITE_VER:=20210331082244
+GEOSITE_VER:=20210531212831
 GEOSITE_FILE:=dlc.dat.$(GEOSITE_VER)
 
 define Download/geosite
   URL:=https://github.com/v2fly/domain-list-community/releases/download/$(GEOSITE_VER)/
   URL_FILE:=dlc.dat
   FILE:=$(GEOSITE_FILE)
-  HASH:=e2b942b93994af1a59fd0c39179eeac7afaf351f48bf863f3e779b46a7530823
+  HASH:=332bbe53af49582dbf89bda04ee5e60e474f9293fc368ab55b517fdcd4a78ed2
 endef
 
 ifneq ($(CONFIG_XRAY_CORE_COMPRESS_GOPROXY),)
