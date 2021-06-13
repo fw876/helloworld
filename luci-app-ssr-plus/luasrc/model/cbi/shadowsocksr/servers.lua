@@ -104,6 +104,14 @@ end
 o = s:option(DummyValue, "server_port", translate("Socket Connected"))
 o.template = "shadowsocksr/socket"
 o.width = "10%"
+o.render = function(self, section, scope)
+	self.transport = s:cfgvalue(section).transport
+	if self.transport == 'ws' then
+		self.ws_path = s:cfgvalue(section).ws_path
+		self.tls = s:cfgvalue(section).tls
+	end
+	DummyValue.render(self, section, scope)
+end
 
 o = s:option(DummyValue, "server", translate("Ping Latency"))
 o.template = "shadowsocksr/ping"
