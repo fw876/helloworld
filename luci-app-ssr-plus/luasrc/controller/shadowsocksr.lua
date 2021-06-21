@@ -54,7 +54,7 @@ function act_ping()
 	if transport == "ws" then
 		local prefix = tls=='1' and "https://" or "http://"
 		local address = prefix..domain..':'..port..wsPath
-		local result = luci.sys.exec("curl --http1.1 -m 3 -s  -i -N -o /dev/null -w 'time_connect=%{time_connect}\nhttp_code=%{http_code}' -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==' -H 'Sec-WebSocket-Version: 13' "..address)
+		local result = luci.sys.exec("curl --http1.1 -m 2 -ksN -o /dev/null -w 'time_connect=%{time_connect}\nhttp_code=%{http_code}' -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==' -H 'Sec-WebSocket-Version: 13' "..address)
 		e.socket = string.match(result,"http_code=(%d+)")=="101"
 		e.ping = tonumber(string.match(result, "time_connect=(%d+.%d%d%d)"))*1000
 	else
