@@ -102,14 +102,14 @@ define Build/Prepare
 endef
 
 define Build/Compile
-( \
-	cd "$(PKG_BUILD_DIR)/src" ; \
-	. ../init_env.sh "$(ARCH)" "$(BOARD)" $(CPU_TYPE) $(CPU_SUBTYPE) "$(TOOLCHAIN_DIR)" ; \
-	export naive_flags="$$$${naive_flags} $$$${naive_ccache_flags}" ; \
-	mkdir -p "out" ; \
-	./gn/out/gn gen "out/Release" --args="$$$${naive_flags}" --script-executable="$(PYTHON)" ; \
-	$(NINJA) -C "out/Release" naive ; \
-)
+	( \
+		cd "$(PKG_BUILD_DIR)/src" ; \
+		. ../init_env.sh "$(ARCH)" "$(BOARD)" $(CPU_TYPE) $(CPU_SUBTYPE) "$(TOOLCHAIN_DIR)" ; \
+		export naive_flags="$$$${naive_flags} $$$${naive_ccache_flags}" ; \
+		mkdir -p "out" ; \
+		./gn/out/gn gen "out/Release" --args="$$$${naive_flags}" --script-executable="$(PYTHON)" ; \
+	)
+	+$(NINJA) -C "$(PKG_BUILD_DIR)/src/out/Release" naive
 endef
 
 define Package/naiveproxy/install
