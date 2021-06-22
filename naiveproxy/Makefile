@@ -107,8 +107,8 @@ define Build/Compile
 	. ../init_env.sh "$(ARCH)" "$(BOARD)" $(CPU_TYPE) $(CPU_SUBTYPE) "$(TOOLCHAIN_DIR)" ; \
 	export naive_flags="$$$${naive_flags} $$$${naive_ccache_flags}" ; \
 	mkdir -p "out" ; \
-	./gn/out/gn gen "out/Release" --args="$$$${naive_flags}" --script-executable="$(STAGING_DIR_HOSTPKG)/bin/python3" ; \
-	+$(NINJA) -C "out/Release" naive ; \
+	./gn/out/gn gen "out/Release" --args="$$$${naive_flags}" --script-executable="$(PYTHON)" ; \
+	$(NINJA) -C "out/Release" naive ; \
 )
 endef
 
