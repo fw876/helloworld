@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-ssr-plus
 PKG_VERSION:=184
-PKG_RELEASE:=8
+PKG_RELEASE:=9
 
 PKG_CONFIG_DEPENDS:= \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Kcptun \
@@ -24,6 +24,7 @@ LUCI_PKGARCH:=all
 LUCI_DEPENDS:=+coreutils +coreutils-base64 +dns2socks +dnsmasq-full +ipset \
 	+ip-full +iptables-mod-tproxy +lua +libuci-lua +microsocks +pdnsd-alt \
 	+tcping +resolveip +shadowsocksr-libev-ssr-check +uclient-fetch \
+	+libustream-openssl \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Kcptun:kcptun-client \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_NaiveProxy:naiveproxy \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Redsocks2:redsocks2 \
