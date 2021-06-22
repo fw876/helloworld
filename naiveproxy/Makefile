@@ -108,7 +108,7 @@ define Build/Compile
 	export naive_flags="$$$${naive_flags} $$$${naive_ccache_flags}" ; \
 	mkdir -p "out" ; \
 	./gn/out/gn gen "out/Release" --args="$$$${naive_flags}" --script-executable="$(STAGING_DIR_HOSTPKG)/bin/python3" ; \
-	$(STAGING_DIR_HOSTPKG)/bin/ninja -C "out/Release" naive ; \
+	ninja -C "out/Release" naive ; \
 )
 endef
 
