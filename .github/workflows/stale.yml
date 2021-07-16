@@ -1,0 +1,24 @@
+name: Mark stale issues and pull requests
+
+on:
+  schedule:
+  - cron: '41 2 * * *'
+
+jobs:
+  stale:
+
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+
+    steps:
+    - uses: actions/stale@v3
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        stale-issue-message: '即将关闭该不活跃的issue'
+        stale-pr-message: '即将关闭该不活跃的pull request'
+        stale-issue-label: 'no-activity'
+        stale-pr-label: 'no-activity'
+        days-before-stale: 30
+        days-before-close: 7
