@@ -34,7 +34,7 @@ jobs:
 
     - name: Load new hi-freq IPs
       run:  |
-        curl https://www.cloudflare.com/ips-v6 | xargs -n1 -i echo "ip6tables -A zone_lan_forward -j zone_wan_dest_REJECT -d {}" > luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
+        curl https://www.cloudflare.com/ips-v6 | xargs -n1 -i echo "ip6tables -I zone_lan_forward -j zone_wan_dest_REJECT -d {}" > luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
         cp luci-app-ssr-plus/root/etc/config/shadowsocksr.init luci-app-ssr-plus/root/etc/config/shadowsocksr
         curl https://www.cloudflare.com/ips-v4 | xargs -n1 -i echo -e "\tlist wan_fw_ips '{}'" >> luci-app-ssr-plus/root/etc/config/shadowsocksr
         sleep 1
