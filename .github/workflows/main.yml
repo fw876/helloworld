@@ -37,6 +37,8 @@ jobs:
         sed -i '/ip6tables -I/d' luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
         curl https://www.cloudflare.com/ips-v6 | xargs -n1 -i echo "ip6tables -I zone_lan_forward -j zone_wan_dest_REJECT -d {}" >> luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
         curl https://ip-ranges.amazonaws.com/ip-ranges.json | jq -r '.ipv6_prefixes[] | select(.service=="S3" or .service=="CLOUDFRONT") | .ipv6_prefix' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
+        curl https://raw.githubusercontent.com/Gelob/azure-cdn-ips/master/edgenodes-ipv6.txt | jq -r '.ipv6_prefixes[] | select(.service=="S3" or .service=="CLOUDFRONT") | .ipv6_prefix' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
+        curl https://api.github.com/meta | jq -r '.web[]' | grep -E '(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
         curl https://www.cloudflare.com/ips-v4 > luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh
         curl https://api.bgpview.io/asn/44907/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh
         sleep 1
@@ -46,6 +48,8 @@ jobs:
         sleep 1
         curl https://api.bgpview.io/asn/62041/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh
         curl https://ip-ranges.amazonaws.com/ip-ranges.json | jq -r '.prefixes[] | select(.service=="S3" or .service=="CLOUDFRONT") | .ip_prefix' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh
+        curl https://raw.githubusercontent.com/Gelob/azure-cdn-ips/master/edgenodes-ipv4.txt | jq -r '.prefixes[] | select(.service=="S3" or .service=="CLOUDFRONT") | .ip_prefix' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh
+        curl https://api.github.com/meta | jq -r '.web[]' | grep -E '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh
         git add luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
         git commit -am 'update cloudflare and telegram IPs' || true
 
