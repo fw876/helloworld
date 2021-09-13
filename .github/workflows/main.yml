@@ -36,17 +36,17 @@ jobs:
       run:  |
         sed -i '/ip6tables -I/d' luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
         curl https://www.cloudflare.com/ips-v6 | xargs -n1 -i echo "ip6tables -I zone_lan_forward -j zone_wan_dest_REJECT -d {}" >> luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
-        cp luci-app-ssr-plus/root/etc/config/shadowsocksr.init luci-app-ssr-plus/root/etc/config/shadowsocksr
-        curl https://www.cloudflare.com/ips-v4 | xargs -n1 -i echo -e "\tlist wan_fw_ips '{}'" >> luci-app-ssr-plus/root/etc/config/shadowsocksr
+        curl https://ip-ranges.amazonaws.com/ip-ranges.json | jq -r '.ipv6_prefixes[] | select(.service=="S3" or .service=="CLOUDFRONT") | .ipv6_prefix' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
+        curl https://www.cloudflare.com/ips-v4 > luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh
+        curl https://api.bgpview.io/asn/44907/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh
         sleep 1
-        curl https://api.bgpview.io/asn/44907/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' | xargs -n1 -i echo -e "\tlist wan_fw_ips '{}'" >> luci-app-ssr-plus/root/etc/config/shadowsocksr
+        curl https://api.bgpview.io/asn/59930/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh
         sleep 1
-        curl https://api.bgpview.io/asn/59930/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' | xargs -n1 -i echo -e "\tlist wan_fw_ips '{}'" >> luci-app-ssr-plus/root/etc/config/shadowsocksr
+        curl https://api.bgpview.io/asn/62014/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh
         sleep 1
-        curl https://api.bgpview.io/asn/62014/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' | xargs -n1 -i echo -e "\tlist wan_fw_ips '{}'" >> luci-app-ssr-plus/root/etc/config/shadowsocksr
-        sleep 1
-        curl https://api.bgpview.io/asn/62041/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' | xargs -n1 -i echo -e "\tlist wan_fw_ips '{}'" >> luci-app-ssr-plus/root/etc/config/shadowsocksr
-        git add luci-app-ssr-plus/root/etc/config/shadowsocksr luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
+        curl https://api.bgpview.io/asn/62041/prefixes | jq '.data.ipv4_prefixes' | jq -r '.[].prefix' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh
+        curl https://ip-ranges.amazonaws.com/ip-ranges.json | jq -r '.prefixes[] | select(.service=="S3" or .service=="CLOUDFRONT") | .ip_prefix' >> luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh
+        git add luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh luci-app-ssr-plus/root/etc/ssrplus/blackipv6.sh
         git commit -am 'update cloudflare and telegram IPs' || true
 
     - name: Push Commits
