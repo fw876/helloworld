@@ -34,6 +34,7 @@ include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
 define Package/$(PKG_NAME)/config
 config $(PKG_NAME)_INCLUDE_GOPROXY
+	depends on PACKAGE_v2ray-plugin
 	bool "Compiling with GOPROXY proxy"
 	default y
 
