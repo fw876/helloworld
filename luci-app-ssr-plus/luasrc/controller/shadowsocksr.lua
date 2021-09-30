@@ -65,7 +65,7 @@ function act_ping()
 		socket:close()
 		-- 	e.ping = luci.sys.exec("ping -c 1 -W 1 %q 2>&1 | grep -o 'time=[0-9]*.[0-9]' | awk -F '=' '{print$2}'" % domain)
 		-- 	if (e.ping == "") then
-		e.ping = luci.sys.exec(string.format("echo -n $(tcping -c 3 -i 1 -t 2 -f -p %s %s 2>&1 | grep -o 'max = [0-9./]*' | awk -F '/' '{print $3}') 2>/dev/null", port, domain))
+		e.ping = luci.sys.exec(string.format("echo -n $(tcping -c 3 -i 1 -t 2 -f -p %s %s 2>&1 | grep -o 'max = [0-9./]*' | awk -F '/' '{print $2}') 2>/dev/null", port, domain))
 		-- 	end
 	end
 	if (iret == 0) then
