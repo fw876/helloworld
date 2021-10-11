@@ -38,7 +38,7 @@ end
 function act_status()
 	local e = {}
 	e.running = luci.sys.call("busybox ps -w | grep ssr-retcp | grep -v grep >/dev/null") == 0
-	local result = luci.sys.exec("curl -o /dev/null -ksN -f -m 2 -w '%{time_connect}' https://www.google.com")
+	local result = luci.sys.exec("curl -o /dev/null -ksN -f -m 2 -w '%{time_total}' https://www.google.com")
     if result == "" then
         e.ping = "*"
     else
