@@ -756,3 +756,6 @@ msgstr "应用"
 
 msgid "Enable Netflix Mode"
 msgstr "启用 Netflix 分流模式"
+
+msgid "Google Delay"
+msgStr "【谷歌】延迟"
