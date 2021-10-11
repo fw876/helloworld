@@ -38,16 +38,16 @@ end
 function act_status()
 	local e = {}
 	e.running = luci.sys.call("busybox ps -w | grep ssr-retcp | grep -v grep >/dev/null") == 0
-	local result = luci.sys.exec("curl -o /dev/null -ksN -f -m 2 -w '%{time_total}' https://www.google.com")
-    if result == "" then
-        e.ping = "*"
-    else
-	if result >= 2 then
+	local result = luci.sys.exec("curl -o /dev/null -ksNf -m 2 -w '%{time_total}' https://www.google.com")
+	if result == "" then
 		e.ping = "*"
 	else
-        	e.ping = tonumber(result)*1000
+		if tonumber(result) >= 2 then
+			e.ping = "*"
+		else
+			e.ping = tonumber(result)*1000
+		end
 	end
-    end
 	luci.http.prepare_content("application/json")
 	luci.http.write_json(e)
 end
