@@ -42,7 +42,11 @@ function act_status()
     if result == "" then
         e.ping = "*"
     else
-        e.ping = tonumber(result)*1000
+	if result >= 2 then
+		e.ping = "*"
+	else
+        	e.ping = tonumber(result)*1000
+	end
     end
 	luci.http.prepare_content("application/json")
 	luci.http.write_json(e)
