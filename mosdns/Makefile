@@ -104,14 +104,14 @@ endef
 
 define Package/mosdns/install
 	$(call GoPackage/Package/Install/Bin,$(1))
+	$(INSTALL_DIR) $(1)/etc/mosdns
+	$(INSTALL_DATA) ./files/config.yaml $(1)/etc/mosdns/config.yaml
 endef
 
 define Package/mosdns-geodata/install
 	$(INSTALL_DIR) $(1)/etc/mosdns
 	$(INSTALL_DATA) $(DL_DIR)/$(GEOIP_FILE) $(1)/etc/mosdns/geoip.dat
 	$(INSTALL_DATA) $(DL_DIR)/$(GEOSITE_FILE) $(1)/etc/mosdns/geosite.dat
-	$(INSTALL_DIR) $(1)/etc/mosdns
-	$(INSTALL_DATA) ./files/config.yaml $(1)/etc/mosdns/config.yaml
 endef
 
 $(eval $(call GoBinPackage,mosdns))
