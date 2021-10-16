@@ -1,0 +1,130 @@
+log:
+  level: none
+  file: ''
+
+plugin:
+
+  ################# 服务插件 ################
+
+  # 启动服务器的插件
+  - tag: main_server
+    type: server
+    args:
+      entry:
+        - _no_ecs
+        - lazy_cache      # 启用缓存
+        - main_sequence   # 分流逻辑
+      server:             # 服务器监听地址与协议。
+        - protocol: udp
+          addr: 0.0.0.0:5335
+        - protocol: tcp
+          addr: 0.0.0.0:5335
+
+  ################# 可执行插件 ################
+
+  # 包含分流的逻辑的插件
+  - tag: main_sequence
+    type: sequence
+    args:
+      exec:
+        - if:
+            - query_is_ad_domain    # 已知的广告域名
+          exec:
+            - _block_with_nxdomain  # 用 NXDOMAIN 屏蔽
+            - _end
+
+        - primary:
+            - forward_local
+            - if:
+                - response_is_local
+              exec:
+                - _end
+            - if:
+                - '!response_is_local'
+              exec:
+                - _drop_response
+          secondary:
+            - forward_remote
+            - if:
+                - '!response_is_local'
+              exec:
+                - if:
+                    - _qtype_AAAA
+                  exec:
+                    - _block_with_empty_response
+                    - _end
+                - blacklist
+          fast_fallback: 150  # 这里建议设置成 local 服务器正常延时的 2~5 倍。
+                              # 这个延时保证了 local 延时偶尔变高时，其结果不会被 remote 抢答。
+                              # 如果 local 超过这个延时还没响应，可以假设 local 出现了问题。
+                              # 这时用就采用 remote 的应答。
+          always_standby: true
+
+
+  # 转发请求至本地服务器的插件
+  - tag: forward_local
+    type: fast_forward
+    args:
+      upstream:
+        - addr: '119.29.29.29'
+        - addr: '223.5.5.5'
+
+  # 转发请求至远程服务器的插件
+  - tag: forward_remote
+    type: fast_forward
+    args:
+      upstream:
+        - addr: 'tcp://1.1.1.1'
+          idle_timeout: 90
+        - addr: 'tcp://76.76.19.19'
+          idle_timeout: 90
+        - addr: 'tcp://208.67.222.222'
+          idle_timeout: 90
+
+  - tag: lazy_cache
+    type: 'cache'
+    args:
+      size: 10240
+      lazy_cache_ttl: 86400
+      lazy_cache_reply_ttl: 30
+
+  ################ 匹配器插件 #################
+
+  # 匹配广告域名的插件
+  - tag: query_is_ad_domain
+    type: query_matcher
+    args:
+      domain:
+        - 'ext:./geosite.dat:category-ads-all'
+
+  # 匹配本地域名的插件
+  - tag: query_is_local_domain
+    type: query_matcher
+    args:
+      domain:
+        - 'ext:./geosite.dat:cn'
+
+  # 匹配非本地域名的插件
+  - tag: query_is_non_local_domain
+    type: query_matcher
+    args:
+      domain:
+        - 'ext:./geosite.dat:geolocation-!cn'
+
+  # 匹配本地解析结果的插件
+  - tag: response_is_local
+    type: response_matcher
+    args:
+      ip:
+        - 'ext:./geoip.dat:cn'
+      cname:
+        - 'ext:./geosite.dat:cn'
+      logical_and: false
+
+  - tag: blacklist
+    type: 'ipset'
+    args:
+      set_name4: 'blacklist'   # 如果非空，存放 ipv4 地址到这个表。这个表属性 family 需为 `inet`。
+      set_name6: ''   # 如果非空，存放 ipv6 地址到这个表。这个表属性 family 需为 `inet6`。
+      mask4: 24       # 写入 ipv4 地址时使用的掩码。默认: 24。
+      mask6: 32       # 写入 ipv6 地址时使用的掩码。默认: 32。

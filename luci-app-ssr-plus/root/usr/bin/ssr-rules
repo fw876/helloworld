@@ -317,7 +317,7 @@ gen_include() {
 	return 0
 }
 
-while getopts ":m:s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUfgrczh" arg; do
+while getopts ":m:s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUfgrczdh" arg; do
 	case "$arg" in
 	m)
 		Interface=$OPTARG
@@ -396,6 +396,9 @@ while getopts ":m:s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUfgrczh" arg; do
 		;;
 	z)
 		RUNMODE=all
+		;;
+	d)
+		RUNMODE=dyn
 		;;
 	f)
 		flush_r
