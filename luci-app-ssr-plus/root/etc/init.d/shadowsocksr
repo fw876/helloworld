@@ -839,7 +839,7 @@ start() {
 	if load_config; then
 		Start_Run
 		start_rules
-		start_dns
+		[ "$(uci_get_by_type global run_mode)" != "dyn" ] && start_dns
 		add_cron
 		start_switch
 		[ "$(uci_get_by_type global run_mode)" == "dyn" ] && start_mosdns
