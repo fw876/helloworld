@@ -41,13 +41,12 @@ endef
 
 define Package/mosdns
   $(call Package/mosdns/Default)
-  DEPENDS:=$(GO_ARCH_DEPENDS)
+  DEPENDS:=$(GO_ARCH_DEPENDS) +mosdns-geodata
 endef
 
 define Package/mosdns-geodata
   $(call Package/mosdns/Default)
   TITLE+= (geodata resources)
-  DEPENDS:=mosdns
 endef
 
 define Package/mosdns/config
@@ -58,8 +57,6 @@ config MOSDNS_COMPRESS_GOPROXY
 config MOSDNS_COMPRESS_UPX
 	bool "Compress executable files with UPX"
 	default y
-
-select PACKAGE_mosdns-geodata
 endef
 
 ifeq ($(CONFIG_MOSDNS_COMPRESS_GOPROXY),y)
