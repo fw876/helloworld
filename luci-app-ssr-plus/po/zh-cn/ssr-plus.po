@@ -238,9 +238,6 @@ msgstr "全局模式"
 msgid "Oversea Mode"
 msgstr "海外用户回国模式"
 
-msgid "Dynamic Mode"
-msgstr "MosDNS动态模式"
-
 msgid "Router Proxy"
 msgstr "路由器访问控制"
 
@@ -759,3 +756,9 @@ msgstr "应用"
 
 msgid "Enable Netflix Mode"
 msgstr "启用 Netflix 分流模式"
+
+msgid "Update MosDNS GeoIP"
+msgstr "更新 MosDNS IP库"
+
+msgid "Dynamic Mode"
+msgstr "MosDNS动态模式"

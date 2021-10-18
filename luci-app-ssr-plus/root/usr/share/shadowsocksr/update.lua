@@ -92,7 +92,9 @@ local function generate_adblock(type)
 end
 
 local log = function(...)
-	if args then
+	if args == "mosdns" then
+		print("{ret=" .. table.concat({...}, ",retcount=") .. "}")
+	elseif args
 		print("{ret=" .. table.concat({...}, ",retcount=") .. "}")
 	else
 		print(os.date("%Y-%m-%d %H:%M:%S ") .. table.concat({...}, " "))
@@ -182,6 +184,11 @@ if args then
 	end
 	if args == "nfip_data" then
 		update(uci:get_first("shadowsocksr", "global", "nfip_url"), "/etc/ssrplus/netflixip.list", args)
+		os.exit(0)
+	end
+	if args == "mosdns" then
+		ret = luci.sys.exec("/bin/bash /usr/share/shadowsocksr/updatemosdns.sh")
+		log(ret)
 		os.exit(0)
 	end
 else

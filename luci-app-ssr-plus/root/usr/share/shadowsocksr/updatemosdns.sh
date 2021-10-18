@@ -7,12 +7,11 @@ DOWNLOAD_LINK_GEOIP="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/la
 DOWNLOAD_LINK_GEOSITE="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
 
 download_geoip() {
-    echo "Starting Download GEOIP: ${DOWNLOAD_LINK_GEOIP}"
-    if ! curl -L -H 'Cache-Control: no-cache' -o "${TEMPDIR}/geoip.dat.new" "$DOWNLOAD_LINK_GEOIP"; then
+    if ! curl -s -L -H 'Cache-Control: no-cache' -o "${TEMPDIR}/geoip.dat.new" "$DOWNLOAD_LINK_GEOIP"; then
         echo 'error: Download failed! Please check your network or try again.'
         EXIT 4
     fi
-    if ! curl -L -H 'Cache-Control: no-cache' -o "${TEMPDIR}/geoip.dat.sha256sum.new" "$DOWNLOAD_LINK_GEOIP.sha256sum"; then
+    if ! curl -s -L -H 'Cache-Control: no-cache' -o "${TEMPDIR}/geoip.dat.sha256sum.new" "$DOWNLOAD_LINK_GEOIP.sha256sum"; then
         echo 'error: Download failed! Please check your network or try again.'
         EXIT 5
     fi
@@ -25,12 +24,11 @@ download_geoip() {
 }
 
 download_geosite() {
-    echo "Starting Download GEOSITE: ${DOWNLOAD_LINK_GEOSITE}"
-    if ! curl -L -H 'Cache-Control: no-cache' -o "${TEMPDIR}/geosite.dat.new" "$DOWNLOAD_LINK_GEOSITE"; then
+    if ! curl -s -L -H 'Cache-Control: no-cache' -o "${TEMPDIR}/geosite.dat.new" "$DOWNLOAD_LINK_GEOSITE"; then
         echo 'error: Download failed! Please check your network or try again.'
         EXIT 7
     fi
-    if ! curl -L -H 'Cache-Control: no-cache' -o "${TEMPDIR}/geosite.dat.sha256sum.new" "$DOWNLOAD_LINK_GEOSITE.sha256sum"; then
+    if ! curl -s -L -H 'Cache-Control: no-cache' -o "${TEMPDIR}/geosite.dat.sha256sum.new" "$DOWNLOAD_LINK_GEOSITE.sha256sum"; then
         echo 'error: Download failed! Please check your network or try again.'
         EXIT 8
     fi
@@ -66,6 +64,7 @@ main(){
     download_geoip
     download_geosite
     rename_new
+    echo -n 0
     EXIT 0
 }
 
