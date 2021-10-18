@@ -84,11 +84,13 @@ o:value("1", translate("All Ports"))
 o:value("2", translate("Only Common Ports"))
 o.default = 1
 
+if uci:get_first("shadowsocksr", 'global', 'run_mode', '0') ~= 'dyn' then
 o = s:option(ListValue, "pdnsd_enable", translate("Resolve Dns Mode"))
 o:value("1", translate("Use Pdnsd tcp query and cache"))
 o:value("2", translate("Use DNS2SOCKS query and cache"))
 o:value("0", translate("Use Local DNS Service listen port 5335"))
 o.default = 1
+end
 
 o = s:option(Value, "tunnel_forward", translate("Anti-pollution DNS Server"))
 o:value("8.8.4.4:53", translate("Google Public DNS (8.8.4.4)"))
