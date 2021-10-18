@@ -92,7 +92,7 @@ local function generate_adblock(type)
 end
 
 local log = function(...)
-	if args
+	if args then
 		print("{ret=" .. table.concat({...}, ",retcount=") .. "}")
 	else
 		print(os.date("%Y-%m-%d %H:%M:%S ") .. table.concat({...}, " "))
@@ -151,9 +151,7 @@ local function update(url, file, type, file2)
 			else
 				luci.sys.call("/usr/share/shadowsocksr/chinaipset.sh " .. TMP_PATH .. "/china_ssr.txt")
 			end
-			if args="mosdns" then
-				log("更新成功！")
-			elseif args then
+			if args then
 				log(0, tonumber(icount) / Num)
 			else
 				log("更新成功！ 新的总纪录数：" .. tostring(tonumber(icount) / Num))
@@ -188,7 +186,7 @@ if args then
 	end
 	if args == "mosdns" then
 		ret = luci.sys.exec("/bin/bash /usr/share/shadowsocksr/updatemosdns.sh")
-		log(ret)
+		log(ret, 0)
 		os.exit(0)
 	end
 else
