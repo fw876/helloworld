@@ -72,11 +72,11 @@ o.default = "0"
 o.rmempty = false
 
 o = s:option(ListValue, "run_mode", translate("Running Mode"))
+o:value("dyn", translate("Dynamic Mode"))
 o:value("gfw", translate("GFW List Mode"))
 o:value("router", translate("IP Route Mode"))
 o:value("all", translate("Global Mode"))
 o:value("oversea", translate("Oversea Mode"))
-o:value("dyn", translate("Dynamic Mode"))
 o.default = gfw
 
 o = s:option(ListValue, "dports", translate("Proxy Ports"))
