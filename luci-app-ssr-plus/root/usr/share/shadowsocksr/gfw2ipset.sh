@@ -10,6 +10,9 @@ netflix() {
 mkdir -p $TMP_DNSMASQ_PATH
 if [ "$(uci_get_by_type global run_mode router)" == "oversea" ]; then
 	cp -rf /etc/ssrplus/oversea_list.conf $TMP_DNSMASQ_PATH/
+elif [ "$(uci_get_by_type global run_mode router)" == "dyn" ]; then
+	echo > $TMP_DNSMASQ_PATH/gfw_list.conf
+	echo > $TMP_DNSMASQ_PATH/gfw_base.conf
 else
 	cp -rf /etc/ssrplus/gfw_list.conf $TMP_DNSMASQ_PATH/
 	cp -rf /etc/ssrplus/gfw_base.conf $TMP_DNSMASQ_PATH/
