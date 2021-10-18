@@ -819,6 +819,9 @@ start_mosdns(){
 	ipset -! add blacklist 1.1.1.1 2>&1
 	ipset -! add blacklist 76.76.19.19 2>&1
 	ipset -! add blacklist 208.67.222.222 2>&1
+
+	config_get_bool adg_enabled AdGuardHome enabled 0
+	[ "$enabled" == "1" ] && /etc/init.d/AdGuardHome stop
 }
 stop_mosdns(){
 	killall -q -9 mosdns
@@ -829,6 +832,9 @@ stop_mosdns(){
 	ipset -! del blacklist 1.1.1.1 2>&1
 	ipset -! del blacklist 76.76.19.19 2>&1
 	ipset -! del blacklist 208.67.222.222 2>&1
+
+	config_get_bool adg_enabled AdGuardHome enabled 0
+	[ "$enabled" == "1" ] && /etc/init.d/AdGuardHome start
 }
 
 start() {
