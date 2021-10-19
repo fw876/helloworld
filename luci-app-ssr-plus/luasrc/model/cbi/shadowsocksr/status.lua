@@ -111,7 +111,7 @@ else
 	s.value = translate("Not Running")
 end
 
-if uci:get_first("shadowsocksr", 'global', 'pdnsd_enable', '0') ~= '0' then
+if uci:get_first("shadowsocksr", 'global', 'pdnsd_enable', '0') ~= '0' or uci:get_first("shadowsocksr", 'global', 'run_mode', '0') == 'dyn' then
 	s = m:field(DummyValue, "pdnsd_run", translate("DNS Anti-pollution"))
 	s.rawhtml = true
 	if pdnsd_run == 1 then
