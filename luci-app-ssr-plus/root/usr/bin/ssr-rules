@@ -87,7 +87,6 @@ ipset_r() {
 	$IPT -I SS_SPEC_WAN_AC -p tcp ! --dport 53 -d $server -j RETURN
 	ipset -N gmlan hash:net 2>/dev/null
 	for ip in $LAN_GM_IP; do ipset -! add gmlan $ip; done
-	[ -n "$(command -v ip6tables)" ] && . /etc/ssrplus/blockipv6.sh
 	case "$RUNMODE" in
 	router)
 		ipset -! -R <<-EOF || return 1
@@ -130,9 +129,6 @@ ipset_r() {
 	fi
 	for ip in $WAN_BP_IP; do ipset -! add whitelist $ip; done
 	for ip in $WAN_FW_IP; do ipset -! add blacklist $ip; done
-	while read ip; do
-		ipset -! add blacklist $ip
-	done < /etc/ssrplus/blackipv4.sh
 	if [ "$SHUNT_PORT" != "0" ]; then
 		ipset -N netflix hash:net 2>/dev/null
 		for ip in $(cat ${SHUNT_LIST:=/dev/null} 2>/dev/null); do ipset -! add netflix $ip; done
