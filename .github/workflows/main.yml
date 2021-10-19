@@ -26,9 +26,9 @@ jobs:
 
     - name: Load new hi-freq IPs
       run:  |
-        sed -i '/ip6tables -I/d' luci-app-ssr-plus/root/etc/ssrplus/blockipv6.sh
+        head -n4 luci-app-ssr-plus/root/etc/ssrplus/blockipv6.sh > blockipv6.sh; mv blockipv6.sh luci-app-ssr-plus/root/etc/ssrplus/blockipv6.sh
         shopt -s expand_aliases
-        alias blockipv6='xargs -n1 -i echo "ip6tables -I zone_lan_forward -j zone_wan_dest_REJECT -d {}" | tee -a luci-app-ssr-plus/root/etc/ssrplus/blockipv6.sh'
+        alias blockipv6='xargs -n1 -i echo "ipset -! add blockipv6 {}" | tee -a luci-app-ssr-plus/root/etc/ssrplus/blockipv6.sh'
         alias blackipv4='tee -a luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh'
         curl https://www.cloudflare.com/ips-v6 | blockipv6
         curl https://api.fastly.com/public-ip-list | jq -r '.ipv6_addresses[]' | blockipv6
