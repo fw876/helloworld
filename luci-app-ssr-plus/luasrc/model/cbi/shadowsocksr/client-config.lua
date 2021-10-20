@@ -72,7 +72,6 @@ local encrypt_methods_v2ray_ss = {
 	"none",
 	"plain",
 	-- aead
-	"rc4-md5",
 	"aes-128-gcm",
 	"aes-256-gcm",
 	"chacha20-poly1305",
