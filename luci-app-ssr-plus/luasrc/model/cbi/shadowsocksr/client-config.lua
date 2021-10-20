@@ -52,7 +52,6 @@ local encrypt_methods_ss = {
 	"plain",
 	"table",
 	"rc4",
-	"rc4-md5",
 	"aes-128-cfb",
 	"aes-192-cfb",
 	"aes-256-cfb",
