@@ -1,3 +1,4 @@
+个人自用，除了添加RC4-MD5加密外，跟随主线更新
 ## Setup instruction
 
 ### Method 1 - Clone this repo directly
