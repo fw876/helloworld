@@ -27,7 +27,7 @@
 
 	```bash
 	rm -rf package/helloworld
-	git submodule add --name helloworld https://github.com/fw876/helloworld.git package/helloworld
+	git submodule add -f --name helloworld https://github.com/fw876/helloworld.git package/helloworld
 	```
 
 2. Pull upstream commits:
@@ -39,8 +39,10 @@
 - Remove
 
   ```bash
-  git submodule --deinit package/helloworld
-  rm -rf package/helloworld
+  git submodule deinit -f package/helloworld
+  git rm -f package/helloworld
+  git reset HEAD .gitmodules
+  rm -rf .git/modules{/,/package/}helloworld
   ```
 
 ### Method 3 - Add this repo as an OpenWrt feed
