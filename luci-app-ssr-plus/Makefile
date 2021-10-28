@@ -104,6 +104,7 @@ endef
 define Package/$(PKG_NAME)/conffiles
 /etc/config/shadowsocksr
 /etc/ssrplus/
+/etc/mosdns/config.yaml
 endef
 
 include $(TOPDIR)/feeds/luci/luci.mk
