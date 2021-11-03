@@ -125,17 +125,17 @@ ipset_r() {
 	ipset -N whitelist hash:net 2>/dev/null
 	ipset -N blacklist hash:net 2>/dev/null
 	if [ $? -eq 0 ]; then
+	while read ip; do
+		ipset -! add blacklist $ip
+	done < /etc/ssrplus/blackipv4.sh
+	fi
 	$IPT -I SS_SPEC_WAN_AC -m set --match-set blacklist dst -j SS_SPEC_WAN_FW
 	$IPT -I SS_SPEC_WAN_AC -m set --match-set whitelist dst -j RETURN
-	fi
 	if [ $(ipset list music -name -quiet | grep music) ]; then
 		$IPT -I SS_SPEC_WAN_AC -m set --match-set music dst -j RETURN 2>/dev/null
 	fi
 	for ip in $WAN_BP_IP; do ipset -! add whitelist $ip; done
 	for ip in $WAN_FW_IP; do ipset -! add blacklist $ip; done
-	while read ip; do
-		ipset -! add blacklist $ip
-	done < /etc/ssrplus/blackipv4.sh
 	if [ "$SHUNT_PORT" != "0" ]; then
 		ipset -N netflix hash:net 2>/dev/null
 		for ip in $(cat ${SHUNT_LIST:=/dev/null} 2>/dev/null); do ipset -! add netflix $ip; done
@@ -243,7 +243,6 @@ tp_rule() {
 	router)
 		$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set ss_spec_wan_ac dst -j RETURN
 		$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set china dst -j RETURN
-		$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set blacklist dst -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark 0x01/0x01
 		$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set gmlan src -m set ! --match-set china dst -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark 0x01/0x01
 		$ipt -A SS_SPEC_TPROXY -p udp $PROXY_PORTS -m set ! --match-set ss_spec_wan_ac dst -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark 0x01/0x01
 		;;
