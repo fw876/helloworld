@@ -1,9 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # Copyright (C) 2020 SharerMax
-#
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
+# Copyright (C) 2021 ImmortalWrt.org
 
 include $(TOPDIR)/rules.mk
 
@@ -27,34 +25,30 @@ GO_PKG:=github.com/shadowsocks/v2ray-plugin
 GO_PKG_LDFLAGS:=-s -w
 GO_PKG_LDFLAGS_X:=main.VERSION=v$(PKG_VERSION)
 
-PKG_CONFIG_DEPENDS := CONFIG_$(PKG_NAME)_INCLUDE_GOPROXY
+PKG_CONFIG_DEPENDS := CONFIG_V2RAY_PLUGIN_INCLUDE_GOPROXY
 
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
-define Package/$(PKG_NAME)/config
-config $(PKG_NAME)_INCLUDE_GOPROXY
+define Package/v2ray-plugin/config
+config V2RAY_PLUGIN_INCLUDE_GOPROXY
 	depends on PACKAGE_v2ray-plugin
 	bool "Compiling with GOPROXY proxy"
 	default y
-
 endef
 
-ifeq ($(CONFIG_$(PKG_NAME)_INCLUDE_GOPROXY),y)
+ifeq ($(CONFIG_V2RAY_PLUGIN_INCLUDE_GOPROXY),y)
 export GO111MODULE=on
 export GOPROXY=https://goproxy.cn
 endif
 
-define Package/$(PKG_NAME)
-	SECTION:=net
-	CATEGORY:=Network
-	TITLE:=SIP003 plugin for shadowsocks, based on v2ray
-	URL:=https://github.com/teddysun/v2ray-plugin
-	DEPENDS:=$(GO_ARCH_DEPENDS) +ca-certificates
-endef
-
-define Package/$(PKG_NAME)/description
-	Yet another SIP003 plugin for shadowsocks, based on v2ray
+define Package/v2ray-plugin
+  SECTION:=net
+  CATEGORY:=Network
+  SUBMENU:=Web Servers/Proxies
+  TITLE:=SIP003 plugin for shadowsocks, based on v2ray
+  URL:=https://github.com/teddysun/v2ray-plugin
+  DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle
 endef
 
 define Build/Compile
@@ -62,10 +56,10 @@ define Build/Compile
 	$(STAGING_DIR_HOST)/bin/upx --lzma --best $(GO_PKG_BUILD_BIN_DIR)/v2ray-plugin || true
 endef
 
-define Package/$(PKG_NAME)/install
+define Package/v2ray-plugin/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/v2ray-plugin $(1)/usr/bin/v2ray-plugin
 endef
 
-$(eval $(call GoBinPackage,$(PKG_NAME)))
-$(eval $(call BuildPackage,$(PKG_NAME)))
+$(eval $(call GoBinPackage,v2ray-plugin))
+$(eval $(call BuildPackage,v2ray-plugin))
