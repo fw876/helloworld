@@ -102,6 +102,6 @@ done
 svn checkout https://github.com/coolsnowwolf/lede/trunk/tools/ucl tools/ucl
 svn checkout https://github.com/coolsnowwolf/lede/trunk/tools/upx tools/upx
 
-sed -i '$a\tools-y += ucl upx' tools/Makefile
-sed -i '$a\$(curdir)/upx/compile := $(curdir)/ucl/compile' tools/Makefile
+sed -i 'N;24a\tools-y += ucl upx' tools/Makefile
+sed -i 'N;40a\$(curdir)/upx/compile := $(curdir)/ucl/compile' tools/Makefile
 ```
