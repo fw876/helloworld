@@ -72,13 +72,24 @@
 
 ### Note
 
-If you want to use this repo with official OpenWrt source tree, the following packages need to be added manually:
+If you want to use this repo with official OpenWrt source tree, the following packages and tools need to be added manually:
 
+packages:
 - [dns2socks](https://github.com/immortalwrt/packages/tree/master/net/dns2socks)
 - [microsocks](https://github.com/immortalwrt/packages/tree/master/net/microsocks)
 - [ipt2socks](https://github.com/immortalwrt/packages/tree/master/net/ipt2socks)
 - [pdnsd-alt](https://github.com/immortalwrt/packages/tree/master/net/pdnsd-alt)
 - [redsocks2](https://github.com/immortalwrt/packages/tree/master/net/redsocks2)
+
+tools:
+- [ucl](https://github.com/coolsnowwolf/lede/tree/master/tools/ucl)
+- [upx](https://github.com/coolsnowwolf/lede/tree/master/tools/upx)
+
+You should manually add the following code after tools/Makefile: 
+```bash
+tools-y += ucl upx' tools/Makefile
+$(curdir)/upx/compile := $(curdir)/ucl/compile
+```
 
 You may use `svn` to check them out, e.g.:
 
@@ -87,4 +98,10 @@ mkdir -p package/helloworld
 for i in "dns2socks" "microsocks" "ipt2socks" "pdnsd-alt" "redsocks2"; do \
   svn checkout "https://github.com/immortalwrt/packages/trunk/net/$i" "package/helloworld/$i"; \
 done
+
+svn checkout https://github.com/coolsnowwolf/lede/trunk/tools/ucl tools/ucl
+svn checkout https://github.com/coolsnowwolf/lede/trunk/tools/upx tools/upx
+
+sed -i '$a\tools-y += ucl upx' tools/Makefile
+sed -i '$a\$(curdir)/upx/compile := $(curdir)/ucl/compile' tools/Makefile
 ```
