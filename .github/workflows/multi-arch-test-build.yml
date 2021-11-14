@@ -51,7 +51,7 @@ jobs:
           for ROOT in $PKG_ROOTS; do
             for CHANGE in $CHANGES; do
               if [[ "$CHANGE" == "$ROOT"* ]]; then
-                PACKAGES+=$(echo "$ROOT" | sed -e 's@.*/\(.*\)/@\1 @')
+                PACKAGES+=$(echo "$ROOT" | sed -e 's@\(.*\)/@\1 @')
                 break
               fi
             done
