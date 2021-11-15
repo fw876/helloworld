@@ -87,7 +87,7 @@ tools:
 
 You should manually add the following code after tools/Makefile: 
 ```bash
-tools-y += ucl upx' tools/Makefile
+tools-y += ucl upx
 $(curdir)/upx/compile := $(curdir)/ucl/compile
 ```
 
