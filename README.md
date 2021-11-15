@@ -94,7 +94,7 @@ for i in "dns2socks" "microsocks" "ipt2socks" "pdnsd-alt" "redsocks2"; do \
 done
 ```
 
-You should manually add the following code into tools/Makefile, make sure to add code before the compiling command: 
+You should manually add the following code into tools/Makefile, make sure to add code before the compile command: 
 
 ```bash
 tools-y += ucl upx
