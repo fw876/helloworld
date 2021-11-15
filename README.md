@@ -72,8 +72,13 @@
 
 ### Note
 
-If you want to use this repo with official OpenWrt source tree, the following packages need to be added manually:
+If you want to use this repo with official OpenWrt source tree, the following tools and packages need to be added manually:
 
+tools:
+- [ucl](https://github.com/coolsnowwolf/lede/tree/master/tools/ucl)
+- [upx](https://github.com/coolsnowwolf/lede/tree/master/tools/upx)
+
+packages:
 - [dns2socks](https://github.com/immortalwrt/packages/tree/master/net/dns2socks)
 - [microsocks](https://github.com/immortalwrt/packages/tree/master/net/microsocks)
 - [ipt2socks](https://github.com/immortalwrt/packages/tree/master/net/ipt2socks)
@@ -88,3 +93,21 @@ for i in "dns2socks" "microsocks" "ipt2socks" "pdnsd-alt" "redsocks2"; do \
   svn checkout "https://github.com/immortalwrt/packages/trunk/net/$i" "package/helloworld/$i"; \
 done
 ```
+
+You should manually add the following code into tools/Makefile, make sure to add code before the compile command: 
+
+```bash
+tools-y += ucl upx
+$(curdir)/upx/compile := $(curdir)/ucl/compile
+```
+
+e.g.:
+
+```bash
+svn checkout https://github.com/coolsnowwolf/lede/trunk/tools/ucl tools/ucl
+svn checkout https://github.com/coolsnowwolf/lede/trunk/tools/upx tools/upx
+
+sed -i 'N;24a\tools-y += ucl upx' tools/Makefile
+sed -i 'N;40a\$(curdir)/upx/compile := $(curdir)/ucl/compile' tools/Makefile
+```
+You should note that hard-coding the line number is not an ideal solution. It may destroy the structure of the original file due to the update of the openwrt source code and cause unexpected problems. 
