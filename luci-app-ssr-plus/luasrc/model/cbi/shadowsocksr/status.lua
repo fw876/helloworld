@@ -185,6 +185,7 @@ end
 if uci:get_first("shadowsocksr", 'global', 'run_mode', '0') == 'dyn' then
 	s = m:field(DummyValue, "mosdns", translate("Update MosDNS GeoIP"))
 	s.template = "shadowsocksr/refresh"
+	s.value = translate("No Check")
 end
 
 if uci:get_first("shadowsocksr", 'global', 'pdnsd_enable', '0') == '1' then
