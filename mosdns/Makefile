@@ -68,8 +68,8 @@ GEOIP_VER:=202106030115
 GEOIP_FILE:=geoip.dat.$(GEOIP_VER)
 
 define Download/geoip
-  URL:=https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download
-  URL_FILE:=geoip.dat
+  URL:=https://github.com/Loyalsoldier/geoip/releases/latest/download
+  URL_FILE:=geoip-only-cn-private.dat
   FILE:=$(GEOIP_FILE)
   HASH:=skip
 endef
