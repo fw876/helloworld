@@ -91,7 +91,7 @@ define Download/PGO_PROF
 	     https://storage.googleapis.com/chromium-optimization-profiles/pgo_profiles
 	URL_FILE:=$(PGO_FILE)
 	FILE:=$(PGO_FILE)
-	HASH:=8dcf5973033d40c9a7b15e571dea3832e7b67976aad9113369e22d43808c603f
+	HASH:=5f693c4779c1d6802e509c2c1e5f130017fd6634a0ccd3a0de47be419c068f5e
 endef
 
 define Build/Prepare
