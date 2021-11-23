@@ -182,11 +182,10 @@ if uci:get_first("shadowsocksr", 'global', 'adblock', '0') == '1' then
 	s.value = ad_count .. " " .. translate("Records")
 end
 
-if uci:get_first("shadowsocksr", 'global', 'run_mode', '0') == 'dyn' then
-	s = m:field(DummyValue, "mosdns", translate("Update MosDNS GeoIP"))
-	s.template = "shadowsocksr/refresh"
-	s.value = translate("No Check")
-end
+s = m:field(DummyValue, "mosdns", translate("Update MosDNS GeoIP"))
+s.rawhtml = true
+s.template = "shadowsocksr/refresh"
+s.value = translate("No Check")
 
 if uci:get_first("shadowsocksr", 'global', 'pdnsd_enable', '0') == '1' then
 	s = m:field(DummyValue, "cache", translate("Reset pdnsd cache"))
