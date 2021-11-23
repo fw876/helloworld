@@ -757,8 +757,8 @@ msgstr "应用"
 msgid "Enable Netflix Mode"
 msgstr "启用 Netflix 分流模式"
 
-msgid "Update MosDNS GeoIP"
-msgstr "更新MosDNS IP库"
+msgid "MosDNS GeoIP List Data"
+msgstr "【MosDNS GeoIP】数据库"
 
 msgid "Dynamic Mode"
 msgstr "MosDNS动态模式"
