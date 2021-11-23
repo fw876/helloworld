@@ -182,7 +182,7 @@ if uci:get_first("shadowsocksr", 'global', 'adblock', '0') == '1' then
 	s.value = ad_count .. " " .. translate("Records")
 end
 
-s = m:field(DummyValue, "mosdns", translate("Update MosDNS GeoIP"))
+s = m:field(DummyValue, "mosdns", translate("MosDNS GeoIP List Data"))
 s.rawhtml = true
 s.template = "shadowsocksr/refresh"
 s.value = translate("No Check")
