@@ -112,7 +112,7 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_Xray
 	
 config PACKAGE_$(PKG_NAME)_INCLUDE_Mosdns
 	bool "Include mosdns"
-	default n
+	default y
 endef
 
 define Package/$(PKG_NAME)/conffiles
