@@ -101,7 +101,7 @@ s.rawhtml = true
 if redir_run == 1 then
 	s.value = font_blue .. bold_on .. translate("Running") .. bold_off .. font_off
 else
-	s.value = translate("Not Running")
+	s.value = style_blue .. bold_on .. translate("Not Running") .. bold_off .. font_off
 end
 
 s = m:field(DummyValue, "reudp_run", translate("Game Mode UDP Relay"))
