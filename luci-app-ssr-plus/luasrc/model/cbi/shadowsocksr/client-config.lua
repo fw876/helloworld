@@ -47,6 +47,8 @@ local encrypt_methods_ss = {
 	"chacha20-ietf-poly1305",
 	"xchacha20-ietf-poly1305"
 	--[[ stream
+	"none",
+	"plain",
 	"table",
 	"rc4",
 	"rc4-md5",
@@ -69,11 +71,6 @@ local encrypt_methods_v2ray_ss = {
 	-- xray_ss
 	"none",
 	"plain",
-	--[[ stream
-	"aes-128-cfb",
-	"aes-256-cfb",
-	"chacha20",
-	"chacha20-ietf", ]]
 	-- aead
 	"aes-128-gcm",
 	"aes-256-gcm",
@@ -112,6 +109,7 @@ local securitys = {
 	-- vmess
 	"auto",
 	"none",
+	"zero",
 	"aes-128-gcm",
 	"chacha20-poly1305"
 }
@@ -260,7 +258,7 @@ o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o = s:option(Value, "plugin", translate("Obfs"))
 o:value("none", translate("None"))
 if is_finded("obfs-local") then
-	o:value("obfs-local", translate("simple-obfs"))
+	o:value("obfs-local", translate("obfs-local"))
 end
 if is_finded("v2ray-plugin") then
 	o:value("v2ray-plugin", translate("v2ray-plugin"))
@@ -358,16 +356,12 @@ o.rmempty = true
 -- WS域名
 o = s:option(Value, "ws_host", translate("WebSocket Host"))
 o:depends({transport = "ws", tls = false})
-o:depends("trojan_transport", "h2+ws")
-o:depends("trojan_transport", "ws")
 o.datatype = "hostname"
 o.rmempty = true
 
 -- WS路径
 o = s:option(Value, "ws_path", translate("WebSocket Path"))
 o:depends("transport", "ws")
-o:depends("trojan_transport", "h2+ws")
-o:depends("trojan_transport", "ws")
 o.rmempty = true
 
 -- [[ H2部分 ]]--
@@ -463,28 +457,6 @@ o.rmempty = true
 o = s:option(Flag, "congestion", translate("Congestion"))
 o:depends("transport", "kcp")
 o.rmempty = true
-
-o = s:option(ListValue, "plugin_type", translate("Plugin Type"))
-o:value("plaintext", translate("Plain Text"))
-o:value("shadowsocks", translate("ShadowSocks"))
-o:value("other", translate("Other"))
-o.default = "plaintext"
-o:depends({tls = false, trojan_transport = "original"})
-
-o = s:option(Value, "plugin_cmd", translate("Plugin Binary"))
-o.placeholder = "eg: /usr/bin/v2ray-plugin"
-o:depends({plugin_type = "shadowsocks"})
-o:depends({plugin_type = "other"})
-
-o = s:option(Value, "plugin_option", translate("Plugin Option"))
-o.placeholder = "eg: obfs=http;obfs-host=www.baidu.com"
-o:depends({plugin_type = "shadowsocks"})
-o:depends({plugin_type = "other"})
-
-o = s:option(DynamicList, "plugin_arg", translate("Plugin Option Args"))
-o.placeholder = "eg: [\"-config\", \"test.json\"]"
-o:depends({plugin_type = "shadowsocks"})
-o:depends({plugin_type = "other"})
 
 -- [[ TLS ]]--
 o = s:option(Flag, "tls", translate("TLS"))

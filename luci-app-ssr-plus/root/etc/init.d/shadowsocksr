@@ -17,7 +17,7 @@ LOCK_FILE=/var/lock/ssrplus.lock
 LOG_FILE=/var/log/ssrplus.log
 TMP_PATH=/var/etc/ssrplus
 TMP_BIN_PATH=$TMP_PATH/bin
-TMP_DNSMASQ_PATH=/var/etc/dnsmasq-ssrplus.d
+TMP_DNSMASQ_PATH=/tmp/dnsmasq.d/dnsmasq-ssrplus.d
 tcp_config_file=
 udp_config_file=
 shunt_config_file=
@@ -326,7 +326,7 @@ gen_config_file() { #server1 type2 code3 local_port4 socks_port5 threads5
 			lua /usr/share/shadowsocksr/gen_config.lua $1 redir $4 $5 >$config_file
 			;;
 		3)
-			lua /usr/share/shadowsocksr/gen_config.lua $1 redir $4 $5 >$config_file
+			lua /usr/share/shadowsocksr/gen_config.lua $1 redir $4 >$config_file
 			lua /usr/share/shadowsocksr/gen_config.lua $1 socks $tmp_port >$shunt_dns_config_file
 			;;
 		4)
@@ -564,7 +564,8 @@ Start_Run() {
 		echolog "Main node:$($(first_type $type) --version 2>&1 | head -1) , $threads Threads Started!"
 		;;
 	naiveproxy)
-		gen_config_file $GLOBAL_SERVER $type 1 $tcp_port
+		[ "$(uci_get_by_type global threads 0)" == "0" ] && threads=1
+		gen_config_file $GLOBAL_SERVER $type 1 $tcp_port $threads
 		ln_start_bin $(first_type naive) naive $tcp_config_file
 		echolog "Main node:$($(first_type naive) --version 2>&1 | head -1) , $threads Threads Started!"
 		;;
@@ -810,8 +811,8 @@ start_rules() {
 start() {
 	set_lock
 	echolog "----------start------------"
-	mkdir -p /var/run /var/lock /var/log /var/dnsmasq.d $TMP_BIN_PATH $TMP_DNSMASQ_PATH
-	echo "conf-dir=${TMP_DNSMASQ_PATH}" >"/var/dnsmasq.d/dnsmasq-ssrplus.conf"
+	mkdir -p /var/run /var/lock /var/log /tmp/dnsmasq.d $TMP_BIN_PATH $TMP_DNSMASQ_PATH
+	echo "conf-dir=${TMP_DNSMASQ_PATH}" >"/tmp/dnsmasq.d/dnsmasq-ssrplus.conf"
 	if load_config; then
 		Start_Run
 		start_rules
@@ -844,7 +845,7 @@ start() {
 
 boot() {
 	echolog "boot！"
-	mkdir -p /var/run /var/lock /var/log /var/dnsmasq.d $TMP_BIN_PATH $TMP_DNSMASQ_PATH
+	mkdir -p /var/run /var/lock /var/log /tmp/dnsmasq.d $TMP_BIN_PATH $TMP_DNSMASQ_PATH
 	ulimit -n 65535
 	start
 }
@@ -869,8 +870,8 @@ stop() {
 	$PS -w | grep -v "grep" | grep "$TMP_PATH" | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 &
 	killall -q -9 v2ray-plugin obfs-local xray-plugin
 	rm -f /var/lock/ssr-monitor.lock
-	if [ -f "/var/dnsmasq.d/dnsmasq-ssrplus.conf" ]; then
-		rm -rf /var/dnsmasq.d/dnsmasq-ssrplus.conf $TMP_DNSMASQ_PATH $TMP_PATH/*-ssr-*.json $TMP_PATH/ssr-server*.json
+	if [ -f "/tmp/dnsmasq.d/dnsmasq-ssrplus.conf" ]; then
+		rm -rf /tmp/dnsmasq.d/dnsmasq-ssrplus.conf $TMP_DNSMASQ_PATH $TMP_PATH/*-ssr-*.json $TMP_PATH/ssr-server*.json
 		/etc/init.d/dnsmasq restart >/dev/null 2>&1
 	fi
 	del_cron
@@ -906,6 +907,7 @@ reset() {
 		set shadowsocksr.@server_subscribe[0].auto_update_time='2'
 		set shadowsocksr.@server_subscribe[0].auto_update='1'
 		set shadowsocksr.@server_subscribe[0].filter_words='过期时间/剩余流量/QQ群/官网/防失联地址/回国'
+		set shadowsocksr.@server_subscribe[0].save_words=''
 		add shadowsocksr access_control
 		set shadowsocksr.@access_control[0].lan_ac_mode='0'
 		set shadowsocksr.@access_control[0].router_proxy='1'
