@@ -383,6 +383,12 @@ o = s:option(Value, "serviceName", translate("serviceName"))
 o:depends("transport", "grpc")
 o.rmempty = true
 
+-- gRPC初始窗口
+o = s:option(Value, "initial_windows_size", translate("Initial Windows Size"))
+o:depends("transport", "grpc")
+o.default = 0
+o.rmempty = true
+
 -- H2/gRPC健康检查
 o = s:option(Flag, "health_check", translate("H2/gRPC Health Check"))
 o:depends("transport", "h2")
@@ -390,12 +396,12 @@ o:depends("transport", "grpc")
 o.rmempty = true
 
 o = s:option(Value, "read_idle_timeout", translate("H2 Read Idle Timeout"))
-o:depends({health_check = 1, transport = "h2"})
+o:depends({health_check = true, transport = "h2"})
 o.default = 60
 o.rmempty = true
 
 o = s:option(Value, "idle_timeout", translate("gRPC Idle Timeout"))
-o:depends({health_check = 1, transport = "grpc"})
+o:depends({health_check = true, transport = "grpc"})
 o.default = 60
 o.rmempty = true
 
@@ -405,7 +411,7 @@ o.default = 20
 o.rmempty = true
 
 o = s:option(Flag, "permit_without_stream", translate("Permit Without Stream"))
-o:depends({health_check = 1, transport = "grpc"})
+o:depends({health_check = true, transport = "grpc"})
 o.rmempty = true
 
 -- [[ QUIC部分 ]]--

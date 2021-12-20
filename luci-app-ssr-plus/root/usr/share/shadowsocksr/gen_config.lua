@@ -178,7 +178,8 @@ local Xray = {
 				multiMode = (server.mux == "1") and true or false,
 				idle_timeout = tonumber(server.idle_timeout) or nil,
 				health_check_timeout = tonumber(server.health_check_timeout) or nil,
-				permit_without_stream = (server.permit_without_stream == "1") and true or nil
+				permit_without_stream = (server.permit_without_stream == "1") and true or nil,
+				initial_windows_size = tonumber(server.initial_windows_size) or nil
 			} or nil
 		},
 		mux = (server.mux == "1" and server.xtls ~= "1" and server.transport ~= "grpc") and {
