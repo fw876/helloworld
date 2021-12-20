@@ -118,7 +118,7 @@ local Xray = {
 		-- 底层传输配置
 		streamSettings = {
 			network = server.transport or "tcp",
-			security = (server.xtls == '1') and "xtls" or (server.tls == '1'or server.transport == "grpc") and "tls" or nil,
+			security = (server.xtls == '1') and "xtls" or (server.tls == '1') and "tls" or nil,
 			tlsSettings = (server.tls == '1' and (server.insecure == "1" or server.tls_host or server.fingerprint)) and {
 				-- tls
 				fingerprint = server.fingerprint,
