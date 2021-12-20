@@ -383,6 +383,31 @@ o = s:option(Value, "serviceName", translate("serviceName"))
 o:depends("transport", "grpc")
 o.rmempty = true
 
+-- H2/gRPC健康检查
+o = s:option(Flag, "health_check", translate("H2/gRPC Health Check"))
+o:depends("transport", "h2")
+o:depends("transport", "grpc")
+o.rmempty = true
+
+o = s:option(Value, "read_idle_timeout", translate("H2 Read Idle Timeout"))
+o:depends({health_check = 1, transport = "h2"})
+o.default = 60
+o.rmempty = true
+
+o = s:option(Value, "idle_timeout", translate("gRPC Idle Timeout"))
+o:depends({health_check = 1, transport = "grpc"})
+o.default = 60
+o.rmempty = true
+
+o = s:option(Value, "health_check_timeout", translate("Health Check Timeout"))
+o:depends("health_check", 1)
+o.default = 20
+o.rmempty = true
+
+o = s:option(Flag, "permit_without_stream", translate("Permit Without Stream"))
+o:depends({health_check = 1, transport = "grpc"})
+o.rmempty = true
+
 -- [[ QUIC部分 ]]--
 o = s:option(ListValue, "quic_security", translate("QUIC Security"))
 o:depends("transport", "quic")

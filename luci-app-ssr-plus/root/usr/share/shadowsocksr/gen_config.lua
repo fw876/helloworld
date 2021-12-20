@@ -162,7 +162,9 @@ local Xray = {
 			httpSettings = (server.transport == "h2") and {
 				-- h2
 				path = server.h2_path or "",
-				host = {server.h2_host} or nil
+				host = {server.h2_host} or nil,
+				read_idle_timeout = tonumber(server.read_idle_timeout) or nil,
+				health_check_timeout = tonumber(server.health_check_timeout) or nil
 			} or nil,
 			quicSettings = (server.transport == "quic") and {
 				-- quic
@@ -173,7 +175,10 @@ local Xray = {
 			grpcSettings = (server.transport == "grpc") and {
 				-- grpc
 				serviceName = server.serviceName or "",
-				multiMode = (server.mux == "1") and true or false
+				multiMode = (server.mux == "1") and true or false,
+				idle_timeout = tonumber(server.idle_timeout) or nil,
+				health_check_timeout = tonumber(server.health_check_timeout) or nil,
+				permit_without_stream = (server.permit_without_stream == "1") and true or nil
 			} or nil
 		},
 		mux = (server.mux == "1" and server.xtls ~= "1" and server.transport ~= "grpc") and {
