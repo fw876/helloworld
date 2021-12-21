@@ -257,9 +257,9 @@ o.rmempty = true
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 
 o = s:option(Flag, "ivCheck", translate("Bloom Filter"))
+o.rmempty = true
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o.default = "1"
-o.rmempty = false
 
 -- Shadowsocks Plugin
 o = s:option(Value, "plugin", translate("Obfs"))
@@ -390,6 +390,7 @@ o.rmempty = true
 
 -- gRPC初始窗口
 o = s:option(Value, "initial_windows_size", translate("Initial Windows Size"))
+o.datatype = "uinteger"
 o:depends("transport", "grpc")
 o.default = 0
 o.rmempty = true
@@ -401,16 +402,19 @@ o:depends("transport", "grpc")
 o.rmempty = true
 
 o = s:option(Value, "read_idle_timeout", translate("H2 Read Idle Timeout"))
+o.datatype = "uinteger"
 o:depends({health_check = true, transport = "h2"})
 o.default = 60
 o.rmempty = true
 
 o = s:option(Value, "idle_timeout", translate("gRPC Idle Timeout"))
+o.datatype = "uinteger"
 o:depends({health_check = true, transport = "grpc"})
 o.default = 60
 o.rmempty = true
 
 o = s:option(Value, "health_check_timeout", translate("Health Check Timeout"))
+o.datatype = "uinteger"
 o:depends("health_check", 1)
 o.default = 20
 o.rmempty = true
