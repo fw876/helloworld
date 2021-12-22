@@ -1,0 +1,91 @@
+From ce463911b8b480363cdf2b55518e4e7ac85ca6d7 Mon Sep 17 00:00:00 2001
+From: mzz2017 <mzz@tuta.io>
+Date: Thu, 16 Dec 2021 23:44:07 +0800
+Subject: [PATCH] fix: incorrect ipv6 routing. #329
+
+---
+ service/core/v2ray/v2rayTmpl.go | 20 ++++++++++----------
+ 1 file changed, 10 insertions(+), 10 deletions(-)
+
+--- a/core/v2ray/v2rayTmpl.go
++++ b/core/v2ray/v2rayTmpl.go
+@@ -516,7 +516,7 @@ func (t *Template) AppendRoutingRuleByMo
+ 				coreObj.RoutingRule{
+ 					Type:        "field",
+ 					OutboundTag: firstOutboundTag,
+-					InboundTag:  inbounds,
++					InboundTag:  deepcopy.Copy(inbounds).([]string),
+ 					Domain:      []string{"ext:LoyalsoldierSite.dat:geolocation-!cn"},
+ 				})
+ 		} else {
+@@ -524,7 +524,7 @@ func (t *Template) AppendRoutingRuleByMo
+ 				coreObj.RoutingRule{
+ 					Type:        "field",
+ 					OutboundTag: firstOutboundTag,
+-					InboundTag:  inbounds,
++					InboundTag:  deepcopy.Copy(inbounds).([]string),
+ 					Domain:      []string{"geosite:geolocation-!cn"},
+ 				})
+ 		}
+@@ -532,19 +532,19 @@ func (t *Template) AppendRoutingRuleByMo
+ 			coreObj.RoutingRule{
+ 				Type:        "field",
+ 				OutboundTag: "direct",
+-				InboundTag:  inbounds,
++				InboundTag:  deepcopy.Copy(inbounds).([]string),
+ 				Domain:      []string{"geosite:cn"},
+ 			},
+ 			coreObj.RoutingRule{
+ 				Type:        "field",
+ 				OutboundTag: "proxy",
+-				InboundTag:  inbounds,
++				InboundTag:  deepcopy.Copy(inbounds).([]string),
+ 				IP:          []string{"geoip:hk", "geoip:mo"},
+ 			},
+ 			coreObj.RoutingRule{
+ 				Type:        "field",
+ 				OutboundTag: "direct",
+-				InboundTag:  inbounds,
++				InboundTag:  deepcopy.Copy(inbounds).([]string),
+ 				IP:          []string{"geoip:private", "geoip:cn"},
+ 			},
+ 		)
+@@ -554,13 +554,13 @@ func (t *Template) AppendRoutingRuleByMo
+ 				coreObj.RoutingRule{
+ 					Type:        "field",
+ 					OutboundTag: firstOutboundTag,
+-					InboundTag:  inbounds,
++					InboundTag:  deepcopy.Copy(inbounds).([]string),
+ 					Domain:      []string{"ext:LoyalsoldierSite.dat:gfw"},
+ 				},
+ 				coreObj.RoutingRule{
+ 					Type:        "field",
+ 					OutboundTag: firstOutboundTag,
+-					InboundTag:  inbounds,
++					InboundTag:  deepcopy.Copy(inbounds).([]string),
+ 					Domain:      []string{"ext:LoyalsoldierSite.dat:greatfire"},
+ 				})
+ 		} else {
+@@ -568,7 +568,7 @@ func (t *Template) AppendRoutingRuleByMo
+ 				coreObj.RoutingRule{
+ 					Type:        "field",
+ 					OutboundTag: firstOutboundTag,
+-					InboundTag:  inbounds,
++					InboundTag:  deepcopy.Copy(inbounds).([]string),
+ 					Domain:      []string{"geosite:geolocation-!cn"},
+ 				})
+ 		}
+@@ -576,11 +576,11 @@ func (t *Template) AppendRoutingRuleByMo
+ 			coreObj.RoutingRule{
+ 				Type:        "field",
+ 				OutboundTag: "direct",
+-				InboundTag:  inbounds,
++				InboundTag:  deepcopy.Copy(inbounds).([]string),
+ 			},
+ 		)
+ 	case configure.RoutingAMode:
+-		if err := parseRoutingA(t, inbounds); err != nil {
++		if err := parseRoutingA(t, deepcopy.Copy(inbounds).([]string)); err != nil {
+ 			return err
+ 		}
+ 	}

@@ -1,0 +1,20 @@
+From 0ca0898bec9c4b58a5cc6dcc062862e3573eed7d Mon Sep 17 00:00:00 2001
+From: mzz2017 <mzz@tuta.io>
+Date: Sat, 11 Dec 2021 15:34:17 +0800
+Subject: [PATCH] fix: when no addr found, lookup again
+
+---
+ service/common/resolv/resolver.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/common/resolv/resolver.go
++++ b/common/resolv/resolver.go
+@@ -39,7 +39,7 @@ func init() {
+ 
+ func LookupHost(host string) (addrs []string, err error) {
+ 	addrs, err = net.LookupHost(host)
+-	lookupAgain := err != nil
++	lookupAgain := len(addrs) == 0 || err != nil
+ 	if !lookupAgain {
+ 		for _, addr := range addrs {
+ 			if ip := net.ParseIP(addr); ip != nil && (ip.IsLoopback() || ip.IsUnspecified()) {
