@@ -811,7 +811,7 @@ start_rules() {
 
 start_mosdns(){
 	killall -q -9 mosdns
-	/usr/bin/mosdns -dir /etc/mosdns/ -c ./config.yaml &
+	/usr/bin/mosdns -dir /etc/mosdns/ -c ./config.yaml >/dev/null 2>&1 &
 	sed -i "/list server/d" /etc/config/dhcp
 	uci add_list dhcp.@dnsmasq[0].server='127.0.0.1#5335'
 	uci set dhcp.@dnsmasq[0].noresolv="1"
