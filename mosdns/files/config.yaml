@@ -31,14 +31,14 @@ plugin:
             - query_is_ad_domain    # 已知的广告域名
           exec:
             - _block_with_nxdomain  # 用 NXDOMAIN 屏蔽
-            - _end
+            - _return
 
         - primary:
             - forward_local
             - if:
                 - response_is_local
               exec:
-                - _end
+                - _return
             - if:
                 - '!response_is_local'
               exec:
@@ -52,7 +52,7 @@ plugin:
                     - _qtype_AAAA
                   exec:
                     - _block_with_empty_response
-                    - _end
+                    - _return
                 - blacklist
           fast_fallback: 150  # 这里建议设置成 local 服务器正常延时的 2~5 倍。
                               # 这个延时保证了 local 延时偶尔变高时，其结果不会被 remote 抢答。
@@ -95,30 +95,30 @@ plugin:
     type: query_matcher
     args:
       domain:
-        - 'ext:./geosite.dat:category-ads-all'
+        - 'ext:/usr/share/v2ray/geosite.dat:category-ads-all'
 
   # 匹配本地域名的插件
   - tag: query_is_local_domain
     type: query_matcher
     args:
       domain:
-        - 'ext:./geosite.dat:cn'
+        - 'ext:/usr/share/v2ray/geosite.dat.dat:cn'
 
   # 匹配非本地域名的插件
   - tag: query_is_non_local_domain
     type: query_matcher
     args:
       domain:
-        - 'ext:./geosite.dat:geolocation-!cn'
+        - 'ext:/usr/share/v2ray/geosite.dat.dat:geolocation-!cn'
 
   # 匹配本地解析结果的插件
   - tag: response_is_local
     type: response_matcher
     args:
       ip:
-        - 'ext:./geoip.dat:cn'
+        - 'ext:/usr/share/v2ray/geoip.dat:cn'
       cname:
-        - 'ext:./geosite.dat:cn'
+        - 'ext:/usr/share/v2ray/geosite.dat.dat:cn'
       logical_and: false
 
   - tag: blacklist
