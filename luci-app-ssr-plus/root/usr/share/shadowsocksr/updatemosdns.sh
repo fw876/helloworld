@@ -1,6 +1,6 @@
 #!/bin/bash
 
-WORKDIR="/etc/mosdns"
+WORKDIR="/usr/share/v2ray"
 TEMPDIR="/tmp/MosDNSupdatelist"
 
 DOWNLOAD_LINK_GEOIP="https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip-only-cn-private.dat"
