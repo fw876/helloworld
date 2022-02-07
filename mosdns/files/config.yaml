@@ -102,14 +102,14 @@ plugin:
     type: query_matcher
     args:
       domain:
-        - 'ext:/usr/share/v2ray/geosite.dat.dat:cn'
+        - 'ext:/usr/share/v2ray/geosite.dat:cn'
 
   # 匹配非本地域名的插件
   - tag: query_is_non_local_domain
     type: query_matcher
     args:
       domain:
-        - 'ext:/usr/share/v2ray/geosite.dat.dat:geolocation-!cn'
+        - 'ext:/usr/share/v2ray/geosite.dat:geolocation-!cn'
 
   # 匹配本地解析结果的插件
   - tag: response_is_local
@@ -118,7 +118,7 @@ plugin:
       ip:
         - 'ext:/usr/share/v2ray/geoip.dat:cn'
       cname:
-        - 'ext:/usr/share/v2ray/geosite.dat.dat:cn'
+        - 'ext:/usr/share/v2ray/geosite.dat:cn'
       logical_and: false
 
   - tag: blacklist
