@@ -817,9 +817,9 @@ start_mosdns(){
 	uci set dhcp.@dnsmasq[0].noresolv="1"
 	uci commit dhcp
 	/etc/init.d/dnsmasq reload
-	ipset add blacklist 1.1.1.1
-	ipset add blacklist 76.76.19.19
-	ipset add blacklist 208.67.222.222
+	ipset -! add blacklist 1.1.1.1 2>/dev/null
+	ipset -! add blacklist 76.76.19.19 2>/dev/null
+	ipset -! add blacklist 208.67.222.222 2>/dev/null
 
 	config_get_bool adg_enabled AdGuardHome enabled 0
 	[ "$enabled" == "1" ] && /etc/init.d/AdGuardHome stop
@@ -830,9 +830,9 @@ stop_mosdns(){
 	uci set dhcp.@dnsmasq[0].noresolv="0"
 	uci commit dhcp
 	/etc/init.d/dnsmasq reload
-	ipset del blacklist 1.1.1.1
-	ipset del blacklist 76.76.19.19
-	ipset del blacklist 208.67.222.222
+	ipset -! del blacklist 1.1.1.1 2>/dev/null
+	ipset -! del blacklist 76.76.19.19 2>/dev/null
+	ipset -! del blacklist 208.67.222.222 2>/dev/null
 
 	config_get_bool adg_enabled AdGuardHome enabled 0
 	[ "$enabled" == "1" ] && /etc/init.d/AdGuardHome start
