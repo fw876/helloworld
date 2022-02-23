@@ -2,13 +2,6 @@ ip6tables -D FORWARD -m set --match-set blockipv6 dst -j REJECT 2>/dev/null
 ipset -X blockipv6
 ipset -N blockipv6 hash:net family inet6
 ip6tables -I FORWARD -m set --match-set blockipv6 dst -j REJECT
-ipset -! add blockipv6 2400:cb00::/32
-ipset -! add blockipv6 2606:4700::/32
-ipset -! add blockipv6 2803:f800::/32
-ipset -! add blockipv6 2405:b500::/32
-ipset -! add blockipv6 2405:8100::/32
-ipset -! add blockipv6 2a06:98c0::/29
-ipset -! add blockipv6 2c0f:f248::/32
 ipset -! add blockipv6 2a04:4e40::/32
 ipset -! add blockipv6 2a04:4e42::/32
 ipset -! add blockipv6 2a05:d07a:a000::/40
