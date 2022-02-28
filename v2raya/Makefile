@@ -69,7 +69,7 @@ endef
 
 ifneq ($(CONFIG_V2RAYA_COMPRESS_GOPROXY),)
 	export GO111MODULE=on
-	export GOPROXY=https://goproxy.baidu.com
+	export GOPROXY=https://goproxy.bj.bcebos.com
 endif
 
 define Package/v2raya/conffiles
