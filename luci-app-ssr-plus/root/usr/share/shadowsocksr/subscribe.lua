@@ -440,7 +440,7 @@ local function check_filer(result)
 
 		-- 检查是否存在过滤关键词
 		for i, v in pairs(filter_word) do
-			if tostring(result.alias):find(v) then
+			if tostring(result.alias):find(v, nil, true) then
 				filter_result = true
 			end
 		end
@@ -448,7 +448,7 @@ local function check_filer(result)
 		-- 检查是否打开了保留关键词检查，并且进行过滤
 		if check_save == true then
 			for i, v in pairs(save_word) do
-				if tostring(result.alias):find(v) then
+				if tostring(result.alias):find(v, nil, true) then
 					save_result = false
 				end
 			end
