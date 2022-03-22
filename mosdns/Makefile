@@ -71,9 +71,5 @@ define Package/mosdns/install
 	$(INSTALL_DATA) ./files/config.yaml $(1)/etc/mosdns/config.yaml
 endef
 
-define Package/mosdns-geodata/install
-	$(INSTALL_DIR) $(1)/etc/mosdns
-endef
-
 $(eval $(call GoBinPackage,mosdns))
 $(eval $(call BuildPackage,mosdns))
