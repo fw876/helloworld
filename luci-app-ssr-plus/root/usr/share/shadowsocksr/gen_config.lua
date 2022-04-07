@@ -32,14 +32,17 @@ function vmess_vless()
 end
 function trojan_shadowsocks()
 	outbound_settings = {
+		plugin = (server.v2ray_protocol == "shadowsocks") and server.plugin ~= "none" and server.plugin or nil,
+		pluginOpts = (server.v2ray_protocol == "shadowsocks") and server.plugin_opts or nil,
 		servers = {
 			{
 				address = server.server,
 				port = tonumber(server.server_port),
 				password = server.password,
-				method = (server.v2ray_protocol == "shadowsocks") and server.encrypt_method_v2ray_ss or nil,
-				flow = (server.v2ray_protocol == "trojan") and (server.xtls == '1') and (server.vless_flow and server.vless_flow or "xtls-rprx-splice") or nil,
-				ivCheck = (server.v2ray_protocol == "shadowsocks") and (server.ivCheck == '1') or nil
+				method = (server.v2ray_protocol == "shadowsocks") and server.encrypt_method_ss or nil,
+				uot = (server.v2ray_protocol == "shadowsocks") and server.uot or nil,
+				ivCheck = (server.v2ray_protocol == "shadowsocks") and (server.ivCheck == '1') or nil,
+				flow = (server.v2ray_protocol == "trojan") and (server.xtls == '1') and (server.vless_flow and server.vless_flow or "xtls-rprx-splice") or nil
 			}
 		}
 	}

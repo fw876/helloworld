@@ -61,6 +61,12 @@ msgstr "密码"
 msgid "Encrypt Method"
 msgstr "加密方式"
 
+msgid "Enable the SUoT protocol, requires server support."
+msgstr "启用 SUoT 协议，需要服务端支持。"
+
+msgid "Bloom Filter"
+msgstr "布隆过滤器"
+
 msgid "VLESS Encryption"
 msgstr "VLESS 加密"
 
