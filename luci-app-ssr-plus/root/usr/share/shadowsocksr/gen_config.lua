@@ -21,7 +21,8 @@ function vmess_vless()
 					}
 				}
 			}
-		}
+		},
+		packetEncoding = server.packet_encoding or "xudp"
 	}
 end
 function trojan_shadowsocks()
@@ -201,7 +202,8 @@ local Xray = {
 		mux = (server.mux == "1" and server.xtls ~= "1" and server.transport ~= "grpc") and {
 			-- mux
 			enabled = true,
-			concurrency = tonumber(server.concurrency)
+			concurrency = tonumber(server.concurrency),
+			packetEncoding = (server.v2ray_protocol == "vmess" or server.v2ray_protocol == "vless") and (server.packet_encoding or "xudp") or nil
 		} or nil
 	} or nil
 }

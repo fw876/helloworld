@@ -639,6 +639,15 @@ o:depends("type", "ssr")
 o:depends("type", "ss")
 o:depends("type", "trojan")
 
+o = s:option(ListValue, "packet_encoding", translate("Packet Encoding"))
+o:value("none", translate("disabled"))
+o:value("packet", translate("packet (v2ray-core v5+)"))
+o:value("xudp", translate("xudp (Xray-core)"))
+o.default = "xudp"
+o.rmempty = true
+o:depends({type = "v2ray", v2ray_protocol = "vless"})
+o:depends({type = "v2ray", v2ray_protocol = "vmess"})
+
 o = s:option(Flag, "switch_enable", translate("Enable Auto Switch"))
 o.rmempty = false
 o.default = "1"

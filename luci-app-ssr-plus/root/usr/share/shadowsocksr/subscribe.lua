@@ -25,6 +25,7 @@ local switch = ucic:get_first(name, 'server_subscribe', 'switch', '1')
 local subscribe_url = ucic:get_first(name, 'server_subscribe', 'subscribe_url', {})
 local filter_words = ucic:get_first(name, 'server_subscribe', 'filter_words', '过期时间/剩余流量')
 local save_words = ucic:get_first(name, 'server_subscribe', 'save_words', '')
+local packet_encoding = ucic:get_first(name, 'global', 'default_packet_encoding', 'xudp')
 local v2_ss = luci.sys.exec('type -t -p ss-redir sslocal') ~= "" and "ss" or "v2ray"
 local v2_tj = luci.sys.exec('type -t -p trojan') ~= "" and "trojan" or "v2ray"
 local log = function(...)
@@ -168,6 +169,7 @@ local function processData(szType, content)
 		result.transport = info.net
 		result.vmess_id = info.id
 		result.alias = info.ps
+		result.packet_encoding = packet_encoding
 		-- result.mux = 1
 		-- result.concurrency = 8
 		if info.net == 'ws' then
@@ -364,6 +366,7 @@ local function processData(szType, content)
 			result.vmess_id = uuid
 			result.vless_encryption = params.encryption or "none"
 			result.transport = params.type and (params.type == 'http' and 'h2' or params.type) or "tcp"
+			result.packet_encoding = packet_encoding
 			if not params.type or params.type == "tcp" then
 				if params.security == "xtls" then
 					result.xtls = "1"
