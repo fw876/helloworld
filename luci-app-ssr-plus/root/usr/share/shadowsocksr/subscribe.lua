@@ -31,6 +31,9 @@ local log = function(...)
 	print(os.date("%Y-%m-%d %H:%M:%S ") .. table.concat({...}, " "))
 end
 local encrypt_methods_ss = {
+	-- plain
+	"none",
+	"plain",
 	-- aead
 	"aes-128-gcm",
 	"aes-192-gcm",
@@ -237,6 +240,8 @@ local function processData(szType, content)
 		local password = userinfo:sub(userinfo:find(":") + 1, #userinfo)
 		result.alias = UrlDecode(alias)
 		result.type = v2_ss
+		result.v2ray_protocol = (v2_ss == "v2ray") and "shadowsocks" or nil
+		result.encrypt_method_ss = method
 		result.password = password
 		result.server = host[1]
 		if host[2]:find("/%?") then
@@ -267,33 +272,27 @@ local function processData(szType, content)
 		if not checkTabValue(encrypt_methods_ss)[method] then
 			-- 1202 年了还不支持 SS AEAD 的屑机场
 			result.server = nil
-		elseif v2_ss == "v2ray" then
-			result.v2ray_protocol = "shadowsocks"
-			result.encrypt_method_v2ray_ss = method
-		else
-			result.encrypt_method_ss = method
 		end
 	elseif szType == "sip008" then
 		result.type = v2_ss
+		result.v2ray_protocol = (v2_ss == "v2ray") and "shadowsocks" or nil
 		result.server = content.server
 		result.server_port = content.server_port
 		result.password = content.password
+		result.encrypt_method_ss = content.method
 		result.plugin = content.plugin
 		result.plugin_opts = content.plugin_opts
 		result.alias = content.remarks
 		if not checkTabValue(encrypt_methods_ss)[content.method] then
 			result.server = nil
-		elseif v2_ss == "v2ray" then
-			result.v2ray_protocol = "shadowsocks"
-			result.encrypt_method_v2ray_ss = content.method
-		else
-			result.encrypt_method_ss = content.method
 		end
 	elseif szType == "ssd" then
 		result.type = v2_ss
+		result.v2ray_protocol = (v2_ss == "v2ray") and "shadowsocks" or nil
 		result.server = content.server
 		result.server_port = content.port
 		result.password = content.password
+		result.encrypt_method_ss = content.method
 		result.plugin_opts = content.plugin_options
 		result.alias = "[" .. content.airport .. "] " .. content.remarks
 		if content.plugin == "simple-obfs" then
@@ -303,11 +302,6 @@ local function processData(szType, content)
 		end
 		if not checkTabValue(encrypt_methods_ss)[content.encryption] then
 			result.server = nil
-		elseif v2_ss == "v2ray" then
-			result.v2ray_protocol = "shadowsocks"
-			result.encrypt_method_v2ray_ss = content.method
-		else
-			result.encrypt_method_ss = content.method
 		end
 	elseif szType == "trojan" then
 		local idx_sp = 0
