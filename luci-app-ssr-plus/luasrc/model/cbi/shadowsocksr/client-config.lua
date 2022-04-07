@@ -1,14 +1,21 @@
 -- Copyright (C) 2017 yushi studio <ywb94@qq.com> github.com/ywb94
 -- Licensed to the public under the GNU General Public License v3.
+
 require "nixio.fs"
 require "luci.sys"
 require "luci.http"
+require "luci.model.ipkg"
+
 local m, s, o, kcp_enable
 local sid = arg[1]
 local uuid = luci.sys.exec("cat /proc/sys/kernel/random/uuid")
 
-function is_finded(e)
+local function is_finded(e)
 	return luci.sys.exec('type -t -p "%s"' % e) ~= "" and true or false
+end
+
+local function is_installed(e)
+	return luci.model.ipkg.installed(e)
 end
 
 local server_table = {}
@@ -618,6 +625,17 @@ o.default = "0"
 o:depends("type", "ssr")
 o:depends("type", "ss")
 o:depends("type", "trojan")
+
+if is_installed("sagernet-core") then
+	o = s:option(ListValue, "packet_encoding", translate("Packet Encoding"))
+	o:value("none", translate("none"))
+	o:value("packet", translate("packet (v2ray-core v5+)"))
+	o:value("xudp", translate("xudp (Xray-core)"))
+	o.default = "xudp"
+	o.rmempty = true
+	o:depends({type = "v2ray", v2ray_protocol = "vless"})
+	o:depends({type = "v2ray", v2ray_protocol = "vmess"})
+end
 
 o = s:option(Flag, "switch_enable", translate("Enable Auto Switch"))
 o.rmempty = false

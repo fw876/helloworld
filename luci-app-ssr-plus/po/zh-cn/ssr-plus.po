@@ -730,6 +730,9 @@ msgstr "写入缓冲区大小"
 msgid "Congestion"
 msgstr "拥塞控制"
 
+msgid "Packet Encoding"
+msgstr "数据包编码"
+
 msgid "Network interface to use"
 msgstr "使用的网络接口"
 
@@ -756,6 +759,9 @@ msgstr "重新应用"
 
 msgid "Apply"
 msgstr "应用"
+
+msgid "Default Packet Encoding"
+msgstr "默认数据包编码"
 
 msgid "Enable Netflix Mode"
 msgstr "启用 Netflix 分流模式"
