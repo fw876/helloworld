@@ -182,6 +182,9 @@ o:value("vless", translate("VLESS"))
 o:value("vmess", translate("VMess"))
 o:value("trojan", translate("Trojan"))
 o:value("shadowsocks", translate("Shadowsocks"))
+if is_installed("sagernet-core") then
+	o:value("wireguard", translate("WireGuard"))
+end
 o:value("socks", translate("Socks"))
 o:value("http", translate("HTTP"))
 o:depends("type", "v2ray")
@@ -330,7 +333,12 @@ o:value("h2", "HTTP/2")
 o:value("quic", "QUIC")
 o:value("grpc", "gRPC")
 o.rmempty = true
-o:depends("type", "v2ray")
+o:depends({type = "v2ray", v2ray_protocol = "vless"})
+o:depends({type = "v2ray", v2ray_protocol = "vmess"})
+o:depends({type = "v2ray", v2ray_protocol = "trojan"})
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
+o:depends({type = "v2ray", v2ray_protocol = "socks"})
+o:depends({type = "v2ray", v2ray_protocol = "http"})
 
 -- [[ TCP部分 ]]--
 -- TCP伪装
@@ -450,7 +458,8 @@ o.rmempty = true
 o = s:option(Value, "mtu", translate("MTU"))
 o.datatype = "uinteger"
 o:depends("transport", "kcp")
-o.default = 1350
+o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
+-- o.default = 1350
 o.rmempty = true
 
 o = s:option(Value, "tti", translate("TTI"))
@@ -491,12 +500,35 @@ o = s:option(Flag, "congestion", translate("Congestion"))
 o:depends("transport", "kcp")
 o.rmempty = true
 
+-- [[ WireGuard 部分 ]]--
+o = s:option(DynamicList, "local_addresses", translate("Local addresses"))
+o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
+o.rmempty = true
+
+o = s:option(Value, "private_key", translate("Private key"))
+o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
+o.password = true
+o.rmempty = true
+
+o = s:option(Value, "peer_pubkey", translate("Peer public key"))
+o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
+o.rmempty = true
+
+o = s:option(Value, "preshared_key", translate("Pre-shared key"))
+o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
+o.password = true
+o.rmempty = true
+
 -- [[ TLS ]]--
 o = s:option(Flag, "tls", translate("TLS"))
 o.rmempty = true
 o.default = "0"
-o:depends({type = "v2ray", xtls = false})
--- o:depends({type = "v2ray", v2ray_protocol = "vless", xtls = false})
+o:depends({type = "v2ray", v2ray_protocol = "vless", xtls = false})
+o:depends({type = "v2ray", v2ray_protocol = "vmess", xtls = false})
+o:depends({type = "v2ray", v2ray_protocol = "trojan", xtls = false})
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocks", xtls = false})
+o:depends({type = "v2ray", v2ray_protocol = "socks", xtls = false})
+o:depends({type = "v2ray", v2ray_protocol = "http", xtls = false})
 o:depends("type", "trojan")
 
 -- XTLS
@@ -550,7 +582,12 @@ o.description = translate("If true, allowss insecure connection at TLS client, e
 -- [[ Mux ]]--
 o = s:option(Flag, "mux", translate("Mux"))
 o.rmempty = false
-o:depends({type = "v2ray", xtls = false})
+o:depends({type = "v2ray", v2ray_protocol = "vless", xtls = false})
+o:depends({type = "v2ray", v2ray_protocol = "vmess", xtls = false})
+o:depends({type = "v2ray", v2ray_protocol = "trojan", xtls = false})
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocks", xtls = false})
+o:depends({type = "v2ray", v2ray_protocol = "socks", xtls = false})
+o:depends({type = "v2ray", v2ray_protocol = "http", xtls = false})
 
 o = s:option(Value, "concurrency", translate("Concurrency"))
 o.datatype = "uinteger"
