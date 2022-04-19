@@ -17,16 +17,11 @@ PKG_LICENSE:=AGPL-3.0-only
 PKG_LICENSE_FILES:=LICENSE
 PKG_MAINTAINER:=Tianling Shen <cnsztl@immortalwrt.org>
 
-PKG_CONFIG_DEPENDS:= \
-	CONFIG_V2RAYA_COMPRESS_GOPROXY \
-	CONFIG_V2RAYA_COMPRESS_UPX \
-
 PKG_BUILD_DEPENDS:=golang/host node/host node-yarn/host
 PKG_BUILD_PARALLEL:=1
 PKG_USE_MIPS16:=0
 
 GO_PKG:=github.com/v2rayA/v2rayA
-GO_PKG_LDFLAGS:=-s -w
 GO_PKG_LDFLAGS_X:=$(GO_PKG)/conf.Version=$(PKG_VERSION)
 
 include $(INCLUDE_DIR)/package.mk
@@ -56,22 +51,6 @@ define Package/v2raya/description
   compatible with SS, SSR, Trojan(trojan-go), PingTunnel protocols.
 endef
 
-define Package/v2raya/config
-config V2RAYA_COMPRESS_GOPROXY
-	bool "Compiling with GOPROXY proxy"
-	default n
-
-config V2RAYA_COMPRESS_UPX
-	bool "Compress executable files with UPX"
-	depends on !mips64
-	default n
-endef
-
-ifneq ($(CONFIG_V2RAYA_COMPRESS_GOPROXY),)
-	export GO111MODULE=on
-	export GOPROXY=https://goproxy.bj.bcebos.com
-endif
-
 define Package/v2raya/conffiles
 /etc/v2raya/
 /etc/config/v2raya
@@ -85,9 +64,6 @@ define Build/Compile
 		popd ; \
 		$(call GoPackage/Build/Compile) ; \
 	)
-ifneq ($(CONFIG_V2RAYA_COMPRESS_UPX),)
-	$(STAGING_DIR_HOST)/bin/upx --lzma --best $(GO_PKG_BUILD_BIN_DIR)/v2rayA
-endif
 endef
 
 define Package/v2raya/install
