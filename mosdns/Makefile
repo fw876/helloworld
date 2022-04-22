@@ -37,7 +37,7 @@ define Package/mosdns
   SUBMENU:=IP Addresses and Names
   TITLE:=A plug-in DNS forwarder/splitter
   URL:=https://github.com/IrineSistiana/mosdns
-  DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle
+  DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle +v2ray-geoip +v2ray-geosite
 endef
 
 define Package/mosdns/config
