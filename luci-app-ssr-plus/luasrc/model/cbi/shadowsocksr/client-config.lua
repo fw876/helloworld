@@ -236,12 +236,6 @@ for _, v in ipairs(encrypt_methods_ss) do
 end
 o.rmempty = true
 o:depends("type", "ss")
-
-o = s:option(ListValue, "encrypt_method_ss", translate("Encrypt Method"))
-for _, v in ipairs(encrypt_methods_ss) do
-	o:value(v)
-end
-o.rmempty = true
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 
 o = s:option(Flag, "ivCheck", translate("Bloom Filter"))
