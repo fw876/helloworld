@@ -46,6 +46,11 @@ function trojan_shadowsocks()
 			}
 		}
 	}
+
+	if (not outbound_settings.plugin) and (not server.transport or server.transport == "tcp") and (not server.xtls) then
+		server.v2ray_protocol = server.v2ray_protocol .. "_sing"
+		outbound_settings = outbound_settings.servers[1]
+	end
 end
 function socks_http()
 	outbound_settings = {
