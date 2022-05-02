@@ -13,21 +13,32 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: aarch64_cortex-a53
-            target: bcm27xx-bcm2710
-            tag: sdk-bcm27xx_bcm2710
+          - arch: arc_archs
+            target: archs38-generic
 
-          - arch: arm_cortex-a7_neon-vfpv4
-            target: ipq40xx-generic
-            tag: sdk-ipq40xx_generic
+          - arch: arm_cortex-a9_vfpv3-d16
+            target: mvebu-cortexa9
+
+          - arch: mips_24kc
+            target: ath79-generic
 
           - arch: mipsel_24kc
-            target: ramips-mt7621
-            tag: sdk-ramips_mt7621
+            target: mt7621
 
-          - arch: x86_64
-            target: x86-64
-            tag: sdk-x86_64
+          - arch: powerpc_464fp
+            target: apm821xx-nand
+
+          - arch: powerpc_8540
+            target: mpc85xx-p1010
+
+          - arch: aarch64_cortex-a53
+            target: mvebu-cortexa53
+
+          - arch: arm_cortex-a15_neon-vfpv4
+            target: armvirt-32
+
+          - arch: i386_pentium-mmx
+            target: x86-geode
 
     steps:
       - uses: actions/checkout@v2
@@ -64,9 +75,9 @@ jobs:
           echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
 
       - name: Build
-        uses: immortalwrt/gh-action-sdk@v1
+        uses: immortalwrt/gh-action-sdk@v2
         env:
-          ARCH: ${{ matrix.tag }}-${{ env.BRANCH }}
+          ARCH: ${{ matrix.arch }}-${{ env.BRANCH }}
           FEEDNAME: packages_ci
 
       - name: Move created packages to project dir
