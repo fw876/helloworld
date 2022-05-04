@@ -40,6 +40,9 @@ jobs:
           - arch: i386_pentium-mmx
             target: x86-geode
 
+          - arch: x86_64
+            target: x86-64
+
     steps:
       - uses: actions/checkout@v2
         with:
