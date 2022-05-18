@@ -326,7 +326,7 @@ local function processData(szType, content)
 		result.v2ray_protocol = "trojan"
 		result.server = host[1]
 		-- 按照官方的建议 默认验证ssl证书
-		result.insecure = "0"
+		result.insecure = "1"
 		result.tls = "1"
 		if host[2]:find("?") then
 			local query = split(host[2], "?")
