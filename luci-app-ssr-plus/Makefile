@@ -2,10 +2,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-ssr-plus
 PKG_VERSION:=186
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_CONFIG_DEPENDS:= \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Kcptun \
+	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Hysteria \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_IPT2Socks \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_NaiveProxy \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Redsocks2 \
@@ -28,6 +29,7 @@ LUCI_DEPENDS:= \
 	+ip-full +iptables +iptables-mod-tproxy +lua +libuci-lua +microsocks +tcping \
 	+resolveip +shadowsocksr-libev-ssr-check +uclient-fetch \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Kcptun:kcptun-client \
+	+PACKAGE_$(PKG_NAME)_INCLUDE_Hysteria:hysteria \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_IPT2Socks:ipt2socks \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_NaiveProxy:naiveproxy \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Redsocks2:redsocks2 \
@@ -50,6 +52,10 @@ select PACKAGE_luci-lib-ipkg if PACKAGE_$(PKG_NAME)
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Kcptun
 	bool "Include Kcptun"
+	default n
+
+config PACKAGE_$(PKG_NAME)_INCLUDE_Hysteria
+	bool "Include Hysteria"
 	default n
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_IPT2Socks

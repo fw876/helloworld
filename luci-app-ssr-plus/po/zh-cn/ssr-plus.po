@@ -79,6 +79,9 @@ msgstr "传输协议"
 msgid "Protocol"
 msgstr "传输协议"
 
+msgid "TLS Host"
+msgstr "TLS 主机名"
+
 msgid "allowInsecure"
 msgstr "允许不安全连接"
 
@@ -88,14 +91,29 @@ msgstr "最大并发连接数"
 msgid "If true, allowss insecure connection at TLS client, e.g., TLS server uses unverifiable certificates."
 msgstr "是否允许不安全连接。当选择时，将不会检查远端主机所提供的 TLS 证书的有效性。"
 
-msgid "Protocol param(optional)"
+msgid "Protocol param (optional)"
 msgstr "传输协议参数（可选）"
 
 msgid "Obfs"
 msgstr "混淆插件"
 
-msgid "Obfs param(optional)"
+msgid "Obfs param (optional)"
 msgstr "混淆参数（可选）"
+
+msgid "Authentication type"
+msgstr "验证类型"
+
+msgid "Authentication payload"
+msgstr "验证载荷"
+
+msgid "QUIC connection receive window"
+msgstr "QUIC 连接接收窗口"
+
+msgid "QUIC stream receive window"
+msgstr "QUIC 流接收窗口"
+
+msgid "Disable Path MTU discovery"
+msgstr "禁用 MTU 探测"
 
 msgid "Enable Tunnel(DNS)"
 msgstr "启用隧道（DNS）转发"
