@@ -1,7 +1,6 @@
 ## Setup instruction
 
 ### Method 1 - Clone this repo directly
-ADDING A LINE 
 
 1. Clone this repo:
 
