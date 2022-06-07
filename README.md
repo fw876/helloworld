@@ -77,7 +77,6 @@ If you want to use this repo with official OpenWrt source tree, the following pa
 - [dns2socks](https://github.com/immortalwrt/packages/tree/master/net/dns2socks)
 - [microsocks](https://github.com/immortalwrt/packages/tree/master/net/microsocks)
 - [ipt2socks](https://github.com/immortalwrt/packages/tree/master/net/ipt2socks)
-- [pdnsd-alt](https://github.com/immortalwrt/packages/tree/master/net/pdnsd-alt)
 - [redsocks2](https://github.com/immortalwrt/packages/tree/master/net/redsocks2)
 
 You may use `svn` to check them out, e.g.:

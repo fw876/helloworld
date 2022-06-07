@@ -167,44 +167,7 @@ start_dns() {
 	local dnsstr="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
 	local dnsserver=$(echo "$dnsstr" | awk -F ':' '{print $1}')
 	local dnsport=$(echo "$dnsstr" | awk -F ':' '{print $2}')
-	start_pdnsd() {
-		local usr_dns="$1"
-		local usr_port="$2"
-		if [ ! -f "$TMP_PATH/pdnsd/pdnsd.cache" ]; then
-			mkdir -p $TMP_PATH/pdnsd
-			touch $TMP_PATH/pdnsd/pdnsd.cache
-			chown -R nobody:nogroup $TMP_PATH/pdnsd
-		fi
-		cat <<-EOF >$TMP_PATH/pdnsd.conf
-			global{
-			perm_cache=1024;
-			cache_dir="$TMP_PATH/pdnsd";
-			pid_file="/var/run/pdnsd.pid";
-			run_as="nobody";
-			server_ip=127.0.0.1;
-			server_port=$dns_port;
-			status_ctl=on;
-			query_method=tcp_only;
-			min_ttl=1h;
-			max_ttl=1w;
-			timeout=10;
-			neg_domain_pol=on;
-			proc_limit=2;
-			procq_limit=8;
-			par_queries=1;
-			}
-			server{
-			label="ssr-usrdns";
-			ip=$usr_dns;
-			port=$usr_port;
-			timeout=6;
-			uptest=none;
-			interval=10m;
-			purge_cache=off;
-			}
-		EOF
-		ln_start_bin $(first_type pdnsd) pdnsd -c $TMP_PATH/pdnsd.conf
-	}
+
 	if [ "$ssrplus_dns" != "0" ]; then
 		case "$(uci_get_by_type global run_mode)" in
 		gfw) ipset add gfwlist $dnsserver 2>/dev/null ;;
@@ -220,10 +183,6 @@ start_dns() {
 			ln_start_bin $(first_type microsocks) microsocks -i 127.0.0.1 -p $tmp_dns_port ssrplus-dns
 			ln_start_bin $(first_type dns2socks) dns2socks 127.0.0.1:$tmp_dns_port $dnsserver:$dnsport 127.0.0.1:$dns_port -q
 			pdnsd_enable_flag=2
-			;;
-		3)
-			start_pdnsd $dnsserver $dnsport
-			pdnsd_enable_flag=3
 			;;
 		esac
 	fi
