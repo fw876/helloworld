@@ -438,6 +438,14 @@ o = s:option(Value, "serviceName", translate("gRPC Service Name"))
 o:depends("transport", "grpc")
 o.rmempty = true
 
+-- gPRC模式
+o = s:option(ListValue, "grpc_mode", translate("gRPC Mode"))
+o:depends("transport", "grpc")
+o:value("gun", translate("Gun"))
+o:value("multi", translate("Multi"))
+o:value("raw", translate("Raw"))
+o.rmempty = true
+
 -- gRPC初始窗口
 o = s:option(Value, "initial_windows_size", translate("Initial Windows Size"))
 o.datatype = "uinteger"

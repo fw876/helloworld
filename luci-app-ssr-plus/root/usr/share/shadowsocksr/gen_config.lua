@@ -176,11 +176,11 @@ local Xray = {
 			} or nil,
 			wsSettings = (server.transport == "ws") and (server.ws_path or server.ws_host or server.tls_host) and {
 				-- ws
-				path = server.ws_path,
 				headers = (server.ws_host or server.tls_host) and {
 					-- headers
 					Host = server.ws_host or server.tls_host
 				} or nil,
+				path = server.ws_path,
 				maxEarlyData = tonumber(server.ws_ed) or nil,
 				earlyDataHeaderName = server.ws_ed_header or nil
 			} or nil,
@@ -200,7 +200,7 @@ local Xray = {
 			grpcSettings = (server.transport == "grpc") and {
 				-- grpc
 				serviceName = server.serviceName or "",
-				multiMode = (server.mux == "1") and true or false,
+				mode = (server.grpc_mode ~= "gun") and server.grpc_mode or nil,
 				idle_timeout = tonumber(server.idle_timeout) or nil,
 				health_check_timeout = tonumber(server.health_check_timeout) or nil,
 				permit_without_stream = (server.permit_without_stream == "1") and true or nil,

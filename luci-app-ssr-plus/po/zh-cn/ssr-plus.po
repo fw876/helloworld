@@ -739,6 +739,9 @@ msgstr "HTTP/2 路径"
 msgid "gRPC Service Name"
 msgstr "gRPC 服务名称"
 
+msgid "gRPC Mode"
+msgstr "gRPC 模式"
+
 msgid "Initial Windows Size"
 msgstr "初始窗口大小"
 
