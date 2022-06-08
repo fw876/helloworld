@@ -180,7 +180,9 @@ local Xray = {
 				headers = (server.ws_host or server.tls_host) and {
 					-- headers
 					Host = server.ws_host or server.tls_host
-				} or nil
+				} or nil,
+				maxEarlyData = tonumber(server.ws_ed) or nil,
+				earlyDataHeaderName = server.ws_ed_header or nil
 			} or nil,
 			httpSettings = (server.transport == "h2") and {
 				-- h2
