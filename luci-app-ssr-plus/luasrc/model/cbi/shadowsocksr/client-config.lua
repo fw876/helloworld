@@ -281,12 +281,16 @@ if is_finded("xray-plugin") then
 end
 o.rmempty = true
 o:depends("type", "ss")
-o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
+if is_installed("sagernet-core") then
+	o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
+end
 
 o = s:option(Value, "plugin_opts", translate("Plugin Opts"))
 o.rmempty = true
 o:depends("type", "ss")
-o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
+if is_installed("sagernet-core") then
+	o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
+end
 
 o = s:option(ListValue, "protocol", translate("Protocol"))
 for _, v in ipairs(protocol) do
@@ -410,18 +414,20 @@ o = s:option(Value, "ws_path", translate("WebSocket Path"))
 o:depends("transport", "ws")
 o.rmempty = true
 
--- WS前置数据
-o = s:option(Value, "ws_ed", translate("Max Early Data"))
-o:depends("transport", "ws")
-o.datatype = "uinteger"
-o.default = 2048
-o.rmempty = true
+if is_finded("v2ray") then
+	-- WS前置数据
+	o = s:option(Value, "ws_ed", translate("Max Early Data"))
+	o:depends("transport", "ws")
+	o.datatype = "uinteger"
+	o.default = 2048
+	o.rmempty = true
 
--- WS前置数据标头
-o = s:option(Value, "ws_ed_header", translate("Early Data Header Name"))
-o:depends("transport", "ws")
-o.default = "Sec-WebSocket-Protocol"
-o.rmempty = true
+	-- WS前置数据标头
+	o = s:option(Value, "ws_ed_header", translate("Early Data Header Name"))
+	o:depends("transport", "ws")
+	o.default = "Sec-WebSocket-Protocol"
+	o.rmempty = true
+end
 
 -- [[ H2部分 ]]--
 
@@ -440,48 +446,52 @@ o = s:option(Value, "serviceName", translate("gRPC Service Name"))
 o:depends("transport", "grpc")
 o.rmempty = true
 
--- gPRC模式
-o = s:option(ListValue, "grpc_mode", translate("gRPC Mode"))
-o:depends("transport", "grpc")
-o:value("gun", translate("Gun"))
-o:value("multi", translate("Multi"))
-o:value("raw", translate("Raw"))
-o.rmempty = true
+if is_installed("sagernet-core") then
+	-- gPRC模式
+	o = s:option(ListValue, "grpc_mode", translate("gRPC Mode"))
+	o:depends("transport", "grpc")
+	o:value("gun", translate("Gun"))
+	o:value("multi", translate("Multi"))
+	o:value("raw", translate("Raw"))
+	o.rmempty = true
+end
 
--- gRPC初始窗口
-o = s:option(Value, "initial_windows_size", translate("Initial Windows Size"))
-o.datatype = "uinteger"
-o:depends("transport", "grpc")
-o.default = 0
-o.rmempty = true
+if is_finded("xray") or is_installed("sagernet-core") then
+	-- gRPC初始窗口
+	o = s:option(Value, "initial_windows_size", translate("Initial Windows Size"))
+	o.datatype = "uinteger"
+	o:depends("transport", "grpc")
+	o.default = 0
+	o.rmempty = true
 
--- H2/gRPC健康检查
-o = s:option(Flag, "health_check", translate("H2/gRPC Health Check"))
-o:depends("transport", "h2")
-o:depends("transport", "grpc")
-o.rmempty = true
+	-- H2/gRPC健康检查
+	o = s:option(Flag, "health_check", translate("H2/gRPC Health Check"))
+	o:depends("transport", "h2")
+	o:depends("transport", "grpc")
+	o.rmempty = true
 
-o = s:option(Value, "read_idle_timeout", translate("H2 Read Idle Timeout"))
-o.datatype = "uinteger"
-o:depends({health_check = true, transport = "h2"})
-o.default = 60
-o.rmempty = true
+	o = s:option(Value, "read_idle_timeout", translate("H2 Read Idle Timeout"))
+	o.datatype = "uinteger"
+	o:depends({health_check = true, transport = "h2"})
+	o.default = 60
+	o.rmempty = true
 
-o = s:option(Value, "idle_timeout", translate("gRPC Idle Timeout"))
-o.datatype = "uinteger"
-o:depends({health_check = true, transport = "grpc"})
-o.default = 60
-o.rmempty = true
+	o = s:option(Value, "idle_timeout", translate("gRPC Idle Timeout"))
+	o.datatype = "uinteger"
+	o:depends({health_check = true, transport = "grpc"})
+	o.default = 60
+	o.rmempty = true
 
-o = s:option(Value, "health_check_timeout", translate("Health Check Timeout"))
-o.datatype = "uinteger"
-o:depends("health_check", 1)
-o.default = 20
-o.rmempty = true
+	o = s:option(Value, "health_check_timeout", translate("Health Check Timeout"))
+	o.datatype = "uinteger"
+	o:depends("health_check", 1)
+	o.default = 20
+	o.rmempty = true
 
-o = s:option(Flag, "permit_without_stream", translate("Permit Without Stream"))
-o:depends({health_check = true, transport = "grpc"})
-o.rmempty = true
+	o = s:option(Flag, "permit_without_stream", translate("Permit Without Stream"))
+	o:depends({health_check = true, transport = "grpc"})
+	o.rmempty = true
+end
 
 -- [[ QUIC部分 ]]--
 o = s:option(ListValue, "quic_security", translate("QUIC Security"))
@@ -620,15 +630,17 @@ o = s:option(Flag, "tls_sessionTicket", translate("Session Ticket"))
 o:depends({type = "trojan", tls = true})
 o.default = "0"
 
--- [[ uTLS ]]--
-o = s:option(ListValue, "fingerprint", translate("Finger Print"))
-o:value("disable", translate("disable"))
-o:value("firefox", translate("firefox"))
-o:value("chrome", translate("chrome"))
-o:value("safari", translate("safari"))
-o:value("randomized", translate("randomized"))
-o:depends({type = "v2ray", tls = true})
-o.default = "disable"
+if is_finded("xray") then
+	-- [[ uTLS ]]--
+	o = s:option(ListValue, "fingerprint", translate("Finger Print"))
+	o:value("disable", translate("disable"))
+	o:value("firefox", translate("firefox"))
+	o:value("chrome", translate("chrome"))
+	o:value("safari", translate("safari"))
+	o:value("randomized", translate("randomized"))
+	o:depends({type = "v2ray", tls = true})
+	o.default = "disable"
+end
 
 o = s:option(Value, "tls_host", translate("TLS Host"))
 o.datatype = "hostname"
