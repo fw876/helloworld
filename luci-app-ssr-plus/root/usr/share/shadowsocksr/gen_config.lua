@@ -59,6 +59,7 @@ function trojan_shadowsocks()
 end
 function socks_http()
 	outbound_settings = {
+		version = server.socks_ver or nil,
 		servers = {
 			{
 				address = server.server,

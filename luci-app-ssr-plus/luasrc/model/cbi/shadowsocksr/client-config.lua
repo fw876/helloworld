@@ -368,6 +368,15 @@ end
 o.rmempty = true
 o:depends({type = "v2ray", v2ray_protocol = "vmess"})
 
+-- SOCKS Version
+o = s:option(ListValue, "socks_ver", translate("Socks Version"))
+o:value("4", "Socks4")
+o:value("4a", "Socks4A")
+o:value("5", "Socks5")
+o.rmempty = true
+o.default = "5"
+o:depends({type = "v2ray", v2ray_protocol = "socks"})
+
 -- 传输协议
 o = s:option(ListValue, "transport", translate("Transport"))
 o:value("tcp", "TCP")
