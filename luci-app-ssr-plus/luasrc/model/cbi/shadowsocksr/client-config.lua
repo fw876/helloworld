@@ -186,6 +186,7 @@ o:value("vmess", translate("VMess"))
 o:value("trojan", translate("Trojan"))
 o:value("shadowsocks", translate("Shadowsocks"))
 if is_installed("sagernet-core") then
+	o:value("shadowsocksr", translate("ShadowsocksR"))
 	o:value("wireguard", translate("WireGuard"))
 end
 o:value("socks", translate("Socks"))
@@ -239,6 +240,7 @@ o:depends({type = "socks5", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "socks", socks_ver = "5", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocksr"})
 o:depends({type = "v2ray", v2ray_protocol = "trojan"})
 
 o = s:option(ListValue, "encrypt_method", translate("Encrypt Method"))
@@ -247,6 +249,7 @@ for _, v in ipairs(encrypt_methods) do
 end
 o.rmempty = true
 o:depends("type", "ssr")
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocksr"})
 
 o = s:option(ListValue, "encrypt_method_ss", translate("Encrypt Method"))
 for _, v in ipairs(encrypt_methods_ss) do
@@ -270,7 +273,7 @@ o.default = "1"
 -- Shadowsocks Plugin
 o = s:option(Value, "plugin", translate("Obfs"))
 o:value("none", translate("None"))
-if is_finded("obfs-local") then
+if is_finded("obfs-local") or is_installed("sagernet-core") then
 	o:value("obfs-local", translate("obfs-local"))
 end
 if is_finded("v2ray-plugin") or is_installed("sagernet-core") then
@@ -298,9 +301,11 @@ for _, v in ipairs(protocol) do
 end
 o.rmempty = true
 o:depends("type", "ssr")
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocksr"})
 
 o = s:option(Value, "protocol_param", translate("Protocol param (optional)"))
 o:depends("type", "ssr")
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocksr"})
 
 o = s:option(ListValue, "obfs", translate("Obfs"))
 for _, v in ipairs(obfs) do
@@ -308,9 +313,11 @@ for _, v in ipairs(obfs) do
 end
 o.rmempty = true
 o:depends("type", "ssr")
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocksr"})
 
 o = s:option(Value, "obfs_param", translate("Obfs param (optional)"))
 o:depends("type", "ssr")
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocksr"})
 
 -- [[ Hysteria ]]--
 o = s:option(ListValue, "hysteria_protocol", translate("Protocol"))
