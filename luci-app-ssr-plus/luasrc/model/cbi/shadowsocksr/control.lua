@@ -2,10 +2,19 @@ require "luci.ip"
 require "nixio.fs"
 local m, s, o
 
-m = Map("shadowsocksr", translate("Block and Allow List"))
+m = Map("shadowsocksr")
 
 s = m:section(TypedSection, "access_control")
 s.anonymous = true
+
+-- Interface control
+s:tab("Interface", translate("Interface control"))
+o = s:taboption("Interface", DynamicList, "Interface", translate("Interface"))
+o.template = "cbi/network_netlist"
+o.widget = "checkbox"
+o.nocreate = true
+o.unspecified = true
+o.description = translate("Listen only on the given interface or, if unspecified, on all")
 
 -- Part of WAN
 s:tab("wan_ac", translate("WAN IP AC"))
@@ -27,7 +36,7 @@ o.rmempty = false
 
 o = s:taboption("lan_ac", DynamicList, "lan_ac_ips", translate("LAN Host List"))
 o.datatype = "ipaddr"
-luci.ip.neighbors({ family = 4 }, function(entry)
+luci.ip.neighbors({family = 4}, function(entry)
 	if entry.reachable then
 		o:value(entry.dest:string())
 	end
@@ -37,7 +46,7 @@ o:depends("lan_ac_mode", "b")
 
 o = s:taboption("lan_ac", DynamicList, "lan_bp_ips", translate("LAN Bypassed Host List"))
 o.datatype = "ipaddr"
-luci.ip.neighbors({ family = 4 }, function(entry)
+luci.ip.neighbors({family = 4}, function(entry)
 	if entry.reachable then
 		o:value(entry.dest:string())
 	end
@@ -45,7 +54,7 @@ end)
 
 o = s:taboption("lan_ac", DynamicList, "lan_fp_ips", translate("LAN Force Proxy Host List"))
 o.datatype = "ipaddr"
-luci.ip.neighbors({ family = 4 }, function(entry)
+luci.ip.neighbors({family = 4}, function(entry)
 	if entry.reachable then
 		o:value(entry.dest:string())
 	end
@@ -53,7 +62,7 @@ end)
 
 o = s:taboption("lan_ac", DynamicList, "lan_gm_ips", translate("Game Mode Host List"))
 o.datatype = "ipaddr"
-luci.ip.neighbors({ family = 4 }, function(entry)
+luci.ip.neighbors({family = 4}, function(entry)
 	if entry.reachable then
 		o:value(entry.dest:string())
 	end
@@ -68,7 +77,7 @@ end)
 -- o.rmempty = false
 
 s:tab("esc", translate("Bypass Domain List"))
-local escconf = "/etc/ssr/white.list"
+local escconf = "/etc/ssrplus/white.list"
 o = s:taboption("esc", TextValue, "escconf")
 o.rows = 13
 o.wrap = "off"
@@ -84,7 +93,7 @@ o.remove = function(self, section, value)
 end
 
 s:tab("block", translate("Black Domain List"))
-local blockconf = "/etc/ssr/black.list"
+local blockconf = "/etc/ssrplus/black.list"
 o = s:taboption("block", TextValue, "blockconf")
 o.rows = 13
 o.wrap = "off"
@@ -100,7 +109,7 @@ o.remove = function(self, section, value)
 end
 
 s:tab("denydomain", translate("Deny Domain List"))
-local denydomainconf = "/etc/ssr/deny.list"
+local denydomainconf = "/etc/ssrplus/deny.list"
 o = s:taboption("denydomain", TextValue, "denydomainconf")
 o.rows = 13
 o.wrap = "off"
@@ -116,7 +125,7 @@ o.remove = function(self, section, value)
 end
 
 s:tab("netflix", translate("Netflix Domain List"))
-local netflixconf = "/etc/ssr/netflix.list"
+local netflixconf = "/etc/ssrplus/netflix.list"
 o = s:taboption("netflix", TextValue, "netflixconf")
 o.rows = 13
 o.wrap = "off"
