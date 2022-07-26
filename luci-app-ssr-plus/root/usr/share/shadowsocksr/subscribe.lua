@@ -175,6 +175,7 @@ local function processData(szType, content)
 		result.server = info.add
 		result.server_port = info.port
 		result.transport = info.net
+		result.alter_id = info.aid
 		result.vmess_id = info.id
 		result.alias = info.ps
 		result.packet_encoding = packet_encoding

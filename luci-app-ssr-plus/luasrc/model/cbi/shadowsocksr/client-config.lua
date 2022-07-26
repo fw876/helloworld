@@ -354,6 +354,13 @@ o = s:option(Flag, "disable_mtu_discovery", translate("Disable Path MTU discover
 o:depends("type", "hysteria")
 o.rmempty = true
 
+-- AlterId
+o = s:option(Value, "alter_id", translate("AlterId"))
+o.datatype = "port"
+o.default = 16
+o.rmempty = true
+o:depends({type = "v2ray", v2ray_protocol = "vmess"})
+
 -- VmessId
 o = s:option(Value, "vmess_id", translate("Vmess/VLESS ID (UUID)"))
 o.rmempty = true
