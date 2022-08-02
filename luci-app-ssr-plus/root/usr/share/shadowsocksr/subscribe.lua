@@ -329,8 +329,6 @@ local function processData(szType, content)
 		result.type = v2_tj
 		result.v2ray_protocol = "trojan"
 		result.server = host[1]
-		-- 按照官方的建议 默认验证ssl证书
-		result.insecure = "0"
 		result.tls = "1"
 		if host[2]:find("?") then
 			local query = split(host[2], "?")
@@ -340,6 +338,8 @@ local function processData(szType, content)
 				local t = split(v, '=')
 				params[t[1]] = t[2]
 			end
+			-- 按照官方的建议 默认验证ssl证书 兼容不验证参数
+			result.insecure = params.allowInsecure or "0"
 			if params.sni then
 				-- 未指定peer（sni）默认使用remote addr
 				result.tls_host = params.sni
