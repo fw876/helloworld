@@ -367,8 +367,8 @@ local function processData(szType, content)
 		result.xtls = params.security == "xtls" and "1" or nil
 		result.vless_flow = params.flow
 		if result.transport == "ws" then
-			result.ws_host = (result.tls ~= "1") and UrlDecode(params.host) or nil
-			result.ws_path = UrlDecode(params.path) or "/"
+			result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+			result.ws_path = params.path and UrlDecode(params.path) or "/"
 		elseif result.transport == "http" then
 			result.transport = "h2"
 			result.h2_host = params.host and UrlDecode(params.host) or nil
