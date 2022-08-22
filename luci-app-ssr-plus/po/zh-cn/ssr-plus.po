@@ -601,6 +601,12 @@ msgstr "所有端口（默认）"
 msgid "Only Common Ports"
 msgstr "仅常用端口（不走P2P流量到代理）"
 
+msgid "Custom Ports"
+msgstr "自定义端口"
+
+msgid "Muitiple proxy ports can saperate with ','"
+msgstr "多个代理端口请用 ',' 分隔（注意用英文逗号)"
+
 msgid "Socket Connected"
 msgstr "连接测试"
 

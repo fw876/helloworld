@@ -82,7 +82,13 @@ o.default = gfw
 o = s:option(ListValue, "dports", translate("Proxy Ports"))
 o:value("1", translate("All Ports"))
 o:value("2", translate("Only Common Ports"))
+o:value("0", translate("Custom Ports"))
 o.default = 1
+
+o = s:option(Value, "custom_dports", translate("Custom Ports"))
+o.description = translate("Muitiple proxy ports can saperate with ','")
+o.default = "22,53,587,465,995,993,143,80,443,853,9418"
+o:depends("dports", "0")
 
 o = s:option(ListValue, "pdnsd_enable", translate("Resolve Dns Mode"))
 o:value("1", translate("Use DNS2TCP query"))
