@@ -8,3 +8,14 @@
  		"--config=" + asset.GetV2rayConfigPath(),
  	}
  	if confdir := asset.GetV2rayConfigDirPath(); confdir != "" {
+--- a/core/v2ray/where/where.go
++++ b/core/v2ray/where/where.go
+@@ -41,7 +41,7 @@ func GetV2rayServiceVersion() (variant V
+ 	if err != nil || len(v2rayPath) <= 0 {
+ 		return Unknown, "", fmt.Errorf("cannot find v2ray executable binary")
+ 	}
+-	out, err := exec.Command(v2rayPath, "-version").Output()
++	out, err := exec.Command(v2rayPath, "version").Output()
+ 	var fields []string
+ 	if fields = strings.Fields(strings.TrimSpace(string(out))); len(fields) < 2 {
+ 		return Unknown, "", fmt.Errorf("cannot parse version of v2ray")
