@@ -165,7 +165,7 @@ ln_start_bin() {
 
 start_dns() {
 	local ssrplus_dns="$(uci_get_by_type global pdnsd_enable 0)"
-	local dnsstr="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
+	local dnsstr="$(uci_get_by_type global tunnel_forward)"
 	local dnsserver=$(echo "$dnsstr" | awk -F ':' '{print $1}')
 	local dnsport=$(echo "$dnsstr" | awk -F ':' '{print $2}')
 
