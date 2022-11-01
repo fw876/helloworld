@@ -1,5 +1,5 @@
 ## Setup instruction
-
+## Added comments
 ### Method 1 - Clone this repo directly
 
 1. Clone this repo:
