@@ -661,6 +661,7 @@ if is_finded("xray") then
 	o:value("safari", translate("safari"))
 	o:value("randomized", translate("randomized"))
 	o:depends({type = "v2ray", tls = true})
+	o:depends({type = "v2ray", xtls = true})
 	o.default = "disable"
 end
 

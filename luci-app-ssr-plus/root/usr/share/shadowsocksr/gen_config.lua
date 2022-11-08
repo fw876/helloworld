@@ -161,8 +161,9 @@ local Xray = {
 				allowInsecure = (server.insecure == "1") and true or nil,
 				serverName = server.tls_host
 			} or nil,
-			xtlsSettings = (server.xtls == '1' and (server.insecure == "1" or server.tls_host)) and {
+			xtlsSettings = (server.xtls == '1' and (server.insecure == "1" or server.tls_host or server.fingerprint)) and {
 				-- xtls
+				fingerprint = server.fingerprint,
 				allowInsecure = (server.insecure == "1") and true or nil,
 				serverName = server.tls_host,
 				minVersion = "1.3"
