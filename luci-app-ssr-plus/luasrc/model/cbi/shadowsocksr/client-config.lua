@@ -657,7 +657,7 @@ if is_finded("xray") then
 		o:value(v, translate(v))
 	end
 	o.rmempty = true
-	o:depends({type = "v2ray", v2ray_protocol = "vless", "tls" = true})
+	o:depends({type = "v2ray", v2ray_protocol = "vless", tls = true})
 end
 
 -- [[ TLS部分 ]] --
