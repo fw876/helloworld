@@ -124,6 +124,12 @@ local flows = {
 	"xtls-rprx-splice-udp443"
 }
 
+local tls_flows = {
+	-- tls
+	"xtls-rprx-vision",
+	"xtls-rprx-vision-udp443"
+}
+
 m = Map("shadowsocksr", translate("Edit ShadowSocksR Server"))
 m.redirect = luci.dispatcher.build_url("admin/services/shadowsocksr/servers")
 if m.uci:get("shadowsocksr", sid) ~= "servers" then
@@ -648,6 +654,14 @@ o.default = "xtls-rprx-splice"
 o:depends("xtls", true)
 
 -- [[ TLS部分 ]] --
+-- Flow
+o = s:option(Value, "tls_flow", translate("Flow"))
+for _, v in ipairs(tls_flows) do
+	o:value(v, translate(v))
+end
+o.rmempty = true
+o:depends({type = "v2ray", v2ray_protocol = "vless", "tls" = true})
+
 o = s:option(Flag, "tls_sessionTicket", translate("Session Ticket"))
 o:depends({type = "trojan", tls = true})
 o.default = "0"

@@ -22,7 +22,7 @@ function vmess_vless()
 						id = server.vmess_id,
 						security = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and server.security or nil,
 						encryption = (server.v2ray_protocol == "vless") and server.vless_encryption or nil,
-						flow = (server.xtls == '1') and (server.vless_flow and server.vless_flow or "xtls-rprx-splice") or nil
+						flow = (server.xtls == '1') and (server.vless_flow or "xtls-rprx-splice") or (server.tls == '1') and server.tls_flow or nil
 					}
 				}
 			}
@@ -48,7 +48,7 @@ function trojan_shadowsocks()
 				method = ((server.v2ray_protocol == "shadowsocks") and server.encrypt_method_ss) or ((server.v2ray_protocol == "shadowsocksr") and server.encrypt_method) or nil,
 				uot = (server.v2ray_protocol == "shadowsocks") and (server.uot == '1') or nil,
 				ivCheck = (server.v2ray_protocol == "shadowsocks") and (server.ivCheck == '1') or nil,
-				flow = (server.v2ray_protocol == "trojan") and (server.xtls == '1') and (server.vless_flow and server.vless_flow or "xtls-rprx-splice") or nil
+				flow = (server.v2ray_protocol == "trojan") and (server.xtls == '1') and (server.vless_flow or "xtls-rprx-splice") or nil
 			}
 		}
 	}
