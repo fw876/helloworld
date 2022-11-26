@@ -211,7 +211,6 @@ o:depends("type", "hysteria")
 o:depends("type", "socks5")
 
 o = s:option(Value, "server_port", translate("Server Port"))
-o.datatype = "port"
 o.rmempty = false
 o:depends("type", "ssr")
 o:depends("type", "ss")
