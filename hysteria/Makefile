@@ -6,10 +6,10 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=hysteria
 PKG_VERSION:=1.3.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://codeload.github.com/HyNetwork/hysteria/tar.gz/v$(PKG_VERSION)?
+PKG_SOURCE_URL:=https://codeload.github.com/apernet/hysteria/tar.gz/v$(PKG_VERSION)?
 PKG_HASH:=76137ec58245df72f9f8258bad1627bbd157f9ca5475b49e0ad897f22d7e7baf
 
 PKG_LICENSE:=MIT
@@ -31,7 +31,7 @@ define Package/hysteria
   SECTION:=net
   CATEGORY:=Network
   TITLE:=A feature-packed network utility optimized for networks of poor quality
-  URL:=https://github.com/tobyxdd/hysteria
+  URL:=https://github.com/apernet/hysteria
   DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle
 endef
 
