@@ -81,7 +81,15 @@ get_host_ip() {
 		fi
 	fi
 	[ -z "$ip" ] || uci_set_by_name $1 ip $ip
-	echo ${ip:="$(uci_get_by_name $1 ip "ERROR")"}
+	[ -n "$ip" ] || ip="$(uci_get_by_name $1 ip "ERROR")"
+
+	local chinadns="$(uci_get_by_type global chinadns_forward)"
+	if [ -n "$chinadns" ] && [ "$ip" != "$host" ]; then
+		grep -q "$host" "$TMP_DNSMASQ_PATH/chinadns_fixed_server.conf" 2>"/dev/null" || \
+			echo -e "address=/$host/$ip" >> "$TMP_DNSMASQ_PATH/chinadns_fixed_server.conf"
+	fi
+
+	echo $ip
 }
 
 clean_log() {
@@ -186,6 +194,7 @@ start_dns() {
 			pdnsd_enable_flag=2
 			;;
 		esac
+
 		if [ "$run_mode" = "router" ]; then
 			local chinadns="$(uci_get_by_type global chinadns_forward)"
 			if [ -n "$chinadns" ]; then
@@ -903,7 +912,6 @@ stop() {
 		uci -q rename "dhcp.@dnsmasq[0]._orig_server"="server"
 		uci -q del "dhcp.@dnsmasq[0]._unused_ssrp_changed"
 		uci -q commit "dhcp"
-		killall -9 chinadns-ng
 	fi
 	if [ -f "/tmp/dnsmasq.d/dnsmasq-ssrplus.conf" ]; then
 		rm -rf /tmp/dnsmasq.d/dnsmasq-ssrplus.conf $TMP_DNSMASQ_PATH $TMP_PATH/*-ssr-*.json $TMP_PATH/ssr-server*.json
