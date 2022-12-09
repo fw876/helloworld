@@ -379,10 +379,14 @@ start_udp() {
 		echolog "UDP TPROXY Relay:$($(first_type "hysteria") --version | awk '{print $1,$3}') Started!"
 		;;
 	tuic)
-		gen_config_file $UDP_RELAY_SERVER $type 2 $tmp_udp_local_port
-		ln_start_bin $(first_type tuic-client) tuic-client --config $udp_config_file
-		ln_start_bin $(first_type ipt2socks) ipt2socks -U -b 0.0.0.0 -4 -s 127.0.0.1 -p $tmp_udp_local_port -l $tmp_udp_port
-		echolog "UDP TPROXY Relay:tuic-client $($(first_type tuic-client) --version) Started!"
+		# gen_config_file $UDP_RELAY_SERVER $type 2 $tmp_udp_local_port
+		# ln_start_bin $(first_type tuic-client) tuic-client --config $udp_config_file
+		# ln_start_bin $(first_type ipt2socks) ipt2socks -U -b 0.0.0.0 -4 -s 127.0.0.1 -p $tmp_udp_local_port -l $tmp_udp_port
+		# echolog "UDP TPROXY Relay:tuic-client $($(first_type tuic-client) --version) Started!"
+		# FIXME: ipt2socks cannot handle udp reply from tuic
+		echolog "TUIC UDP TPROXY Relay not supported!"
+		redir_udp=0
+		ARG_UDP=""
 		;;
 	socks5)
 		# if [ "$(uci_get_by_name $UDP_RELAY_SERVER auth_enable 0)" == "1" ]; then
@@ -472,6 +476,8 @@ start_shunt() {
 		ln_start_bin $(first_type ipt2socks) ipt2socks -R -b 0.0.0.0 -4 -s 127.0.0.1 -p $tmp_port -l $tmp_shunt_port
 		ln_start_bin $(first_type dns2socks) dns2socks 127.0.0.1:$tmp_port 8.8.8.8:53 127.0.0.1:$tmp_shunt_dns_port -q
 		echolog "shunt:tuic-client $($(first_type tuic-client) --version) Started!"
+		# FIXME: ipt2socks cannot handle udp reply from tuic
+		redir_udp=0
 		;;
 	# socks5)
 	# 	if [ "$(uci_get_by_name $SHUNT_SERVER auth_enable 0)" == "1" ]; then
