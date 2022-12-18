@@ -70,33 +70,3 @@
   ./scripts/feeds install -a
   ```
 
-### Note
-
-- - -
-#### ⚠ For OpenWrt 21.02 or lower version
-You have to manually upgrade Golang toolchain to [1.18](https://github.com/openwrt/packages/tree/openwrt-22.03/lang/golang) or higher to compile Xray-core.
-
-e.g.:
-
-```bash
-./scripts/feeds update packages
-rm -rf feeds/packages/lang/golang
-svn co https://github.com/openwrt/packages/branches/openwrt-22.03/lang/golang feeds/packages/lang/golang
-```
-- - -
-
-If you want to use this repo with official OpenWrt source tree, the following packages need to be added manually:
-
-- [dns2socks](https://github.com/immortalwrt/packages/tree/master/net/dns2socks)
-- [microsocks](https://github.com/immortalwrt/packages/tree/master/net/microsocks)
-- [ipt2socks](https://github.com/immortalwrt/packages/tree/master/net/ipt2socks)
-- [redsocks2](https://github.com/immortalwrt/packages/tree/master/net/redsocks2)
-
-You may use `svn` to check them out, e.g.:
-
-```bash
-mkdir -p package/helloworld
-for i in "dns2socks" "microsocks" "ipt2socks" "pdnsd-alt" "redsocks2"; do \
-  svn checkout "https://github.com/immortalwrt/packages/trunk/net/$i" "package/helloworld/$i"; \
-done
-```
