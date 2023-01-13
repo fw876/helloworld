@@ -112,7 +112,7 @@ define Build/Configure
 endef
 
 define Build/Compile
-	ninja -C "$(PKG_BUILD_DIR)/src/out/Release" naive
+	+$(NINJA) -C "$(PKG_BUILD_DIR)/src/out/Release" naive
 endef
 
 define Package/naiveproxy/install
