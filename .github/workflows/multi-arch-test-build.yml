@@ -1,9 +1,8 @@
 name: Test Build
 
 on:
-  pull_request:
-    paths-ignore:
-      - '**.md'
+  repository_dispatch:
+  workflow_dispatch:
 
 jobs:
   build:
