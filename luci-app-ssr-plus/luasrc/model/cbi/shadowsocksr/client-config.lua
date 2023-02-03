@@ -473,7 +473,7 @@ o.rmempty = true
 -- [[ WS部分 ]]--
 -- WS域名
 o = s:option(Value, "ws_host", translate("WebSocket Host"))
-o:depends({transport = "ws", tls = false})
+o:depends("transport", "ws")
 o.datatype = "hostname"
 o.rmempty = true
 
