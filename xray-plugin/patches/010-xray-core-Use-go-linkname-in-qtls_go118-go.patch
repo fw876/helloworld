@@ -1,0 +1,26 @@
+diff --git a/go.mod b/go.mod
+index cadbf87..8de8b96 100644
+--- a/go.mod
++++ b/go.mod
+@@ -4,7 +4,7 @@ go 1.18
+ 
+ require (
+ 	github.com/golang/protobuf v1.5.2
+-	github.com/xtls/xray-core v1.7.3
++	github.com/xtls/xray-core v1.7.4-0.20230204132713-00c957611891
+ )
+ 
+ require (
+diff --git a/go.sum b/go.sum
+index 19e79c0..3057c8f 100644
+--- a/go.sum
++++ b/go.sum
+@@ -149,6 +149,8 @@ github.com/xtls/go v0.0.0-20230107031059-4610f88d00f3 h1:a3Y4WVjCxwoyO4E2xdNvq57
+ github.com/xtls/go v0.0.0-20230107031059-4610f88d00f3/go.mod h1:YJTRELIWrGxR1s8xcEBgxcxBfwQfMGjdvNLTjN9XFgY=
+ github.com/xtls/xray-core v1.7.3 h1:yGkFCHqRJxziFWQiWlMThVY2Mg3TxzDzJHRrRsZZNPE=
+ github.com/xtls/xray-core v1.7.3/go.mod h1:FS9w01bxhsvGjNtCBEcstwtYhqt512kKkXUvudnn5h0=
++github.com/xtls/xray-core v1.7.4-0.20230204132713-00c957611891 h1:x3u/b/qr4o1de07FTH5tGR5pqLj1WPggvkrIYxnwjDs=
++github.com/xtls/xray-core v1.7.4-0.20230204132713-00c957611891/go.mod h1:gkMXXAQOvSG57XiQwjwzQkRBkRwBtf9pQGbE3++XPtI=
+ github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
+ go.opencensus.io v0.18.0/go.mod h1:vKdFvxhtzZ9onBp9VKHK8z/sRpBMnKAsufL7wlDrCOA=
+ go.starlark.net v0.0.0-20230128213706-3f75dec8e403 h1:jPeC7Exc+m8OBJUlWbBLh0O5UZPM7yU5W4adnhhbG4U=
