@@ -63,7 +63,7 @@ define Download/CLANG
 	URL:=https://commondatastorage.googleapis.com/chromium-browser-clang/Linux_x64
 	URL_FILE:=$(CLANG_FILE)
 	FILE:=$(CLANG_FILE)
-	HASH:=5ae35f85e0d32136795c6b223bf64263d46678dd4a24fea4e9039e58a32670de
+	HASH:=902060c5657cb99e58332ef33eed52262373734abf841a38efac239b9382969c
 endef
 
 GN_VER:=5e19d2fb166fbd4f6f32147fbb2f497091a54ad8
