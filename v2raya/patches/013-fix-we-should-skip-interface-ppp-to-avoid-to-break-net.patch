@@ -13,8 +13,8 @@ Subject: [PATCH] fix: we should skip interface ppp+ to avoid to break net
  func (t *tproxy) AddIPWhitelist(cidr string) {
  	// avoid duplication
  	t.RemoveIPWhitelist(cidr)
--	pos := 6
-+	pos := 8
+-	pos := 5
++	pos := 7
  	if configure.GetSettingNotNil().AntiPollution != configure.AntipollutionClosed {
  		pos += 3
  	}
