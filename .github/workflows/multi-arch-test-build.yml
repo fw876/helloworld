@@ -13,9 +13,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: arc_archs
-            target: archs38-generic
-
           - arch: arm_cortex-a9_vfpv3-d16
             target: mvebu-cortexa9
 
@@ -78,7 +75,7 @@ jobs:
           echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
 
       - name: Build
-        uses: immortalwrt/gh-action-sdk@v4
+        uses: immortalwrt/gh-action-sdk@v4.1
         env:
           ARCH: ${{ matrix.arch }}-${{ env.BRANCH }}
           FEEDNAME: packages_ci
