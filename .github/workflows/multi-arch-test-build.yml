@@ -25,7 +25,7 @@ jobs:
           - arch: powerpc_464fp
             target: apm821xx-nand
 
-          - arch: powerpc_8540
+          - arch: powerpc_8548
             target: mpc85xx-p1010
 
           - arch: aarch64_cortex-a53
