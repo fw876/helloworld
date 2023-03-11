@@ -156,7 +156,7 @@ local Xray = {
 		-- 底层传输配置
 		streamSettings = {
 			network = server.transport or "tcp",
-			security = (server.tls == '1') and "tls" or nil,
+			security = (server.tls == '1') and "tls" or (server.reality == '1') and "reality" or nil,
 			tlsSettings = (server.tls == '1') and {
 				-- tls
 				alpn = server.tls_alpn,
@@ -167,6 +167,14 @@ local Xray = {
 					usage = "verify",
 					certificateFile = server.certpath
 				} or nil
+			} or nil,
+			realitySettings = (server.reality == '1') and {
+				show = false,
+				publicKey = server.reality_publickey,
+				shortId = server.reality_shortid,
+				spiderX = server.reality_spiderx,
+				fingerprint = server.fingerprint,
+				serverName = server.tls_host
 			} or nil,
 			tcpSettings = (server.transport == "tcp" and server.tcp_guise == "http") and {
 				-- tcp
