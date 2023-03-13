@@ -22,7 +22,7 @@ function vmess_vless()
 						id = server.vmess_id,
 						security = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and server.security or nil,
 						encryption = (server.v2ray_protocol == "vless") and server.vless_encryption or nil,
-						flow = (server.tls == '1') and server.tls_flow or nil
+						flow = ((server.tls == '1') or (server.reality == '1')) and server.tls_flow or nil
 					}
 				}
 			}
