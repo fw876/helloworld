@@ -359,7 +359,7 @@ o:depends("type", "hysteria")
 o.rmempty = true
 
 o = s:option(Flag, "lazy_start", translate("Lazy Start"))
-o:depends("type","hysteria")
+o:depends("type", "hysteria")
 o.rmempty = true
 o.default = "0"
 
