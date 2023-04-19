@@ -469,8 +469,8 @@ msgstr "使用 WAN 下发的 DNS"
 msgid "Use DNS from WAN and 114DNS"
 msgstr "使用 WAN 下发的 DNS 和 114DNS"
 
-msgid "Custom DNS Server format as IP:PORT (default: disabled)"
-msgstr "格式为 IP:PORT（默认：禁用）"
+msgid "Custom DNS Server format as IP:PORT"
+msgstr "格式为 IP:PORT"
 
 msgid "Update time (every day)"
 msgstr "更新时间（每天）"
