@@ -93,6 +93,33 @@ function import_ssr_url(btn, urlname, sid) {
 		var event = document.createEvent("HTMLEvents");
 		event.initEvent("change", true, true);
 		switch (ssu[0]) {
+		case "hysteria":
+			try {
+				var url = new URL("http://" + ssu[1]);
+				var params = url.searchParams;
+			} catch(e) {
+				alert(e);
+				return false;
+			}
+
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = ssu[0];
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].dispatchEvent(event);
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = url.hostname;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = url.port || "80";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.hysteria_protocol')[0].value = params.get("protocol") || "udp";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.auth_type')[0].value = params.get("auth") ? "2" : "0";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.auth_type')[0].dispatchEvent(event);
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.auth_payload')[0].value = params.get("auth") || "";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.uplink_capacity')[0].value = params.get("upmbps") || "";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.downlink_capacity')[0].value = params.get("downmbps") || "";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.seed')[0].value = params.get("obfsParam") || "";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = params.get("peer") || "";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.quic_tls_alpn')[0].value = params.get("alpn") || "";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].checked = params.get("insecure") ? true : false;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = url.hash ? decodeURIComponent(url.hash.slice(1)) : "";
+
+			s.innerHTML = "<font color='green'><%:Import configuration information successfully.%></font>";
+			return false;
 		case "ss":
 			var url0, param = "";
 			var sipIndex = ssu[1].indexOf("@");
@@ -188,42 +215,25 @@ function import_ssr_url(btn, urlname, sid) {
 			s.innerHTML = "<font color='green'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "trojan":
-			var url0, param = "";
-			var ploc = ssu[1].indexOf("#");
-			if (ploc > 0) {
-				url0 = ssu[1].substr(0, ploc);
-				param = ssu[1].substr(ploc + 1);
-			} else {
-				url0 = ssu[1]
+			try {
+				var url = new URL("http://" + ssu[1]);
+			} catch(e) {
+				alert(e)
+				return false;
 			}
-			var sstr = url0;
+
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = url.hash ? decodeURIComponent(url.hash.slice(1)) : "";
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = "v2ray";
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].dispatchEvent(event);
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.v2ray_protocol')[0].value = "trojan";
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.v2ray_protocol')[0].dispatchEvent(event);
-			var team = sstr.split('@');
-			var password = team[0]
-			var serverPart = team[1].split(':');		
-			var others = serverPart[1].split('?');
-			var port = parseInt(others[0]);
-			var queryParam = {}
-			if (others.length > 1) {
-				var queryParams = others[1]
-				var queryArray = queryParams.split('&');
-				for (i = 0; i < queryArray.length; i++) {
-					var params = queryArray[i].split('=');
-					queryParam[decodeURIComponent(params[0])] = decodeURIComponent(params[1] || '');
-				}
-			}
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = serverPart[0];
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = port || '443';
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.password')[0].value = password;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = url.hostname;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = url.port || "80";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.password')[0].value = decodeURIComponent(url.username);
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].checked = true;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].dispatchEvent(event);
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = queryParam.sni || '';
-			if (param != undefined) {
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = decodeURI(param);
-			}
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = url.searchParams.get("sni");
+
 			s.innerHTML = "<font color='green'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "vmess":
@@ -272,85 +282,79 @@ function import_ssr_url(btn, urlname, sid) {
 			if (ssm.tls == "tls") {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].checked = true;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].dispatchEvent(event);
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = ssm.host;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = ssm.sni || ssm.host;
 			}
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].checked = true;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].dispatchEvent(event);
 			s.innerHTML = "<font color='green'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "vless":
-			var url0, param = "";
-			var ploc = ssu[1].indexOf("#");
-			if (ploc > 0) {
-				url0 = ssu[1].substr(0, ploc);
-				param = decodeURIComponent(ssu[1].substr(ploc + 1));
-			} else {
-				url0 = ssu[1]
+			try {
+				var url = new URL("http://" + ssu[1]);
+				var params = url.searchParams;
+			} catch(e) {
+				alert(e)
+				return false;
 			}
-			var sstr = url0;
+
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = url.hash ? decodeURIComponent(url.hash.slice(1)) : "";
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = "v2ray";
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].dispatchEvent(event);
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.v2ray_protocol')[0].value = "vless";
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.v2ray_protocol')[0].dispatchEvent(event);
-			var team = sstr.split('@');
-			var uuid = team[0]
-			var serverPart = team[1].split(':');
-			var others = serverPart[1].split('?');
-			var port = others[0]
-			var queryParam = {}
-			if (others.length > 1) {
-				var queryParams = others[1]
-				var queryArray = queryParams.split('&');
-				for (i = 0; i < queryArray.length; i++) {
-					var params = queryArray[i].split('=');
-					queryParam[decodeURIComponent(params[0])] = decodeURIComponent(params[1] || '');
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = url.hostname;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = url.port || "80";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.vmess_id')[0].value = url.username;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].value = params.get("type") == "http" ? "h2" : params.get("type") || "tcp";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].dispatchEvent(event);
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.vless_encryption')[0].value = params.get("encryption") || "none";
+			if ([ "tls", "reality" ].includes(params.get("security"))) {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.' + params.get("security"))[0].checked = true;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.' + params.get("security"))[0].dispatchEvent(event);
+
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.fingerprint')[0].value = params.get("fp") || "";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_flow')[0].value = params.get("flow") || "";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = params.get("sni") || "";
+
+				if (params.get("security") === "reality") {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.reality_publickey')[0].value = params.get("pbk") ? decodeURIComponent(params.get("pbk")) : "";
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.reality_shortid')[0].value = params.get("sid") || "";
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.reality_spiderx')[0].value = params.get("spx") ? decodeURIComponent(params.get("spx")) : "";
 				}
 			}
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = serverPart[0];
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = port;
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.vmess_id')[0].value = uuid;
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].value = queryParam.type ? (queryParam.type == "http" ? "h2" : queryParam.type) : "tcp";
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].dispatchEvent(event);
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.vless_encryption')[0].value = queryParam.encryption || "none";
-			if (queryParam.security == "tls") {
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].checked = true;
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].dispatchEvent(event);
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = queryParam.sni || serverPart[0];
-			}
-			switch (queryParam.type) {
+			switch (params.get("type")) {
 			case "ws":
-				//document.getElementsByName('cbid.shadowsocksr.' + sid + '.ws_host')[0].value = queryParam.host;
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.ws_path')[0].value = queryParam.path || "/";
+				if (params.get("security") !== "tls")
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.ws_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.ws_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "/";
 				break;
 			case "kcp":
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.kcp_guise')[0].value = queryParam.headerType || "none";
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.kcp_guise')[0].dispatchEvent(event);
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.seed')[0].value = queryParam.seed;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.kcp_guise')[0].value = params.get("headerType") || "none";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.seed')[0].value = params.get("seed") || "";
 				break;
 			case "http":
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.h2_host')[0].value = queryParam.host || serverPart[0];
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.h2_path')[0].value = queryParam.path || "/";
+			/* this is non-standard, bullshit */
+			case "h2":
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.h2_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.h2_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "";
 				break;
 			case "quic":
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.quic_guise')[0].value = queryParam.headerType || "none";
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.quic_guise')[0].dispatchEvent(event);
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.quic_security')[0].value = queryParam.quicSecurity || "none";
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.quic_key')[0].value = queryParam.key;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.quic_guise')[0].value = params.get("headerType") || "none";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.quic_security')[0].value = params.get("quicSecurity") || "none";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.quic_key')[0].value = params.get("key") || "";
 				break;
 			case "grpc":
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.serviceName')[0].value = queryParam.serviceName;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.serviceName')[0].value = params.get("serviceName") || "";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.grpc_mode')[0].value = params.get("mode") || "gun";
 				break;
-			default:
-				if (queryParam.security == "xtls") {
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.xtls')[0].checked = true;
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.xtls')[0].dispatchEvent(event);
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.vless_flow')[0].value = queryParam.flow || "xtls-rprx-splice";
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = queryParam.sni || serverPart[0];
-				}			
+			case "tcp":
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tcp_guise')[0].value = params.get("headerType") || "none";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tcp_guise')[0].dispatchEvent(event);
+				if (params.get("headerType") === "http") {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "";
+				}
 				break;
-			}
-			if (param != undefined) {
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = decodeURI(param);
 			}
 			s.innerHTML = "<font color='green'><%:Import configuration information successfully.%></font>";
 			return false;

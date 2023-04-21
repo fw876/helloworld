@@ -16,6 +16,7 @@ local tinsert = table.insert
 local ssub, slen, schar, sbyte, sformat, sgsub = string.sub, string.len, string.char, string.byte, string.format, string.gsub
 local jsonParse, jsonStringify = luci.jsonc.parse, luci.jsonc.stringify
 local b64decode = nixio.bin.b64decode
+local URL = require "url"
 local cache = {}
 local nodeResult = setmetatable({}, {__index = cache}) -- update result
 local name = 'shadowsocksr'
@@ -26,9 +27,7 @@ local switch = ucic:get_first(name, 'server_subscribe', 'switch', '1')
 local subscribe_url = ucic:get_first(name, 'server_subscribe', 'subscribe_url', {})
 local filter_words = ucic:get_first(name, 'server_subscribe', 'filter_words', '过期时间/剩余流量')
 local save_words = ucic:get_first(name, 'server_subscribe', 'save_words', '')
-local packet_encoding = luci.model.ipkg.installed("sagernet-core") and ucic:get_first(name, 'global', 'default_packet_encoding', 'xudp') or nil
 local v2_ss = luci.sys.exec('type -t -p ss-redir sslocal') ~= "" and "ss" or "v2ray"
-local v2_ssr = luci.sys.exec('type -t -p ssr-redir') ~= "" and "ssr" or "v2ray"
 local v2_tj = luci.sys.exec('type -t -p trojan') ~= "" and "trojan" or "v2ray"
 local log = function(...)
 	print(os.date("%Y-%m-%d %H:%M:%S ") .. table.concat({...}, " "))
@@ -148,8 +147,7 @@ local function processData(szType, content)
 	if szType == 'ssr' then
 		local dat = split(content, "/%?")
 		local hostInfo = split(dat[1], ':')
-		result.type = v2_ssr
-		result.v2ray_protocol = (v2_ssr == "v2ray") and "shadowsocksr" or nil
+		result.type = 'ssr'
 		result.server = hostInfo[1]
 		result.server_port = hostInfo[2]
 		result.protocol = hostInfo[3]
@@ -177,7 +175,6 @@ local function processData(szType, content)
 		result.transport = info.net
 		result.vmess_id = info.id
 		result.alias = info.ps
-		result.packet_encoding = packet_encoding
 		-- result.mux = 1
 		-- result.concurrency = 8
 		if info.net == 'ws' then
@@ -222,10 +219,10 @@ local function processData(szType, content)
 		end
 		if info.tls == "tls" or info.tls == "1" then
 			result.tls = "1"
-			if info.host then
-				result.tls_host = info.host
-			elseif info.sni then
+			if info.sni and info.sni ~= "" then
 				result.tls_host = info.sni
+			elseif info.host then
+				result.tls_host = info.host
 			end
 			result.insecure = 1
 		else
@@ -349,75 +346,55 @@ local function processData(szType, content)
 		end
 		result.password = password
 	elseif szType == "vless" then
-		local idx_sp = 0
-		local alias = ""
-		if content:find("#") then
-			idx_sp = content:find("#")
-			alias = content:sub(idx_sp + 1, -1)
-		end
-		local info = content:sub(1, idx_sp - 1)
-		local hostInfo = split(info, "@")
-		local host = split(hostInfo[2], ":")
-		local uuid = hostInfo[1]
-		if host[2]:find("?") then
-			local query = split(host[2], "?")
-			local params = {}
-			for _, v in pairs(split(UrlDecode(query[2]), '&')) do
-				local t = split(v, '=')
-				params[t[1]] = t[2]
+		local url = URL.parse("http://" .. content)
+		local params = url.query
+
+		result.alias = url.fragment and UrlDecode(url.fragment) or nil
+		result.type = "v2ray"
+		result.v2ray_protocol = "vless"
+		result.server = url.host
+		result.server_port = url.port
+		result.vmess_id = url.user
+		result.vless_encryption = params.encryption or "none"
+		result.transport = params.type or "tcp"
+		result.tls = (params.security == "tls" or params.security == "xtls") and "1" or "0"
+		result.tls_host = params.sni
+		result.tls_flow = (params.security == "tls" or params.security == "reality") and params.flow or nil
+		result.fingerprint = params.fp
+		result.reality = (params.security == "reality") and "1" or "0"
+		result.reality_publickey = params.pbk and UrlDecode(params.pbk) or nil
+		result.reality_shortid = params.sid
+		result.reality_spiderx = params.spx and UrlDecode(params.spx) or nil
+		if result.transport == "ws" then
+			result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+			result.ws_path = params.path and UrlDecode(params.path) or "/"
+		-- make it compatible with bullshit, "h2" transport is non-existent at all
+		elseif result.transport == "http" or result.transport == "h2" then
+			result.transport = "h2"
+			result.h2_host = params.host and UrlDecode(params.host) or nil
+			result.h2_path = params.path and UrlDecode(params.path) or nil
+		elseif result.transport == "kcp" then
+			result.kcp_guise = params.headerType or "none"
+			result.seed = params.seed
+			result.mtu = 1350
+			result.tti = 50
+			result.uplink_capacity = 5
+			result.downlink_capacity = 20
+			result.read_buffer_size = 2
+			result.write_buffer_size = 2
+		elseif result.transport == "quic" then
+			result.quic_guise = params.headerType or "none"
+			result.quic_security = params.quicSecurity or "none"
+			result.quic_key = params.key
+		elseif result.transport == "grpc" then
+			result.serviceName = params.serviceName
+			result.grpc_mode = params.mode or "gun"
+		elseif result.transport == "tcp" then
+			result.tcp_guise = params.headerType or "none"
+			if result.tcp_guise == "http" then
+				result.tcp_host = params.host and UrlDecode(params.host) or nil
+				result.tcp_path = params.path and UrlDecode(params.path) or nil
 			end
-			result.alias = UrlDecode(alias)
-			result.type = 'v2ray'
-			result.v2ray_protocol = 'vless'
-			result.server = host[1]
-			result.server_port = query[1]
-			result.vmess_id = uuid
-			result.vless_encryption = params.encryption or "none"
-			result.transport = params.type and (params.type == 'http' and 'h2' or params.type) or "tcp"
-			result.packet_encoding = packet_encoding
-			if not params.type or params.type == "tcp" then
-				if params.security == "xtls" then
-					result.xtls = "1"
-					result.tls_host = params.sni
-					result.vless_flow = params.flow
-				else
-					result.xtls = "0"
-				end
-			end
-			if params.type == 'ws' then
-				result.ws_host = params.host
-				result.ws_path = params.path or "/"
-			end
-			if params.type == 'http' then
-				result.h2_host = params.host
-				result.h2_path = params.path or "/"
-			end
-			if params.type == 'kcp' then
-				result.kcp_guise = params.headerType or "none"
-				result.mtu = 1350
-				result.tti = 50
-				result.uplink_capacity = 5
-				result.downlink_capacity = 20
-				result.read_buffer_size = 2
-				result.write_buffer_size = 2
-				result.seed = params.seed
-			end
-			if params.type == 'quic' then
-				result.quic_guise = params.headerType or "none"
-				result.quic_key = params.key
-				result.quic_security = params.quicSecurity or "none"
-			end
-			if params.type == 'grpc' then
-				result.serviceName = params.serviceName
-			end
-			if params.security == "tls" then
-				result.tls = "1"
-				result.tls_host = params.sni
-			else
-				result.tls = "0"
-			end
-		else
-			result.server_port = host[2]
 		end
 	end
 	if not result.alias then
@@ -548,7 +525,7 @@ local execute = function()
 						-- log(result)
 						if result then
 							-- 中文做地址的 也没有人拿中文域名搞，就算中文域也有Puny Code SB 机场
-							if not result.server or not result.server_port or result.alias == "NULL" or check_filer(result) or result.server:match("[^0-9a-zA-Z%-%.%s]") or cache[groupHash][result.hashkey] then
+							if not result.server or not result.server_port or result.alias == "NULL" or check_filer(result) or result.server:match("[^0-9a-zA-Z%-_%.%s]") or cache[groupHash][result.hashkey] then
 								log('丢弃无效节点: ' .. result.type .. ' 节点, ' .. result.alias)
 							else
 								-- log('成功解析: ' .. result.type ..' 节点, ' .. result.alias)

@@ -34,7 +34,7 @@ append_env_bool() {
 start_service() {
 	config_load "$CONF"
 
-	is_enabled "config" "enabled" || exit 1
+	is_enabled "config" "enabled" || return 1
 
 	procd_open_instance "$CONF"
 	procd_set_param command "$PROG"
@@ -48,6 +48,9 @@ start_service() {
 	append_env_arg "config" "log_max_days" "3"
 	append_env_arg "config" "v2ray_bin"
 	append_env_arg "config" "v2ray_confdir"
+	append_env_arg "config" "transparent_hook"
+	append_env_arg "config" "core_hook"
+	append_env_arg "config" "plugin_manager"
 	append_env_arg "config" "vless_grpc_inbound_cert_key"
 	append_env_bool "config" "log_disable_color"
 	append_env_bool "config" "log_disable_timestamp"

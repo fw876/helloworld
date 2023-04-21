@@ -13,9 +13,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: arc_archs
-            target: archs38-generic
-
           - arch: arm_cortex-a9_vfpv3-d16
             target: mvebu-cortexa9
 
@@ -28,7 +25,7 @@ jobs:
           - arch: powerpc_464fp
             target: apm821xx-nand
 
-          - arch: powerpc_8540
+          - arch: powerpc_8548
             target: mpc85xx-p1010
 
           - arch: aarch64_cortex-a53
@@ -44,7 +41,7 @@ jobs:
             target: x86-64
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
@@ -78,7 +75,7 @@ jobs:
           echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
 
       - name: Build
-        uses: immortalwrt/gh-action-sdk@v4
+        uses: immortalwrt/gh-action-sdk@v4.1
         env:
           ARCH: ${{ matrix.arch }}-${{ env.BRANCH }}
           FEEDNAME: packages_ci
@@ -121,7 +118,7 @@ jobs:
           cat PKG-INFO
 
       - name: Store packages
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{env.ARCHIVE_NAME}}-packages
           path: |
@@ -129,7 +126,7 @@ jobs:
             PKG-INFO
 
       - name: Store logs
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{env.ARCHIVE_NAME}}-logs
           path: |
