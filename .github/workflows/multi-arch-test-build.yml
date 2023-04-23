@@ -1,9 +1,7 @@
-name: Test Build
+name: Start build ssr+ all platform by gdstchdr
 
 on:
-  pull_request:
-    paths-ignore:
-      - '**.md'
+  workflow_dispatch:
 
 jobs:
   build:
