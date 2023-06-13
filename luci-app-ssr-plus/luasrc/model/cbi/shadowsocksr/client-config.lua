@@ -225,6 +225,7 @@ o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o = s:option(Value, "username", translate("Username"))
 o.rmempty = true
 o:depends("type", "naiveproxy")
+o:depends("type", "tuic")
 o:depends({type = "socks5", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "socks", auth_enable = true})
@@ -349,6 +350,12 @@ o.rmempty = true
 o.default = "0"
 
 -- [[ TUIC ]]
+-- TuicNameId
+o = s:option(Value, "tuic_uuid", translate("TUIC NAME UUID (UUID)"))
+o.rmempty = true
+o.default = uuid
+o:depends("type", "tuic")
+
 o = s:option(ListValue, "udp_relay_mode", translate("UDP relay mode"))
 o:depends("type", "tuic")
 o:value("native", translate("native"))
