@@ -309,7 +309,9 @@ local tuic = {
 	relay = {
 		server = server.server,
 		port = tonumber(server.server_port),
-		token = server.password,
+		server = server.server .. ":" .. port
+		uuid = server.username,
+		password = server.password,
 
 		certificates = server.certificate and { server.certpath } or nil,
 		udp_relay_mode = server.udp_relay_mode,
@@ -318,6 +320,8 @@ local tuic = {
 		alpn = server.tls_alpn,
 		disable_sni = (server.disable_sni == "1"),
 		reduce_rtt = (server.reduce_rtt == "1"),
+		send_window = tonumber(server.send_window),
+		receive_window = tonumber(server.receive_window),
 		max_udp_relay_packet_size = tonumber(server.max_udp_relay_packet_size)
 	},
 	["local"] = {
