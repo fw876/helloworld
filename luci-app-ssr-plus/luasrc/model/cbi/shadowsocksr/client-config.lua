@@ -226,6 +226,11 @@ o = s:option(Value, "username", translate("Username"))
 o.rmempty = true
 o:depends("type", "naiveproxy")
 o:depends("type", "tuic")
+if s:cfgvalue("type") == "tuic" then
+  o.default = uuid
+else
+  o.default = nil
+end
 o:depends({type = "socks5", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "socks", auth_enable = true})
