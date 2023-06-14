@@ -382,7 +382,7 @@ o:depends("type", "tuic")
 o.default = 0
 o.rmempty = true
 
-o = s:option(Flag, "zero_rtt", translate("Enable 0-RTT QUIC handshake"))
+o = s:option(Flag, "zero_rtt_handshake", translate("Enable 0-RTT QUIC handshake"))
 o:depends("type", "tuic")
 o.default = 0
 o.rmempty = false
