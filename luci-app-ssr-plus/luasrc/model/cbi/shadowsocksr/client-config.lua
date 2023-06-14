@@ -225,12 +225,7 @@ o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o = s:option(Value, "username", translate("Username"))
 o.rmempty = true
 o:depends("type", "naiveproxy")
-o:depends("type", "tuic")
-if s:cfgvalue("type") == "tuic" then
-  o.default = uuid
-else
-  o.default = nil
-end
+--o:depends("type", "tuic")
 o:depends({type = "socks5", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "socks", auth_enable = true})
@@ -356,7 +351,7 @@ o.default = "0"
 
 -- [[ TUIC ]]
 -- TuicNameId
-o = s:option(Value, "tuic_uuid", translate("TUIC NAME UUID (UUID)"))
+o = s:option(Value, "tuic_uuid", translate("TUIC user UUID"))
 o.rmempty = true
 o.default = uuid
 o:depends("type", "tuic")
@@ -378,8 +373,8 @@ o.rmempty = true
 
 o = s:option(Value, "heartbeat_interval", translate("Heartbeat interval"))
 o:depends("type", "tuic")
-o.datatype = "uinteger"
-o.default = "10000"
+--o.datatype = "uinteger"
+o.default = "3s"
 o.rmempty = true
 
 o = s:option(Flag, "disable_sni", translate("Disable SNI"))
@@ -390,6 +385,16 @@ o.rmempty = true
 o = s:option(Flag, "reduce_rtt", translate("Enable 0-RTT QUIC handshake"))
 o:depends("type", "tuic")
 o.default = 0
+o.rmempty = false
+
+o = s:option(Value, "send_window", translate("TUIC send window"))
+o.datatype = "uinteger"
+o:depends("type", "tuic")
+o.rmempty = true
+
+o = s:option(Value, "receive_window", translate("TUIC receive window"))
+o.datatype = "uinteger"
+o:depends("type", "tuic")
 o.rmempty = true
 
 o = s:option(Value, "max_udp_relay_packet_size", translate("Max UDP relay packet size"))
