@@ -306,13 +306,10 @@ local hysteria = {
 	lazy_start = (server.lazy_start == "1") and true or false
 }
 local tuic = {
-	relay = {
-		server = server.server,
-		port = tonumber(server.server_port),
-		server = server.server .. ":" .. port
+	relay:{
+		server = server.server .. ":" .. server.server_port,
 		uuid = server.username,
 		password = server.password,
-
 		certificates = server.certificate and { server.certpath } or nil,
 		udp_relay_mode = server.udp_relay_mode,
 		congestion_controller = server.congestion_controller,
@@ -324,9 +321,8 @@ local tuic = {
 		receive_window = tonumber(server.receive_window),
 		max_udp_relay_packet_size = tonumber(server.max_udp_relay_packet_size)
 	},
-	["local"] = {
-		port = tonumber(local_port),
-		ip = "0.0.0.0"
+	["local"]:{
+		port = "0.0.0.0:" .. tonumber(local_port),		
 	}
 }
 local config = {}
