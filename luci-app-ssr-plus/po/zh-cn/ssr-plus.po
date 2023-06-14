@@ -852,3 +852,28 @@ msgstr "应用"
 
 msgid "Enable Netflix Mode"
 msgstr "启用 Netflix 分流模式"
+
+msgid "TUIC user UUID"
+msgstr "TUIC用户uuid"
+
+msgid "UDP relay mode"
+msgstr "tuic UDP中继模式"
+
+msgid "Congestion control algorithm"
+msgstr "拥塞控制算法"
+
+msgid "Heartbeat interval"
+msgstr "连接保活间隔"
+
+msgid "Disable SNI"
+msgstr "关闭SNI服务器名称指示"
+
+msgid "Enable 0-RTT QUIC handshake"
+msgstr "客户端启用 0-RTT QUIC 连接握手"
+
+msgid "TUIC send window"
+msgstr "发送窗口（无需确认即可发送的最大字节数）"
+
+msgid "TUIC receive window"
+msgstr "接收窗口（无需确认即可接收的最大字节数）"
+
