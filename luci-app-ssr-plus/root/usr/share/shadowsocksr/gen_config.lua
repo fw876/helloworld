@@ -313,7 +313,7 @@ local tuic = {
 		certificates = server.certificate and { server.certpath } or nil,
 		udp_relay_mode = server.udp_relay_mode,
 		congestion_controller = server.congestion_controller,
-		heartbeat_interval = tonumber(server.heartbeat_interval),
+		heartbeat_interval = server.heartbeat_interval,
 		alpn = server.tls_alpn,
 		disable_sni = (server.disable_sni == "1"),
 		reduce_rtt = (server.reduce_rtt == "1"),
