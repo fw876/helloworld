@@ -308,7 +308,7 @@ local hysteria = {
 local tuic = {
 	relay:{
 		server = server.server .. ":" .. server.server_port,
-		uuid = server.username,
+		uuid = server.tuic_uuid,
 		password = server.password,
 		certificates = server.certificate and { server.certpath } or nil,
 		udp_relay_mode = server.udp_relay_mode,
