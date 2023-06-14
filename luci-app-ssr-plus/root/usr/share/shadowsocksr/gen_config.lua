@@ -306,7 +306,7 @@ local hysteria = {
 	lazy_start = (server.lazy_start == "1") and true or false
 }
 local tuic = {
-	relay:{
+	relay = {
 		server = server.server .. ":" .. server.server_port,
 		uuid = server.tuic_uuid,
 		password = server.password,
@@ -320,7 +320,7 @@ local tuic = {
 		send_window = tonumber(server.send_window),
 		receive_window = tonumber(server.receive_window)
 	},
-	local:{
+	["local"] = {
 		server = "0.0.0.0:" .. tonumber(local_port)		
 	}
 }
