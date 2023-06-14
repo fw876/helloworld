@@ -318,11 +318,10 @@ local tuic = {
 		disable_sni = (server.disable_sni == "1"),
 		reduce_rtt = (server.reduce_rtt == "1"),
 		send_window = tonumber(server.send_window),
-		receive_window = tonumber(server.receive_window),
-		max_udp_relay_packet_size = tonumber(server.max_udp_relay_packet_size)
+		receive_window = tonumber(server.receive_window)
 	},
-	["local"]:{
-		port = "0.0.0.0:" .. tonumber(local_port),		
+	local:{
+		server = "0.0.0.0:" .. tonumber(local_port)		
 	}
 }
 local config = {}
