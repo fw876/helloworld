@@ -316,7 +316,7 @@ local tuic = {
 		heartbeat = server.heartbeat_interval,
 		alpn = server.tls_alpn,
 		disable_sni = (server.disable_sni == "1"),
-		zero_rtt = (server.zero_rtt == "1"),
+		zero_rtt_handshake = (server.zero_rtt_handshake == "1"),
 		send_window = tonumber(server.send_window),
 		receive_window = tonumber(server.receive_window)
 	},
