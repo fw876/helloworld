@@ -390,11 +390,13 @@ o.rmempty = false
 o = s:option(Value, "send_window", translate("TUIC send window"))
 o.datatype = "uinteger"
 o:depends("type", "tuic")
+o.default = 16777216
 o.rmempty = true
 
 o = s:option(Value, "receive_window", translate("TUIC receive window"))
 o.datatype = "uinteger"
 o:depends("type", "tuic")
+o.default = 8388608
 o.rmempty = true
 
 o = s:option(Value, "max_udp_relay_packet_size", translate("Max UDP relay packet size"))
