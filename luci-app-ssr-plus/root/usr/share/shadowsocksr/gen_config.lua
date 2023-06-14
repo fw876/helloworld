@@ -312,11 +312,11 @@ local tuic = {
 		password = server.password,
 		certificates = server.certificate and { server.certpath } or nil,
 		udp_relay_mode = server.udp_relay_mode,
-		congestion_controller = server.congestion_controller,
+		congestion_control = server.congestion_control,
 		heartbeat_interval = server.heartbeat_interval,
 		alpn = server.tls_alpn,
 		disable_sni = (server.disable_sni == "1"),
-		reduce_rtt = (server.reduce_rtt == "1"),
+		zero_rtt = (server.zero_rtt == "1"),
 		send_window = tonumber(server.send_window),
 		receive_window = tonumber(server.receive_window)
 	},
