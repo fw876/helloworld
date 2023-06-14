@@ -363,7 +363,7 @@ o:value("quic", translate("QUIC"))
 o.default = "native"
 o.rmempty = true
 
-o = s:option(ListValue, "congestion_controller", translate("Congestion control algorithm"))
+o = s:option(ListValue, "congestion_control", translate("Congestion control algorithm"))
 o:depends("type", "tuic")
 o:value("bbr", translate("BBR"))
 o:value("cubic", translate("CUBIC"))
@@ -371,7 +371,7 @@ o:value("new_reno", translate("New Reno"))
 o.default = "cubic"
 o.rmempty = true
 
-o = s:option(Value, "heartbeat_interval", translate("Heartbeat interval"))
+o = s:option(Value, "heartbeat", translate("Heartbeat interval"))
 o:depends("type", "tuic")
 --o.datatype = "uinteger"
 o.default = "3s"
@@ -382,7 +382,7 @@ o:depends("type", "tuic")
 o.default = 0
 o.rmempty = true
 
-o = s:option(Flag, "reduce_rtt", translate("Enable 0-RTT QUIC handshake"))
+o = s:option(Flag, "zero_rtt", translate("Enable 0-RTT QUIC handshake"))
 o:depends("type", "tuic")
 o.default = 0
 o.rmempty = false
@@ -397,12 +397,6 @@ o = s:option(Value, "receive_window", translate("TUIC receive window"))
 o.datatype = "uinteger"
 o:depends("type", "tuic")
 o.default = 8388608
-o.rmempty = true
-
-o = s:option(Value, "max_udp_relay_packet_size", translate("Max UDP relay packet size"))
-o:depends("type", "tuic")
-o.datatype = "uinteger"
-o.default = "1500"
 o.rmempty = true
 
 -- VmessId
