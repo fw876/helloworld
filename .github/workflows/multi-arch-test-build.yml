@@ -1,9 +1,7 @@
-name: Test Build
+name: Start Build ssr+
 
 on:
-  pull_request:
-    paths-ignore:
-      - '**.md'
+  workflow_dispatch:
 
 jobs:
   build:
