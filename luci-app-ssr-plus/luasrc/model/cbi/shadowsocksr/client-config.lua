@@ -225,6 +225,7 @@ o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o = s:option(Value, "username", translate("Username"))
 o.rmempty = true
 o:depends("type", "naiveproxy")
+--o:depends("type", "tuic")
 o:depends({type = "socks5", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "socks", auth_enable = true})
@@ -349,6 +350,12 @@ o.rmempty = true
 o.default = "0"
 
 -- [[ TUIC ]]
+-- TuicNameId
+o = s:option(Value, "tuic_uuid", translate("TUIC user UUID"))
+o.rmempty = true
+o.default = uuid
+o:depends("type", "tuic")
+
 o = s:option(ListValue, "udp_relay_mode", translate("UDP relay mode"))
 o:depends("type", "tuic")
 o:value("native", translate("native"))
@@ -356,7 +363,7 @@ o:value("quic", translate("QUIC"))
 o.default = "native"
 o.rmempty = true
 
-o = s:option(ListValue, "congestion_controller", translate("Congestion control algorithm"))
+o = s:option(ListValue, "congestion_control", translate("Congestion control algorithm"))
 o:depends("type", "tuic")
 o:value("bbr", translate("BBR"))
 o:value("cubic", translate("CUBIC"))
@@ -364,10 +371,10 @@ o:value("new_reno", translate("New Reno"))
 o.default = "cubic"
 o.rmempty = true
 
-o = s:option(Value, "heartbeat_interval", translate("Heartbeat interval"))
+o = s:option(Value, "heartbeat", translate("Heartbeat interval"))
 o:depends("type", "tuic")
-o.datatype = "uinteger"
-o.default = "10000"
+--o.datatype = "uinteger"
+o.default = "3s"
 o.rmempty = true
 
 o = s:option(Flag, "disable_sni", translate("Disable SNI"))
@@ -375,15 +382,21 @@ o:depends("type", "tuic")
 o.default = 0
 o.rmempty = true
 
-o = s:option(Flag, "reduce_rtt", translate("Enable 0-RTT QUIC handshake"))
+o = s:option(Flag, "zero_rtt_handshake", translate("Enable 0-RTT QUIC handshake"))
 o:depends("type", "tuic")
 o.default = 0
+o.rmempty = false
+
+o = s:option(Value, "send_window", translate("TUIC send window"))
+o.datatype = "uinteger"
+o:depends("type", "tuic")
+o.default = 16777216
 o.rmempty = true
 
-o = s:option(Value, "max_udp_relay_packet_size", translate("Max UDP relay packet size"))
-o:depends("type", "tuic")
+o = s:option(Value, "receive_window", translate("TUIC receive window"))
 o.datatype = "uinteger"
-o.default = "1500"
+o:depends("type", "tuic")
+o.default = 8388608
 o.rmempty = true
 
 -- VmessId
