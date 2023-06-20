@@ -351,10 +351,17 @@ o.default = "0"
 
 -- [[ TUIC ]]
 -- TuicNameId
-o = s:option(Value, "tuic_uuid", translate("TUIC user UUID"))
+o = s:option(Value, "tuic_uuid", translate("TUIC User UUID"))
 o.rmempty = true
 o.default = uuid
 o:depends("type", "tuic")
+
+-- Tuic Password
+o = s:option(Value, "tuic_passwd", translate("TUIC User Password"))
+o.rmempty = true
+o.default = ""
+o:depends("type", "tuic")
+
 
 o = s:option(ListValue, "udp_relay_mode", translate("UDP relay mode"))
 o:depends("type", "tuic")
@@ -371,10 +378,41 @@ o:value("new_reno", translate("New Reno"))
 o.default = "cubic"
 o.rmempty = true
 
-o = s:option(Value, "heartbeat", translate("Heartbeat interval"))
+o = s:option(Value, "heartbeat", translate("Heartbeat interval(second)"))
 o:depends("type", "tuic")
---o.datatype = "uinteger"
-o.default = "3s"
+o.datatype = "uinteger"
+o.default = "3"
+o.rmempty = true
+
+o = s:option(Value, "timeout", translate("timeout for establishing a connection to server(second)"))
+o:depends("type", "tuic")
+o.datatype = "uinteger"
+o.default = "8"
+o.rmempty = true
+
+o = s:option(Value, "gc_interval", translate("garbage collection interval(second)"))
+o:depends("type", "tuic")
+o.datatype = "uinteger"
+o.default = "3"
+o.rmempty = true
+
+o = s:option(Value, "gc_lifetime", translate("garbage collection lifetime(second)"))
+o:depends("type", "tuic")
+o.datatype = "uinteger"
+o.default = "15"
+o.rmempty = true
+
+
+o = s:option(Value, "send_window", translate("TUIC send window"))
+o.datatype = "uinteger"
+o:depends("type", "tuic")
+o.default = 20971520
+o.rmempty = true
+
+o = s:option(Value, "receive_window", translate("TUIC receive window"))
+o.datatype = "uinteger"
+o:depends("type", "tuic")
+o.default = 10485760
 o.rmempty = true
 
 o = s:option(Flag, "disable_sni", translate("Disable SNI"))
@@ -385,18 +423,6 @@ o.rmempty = true
 o = s:option(Flag, "zero_rtt_handshake", translate("Enable 0-RTT QUIC handshake"))
 o:depends("type", "tuic")
 o.default = 0
-o.rmempty = false
-
-o = s:option(Value, "send_window", translate("TUIC send window"))
-o.datatype = "uinteger"
-o:depends("type", "tuic")
-o.default = 16777216
-o.rmempty = true
-
-o = s:option(Value, "receive_window", translate("TUIC receive window"))
-o.datatype = "uinteger"
-o:depends("type", "tuic")
-o.default = 8388608
 o.rmempty = true
 
 -- VmessId
