@@ -11,28 +11,27 @@ PKG_RELEASE:=1
 
 PKG_SOURCE_HEADER:=tuic-client-$(PKG_VERSION)
 PKG_SOURCE_BODY:=unknown-linux-musl
-#PKG_SOURCE_FOOTER:=tar.xz
-PKG_SOURCE_URL:=https://https://github.com/EAimTY/tuic/releases/download/$(PKG_SOURCE_HEADER)-$(PKG_VERSION)/
+PKG_SOURCE_URL:=https://github.com/EAimTY/tuic/releases/download/$(PKG_SOURCE_HEADER)/$(PKG_SOURCE_HEADER)-$(PKG_SOURCE_BODY)
 
 ifeq ($(ARCH),aarch64)
   PKG_SOURCE:=$(PKG_SOURCE_HEADER)-aarch64-$(PKG_SOURCE_BODY)
-  PKG_HASH:=
-else ifeq ($(ARCH),arm)
-  # Referred to golang/golang-values.mk
+  PKG_HASH:=29eaaf3bc05115acc7453ac26bacf9aff65211b1e8ca7f771b818248bec8601
+else ifeq ($ARCH),arm)
+        # Referred to golang/golang-values.mk
   ARM_CPU_FEATURES:=$(word 2,$(subst +,$(space),$(call qstrip,$(CONFIG_CPU_TYPE))))
   ifeq ($(ARM_CPU_FEATURES),)
-    PKG_SOURCE:=$(PKG_SOURCE_HEADER)-arm-$(PKG_SOURCE_BODY)eabi
-    PKG_HASH:=5ec0a5708bc4d1c984b48e70cc96642bc89ade19ee9b299af1f4522fd421561e
+    PKG_SOURCE:=$(PKG_SOURCE_HEADER)-armv7-$(PKG_SOURCE_BODY)eabi
+    PKG_HASH:=33a83ab05dc1a598552bf1f27114502b12c94b6e5333c6ac2def3739c00a4daf
   else
-    PKG_SOURCE:=$(PKG_SOURCE_HEADER)-arm-$(PKG_SOURCE_BODY)eabihf
-    PKG_HASH:=949f60a860dad40170bc70889af7a826f22b6fbaef55095fe8ef413cdd658b4a
+    PKG_SOURCE:=$(PKG_SOURCE_HEADER)-armv7-$(PKG_SOURCE_BODY)eabihf
+    PKG_HASH:=e2cc1d81ac376ff2a94976e78c861f5cd21ad809ff5b587ae967e2a63e4c35e4
   endif
 else ifeq ($(ARCH),i686)
   PKG_SOURCE:=$(PKG_SOURCE_HEADER)-i686-$(PKG_SOURCE_BODY)
-  PKG_HASH:=5b5e98f593493850dc4a29517f537136dc0fd62ae56ba958bbefcc4ba9b467dd
+  PKG_HASH:=67d930b4381a8848bf98acbccb538c73b72ca9dde0aed3705f73e62a9922f758
 else ifeq ($(ARCH),x86_64)
   PKG_SOURCE:=$(PKG_SOURCE_HEADER)-x86_64-$(PKG_SOURCE_BODY)
-  PKG_HASH:=6d1d73fb94bac7d15d360d9e1cbd9d6787faa20e7881ee41b7c444e7b520194a
+  PKG_HASH:=180c562691247a7feddf553706bc8fd5b5b9de3027154f94a767ea907a45e2de
 # Set the default value to make OpenWrt Package Checker happy
 else
   PKG_SOURCE:=dummy
@@ -73,4 +72,3 @@ define Build/Compile
 endef
 
  $(eval $(call BuildPackage,tuic-client))
-
