@@ -856,14 +856,32 @@ msgstr "启用 Netflix 分流模式"
 msgid "TUIC user UUID"
 msgstr "TUIC用户uuid"
 
+msgid "TUIC user Password"
+msgstr "TUIC用户密钥"
+
 msgid "UDP relay mode"
-msgstr "tuic UDP中继模式"
+msgstr "UDP中继模式"
+
+msgid "native UDP characteristics"
+msgstr "原生UDP特性"
+
+msgid "lossless UDP relay using QUIC streams, additional overhead is introduced"
+msgstr "使用 QUIC 流的无损 UDP 中继（引入了额外的开销）"
 
 msgid "Congestion control algorithm"
 msgstr "拥塞控制算法"
 
-msgid "Heartbeat interval"
-msgstr "连接保活间隔"
+msgid "Heartbeat interval(second)"
+msgstr "设置连接保活间隔（单位：秒）"
+
+msgid "Timeout for establishing a connection to server(second)"
+msgstr "设置建立连接超时（单位：秒）"
+
+msgid "Garbage collection interval(second)"
+msgstr "设置UDP碎片收集时间间隔（单位：秒）"
+
+msgid "Garbage collection lifetime(second)"
+msgstr "设置UDP碎片生存时间（单位：秒）"
 
 msgid "Disable SNI"
 msgstr "关闭SNI服务器名称指示"
