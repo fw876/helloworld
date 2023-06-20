@@ -306,23 +306,27 @@ local hysteria = {
 	lazy_start = (server.lazy_start == "1") and true or false
 }
 local tuic = {
-	relay = {
-		server = server.server .. ":" .. server.server_port,
-		uuid = server.tuic_uuid,
-		password = server.password,
-		certificates = server.certificate and { server.certpath } or nil,
-		udp_relay_mode = server.udp_relay_mode,
-		congestion_control = server.congestion_control,
-		heartbeat = server.heartbeat_interval,
-		alpn = server.tls_alpn,
-		disable_sni = (server.disable_sni == "1"),
-		zero_rtt_handshake = (server.zero_rtt_handshake == "1"),
-		send_window = tonumber(server.send_window),
-		receive_window = tonumber(server.receive_window)
-	},
-	["local"] = {
-		server = "0.0.0.0:" .. tonumber(local_port)		
-	}
+        relay = {
+                server = server.server .. ":" .. server.server_port,
+                uuid = server.tuic_uuid,
+                password = server.tuic_passwd,
+                certificates = server.certificate and { server.certpath } or nil,
+                udp_relay_mode = server.udp_relay_mode,
+                congestion_control = server.congestion_control,
+                heartbeat = server.heartbeat .. "s",
+                timeout = server.timeout .. "s",
+                gc_interval = server.gc_interval .. "s",
+                gc_lifetime = server.gc_lifetime .. "s",
+                alpn = server.tls_alpn,
+                disable_sni = (server.disable_sni == "1"),
+                zero_rtt_handshake = (server.zero_rtt_handshake == "1"),
+                send_window = tonumber(server.send_window),
+                receive_window = tonumber(server.receive_window),
+                max_udp_relay_packet_size = tonumber(server.max_udp_relay_packet_size)
+        },
+        ["local"] = {
+                server = "0.0.0.0:" .. tonumber(local_port)
+        }
 }
 local config = {}
 function config:new(o)
