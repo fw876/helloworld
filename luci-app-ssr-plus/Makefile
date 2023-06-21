@@ -120,7 +120,7 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_Hysteria
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_TUIC-Client
         bool "Include tuic-client"
-        default n
+        default y if i686||x86_64||arm||aarch64
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_IPT2Socks
         bool "Include IPT2Socks"
