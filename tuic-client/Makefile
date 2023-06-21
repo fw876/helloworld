@@ -41,26 +41,26 @@ else
 endif
 
 define Download/tuic-client
-        URL:=https://github.com/EAimTY/tuic/releases/download/$(TUIC_TYPE)/
-        URL_FILE:=$(TUIC_ARCH)
-        FILE:=$(TUIC_ARCH)
-        HASH:=$(PKG_HASH)
-#180c562691247a7feddf553706bc8fd5b5b9de3027154f94a767ea907a45e2de
+    URL:=https://github.com/EAimTY/tuic/releases/download/$(TUIC_TYPE)/
+    URL_FILE:=$(TUIC_ARCH)
+    FILE:=$(TUIC_ARCH)
+    HASH:=$(PKG_HASH)
 endef
 
 define Package/tuic-client
-        SECTION:=net
-        CATEGORY:=Network
-        SUBMENU:=Web Servers/Proxies
-        TITLE:=Delicately-TUICed 0-RTT proxy protocol
-        URL:=https://github.com/EAimTY/tuic/
-        PKGARCH:=all
+    SECTION:=net
+    CATEGORY:=Network
+    SUBMENU:=Web Servers/Proxies
+    TITLE:=Delicately-TUICed 0-RTT proxy protocol
+    URL:=https://github.com/EAimTY/tuic/
+    DEPENDS:=@USE_MUSL @(aarch64||arm||i686||x86_64) @!(TARGET_x86_geode||TARGET_x86_legacy)
+    #PKGARCH:=all
 endef
 
 define Build/Prepare
-        $(call Build/Prepare/Default)
+    $(call Build/Prepare/Default)
 ifneq ($(CONFIG_PACKAGE_tuic-client),)
-        $(call Download,tuic-client)
+    $(call Download,tuic-client)
 endif
 endef
 
@@ -68,9 +68,9 @@ define Build/Compile
 endef
 
 define Package/tuic-client/install
-        $(INSTALL_DIR) $(1)/usr/bin
-        $(INSTALL_BIN) $(DL_DIR)/$(TUIC_ARCH) $(1)/usr/bin/tuic-client
-        chmod +x $(1)/usr/bin/tuic-client
+    $(INSTALL_DIR) $(1)/usr/bin
+    $(INSTALL_BIN) $(DL_DIR)/$(TUIC_ARCH) $(1)/usr/bin/tuic-client
+    chmod +x $(1)/usr/bin/tuic-client
 endef
 
 $(eval $(call BuildPackage,tuic-client))
