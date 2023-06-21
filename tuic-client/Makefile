@@ -43,7 +43,7 @@ endif
 define Download/tuic-client
         URL:=https://github.com/EAimTY/tuic/releases/download/$(TUIC_TYPE)/
         URL_FILE:=$(TUIC_ARCH)
-        FILE:=tuic-client
+        FILE:=$(TUIC_ARCH)
         HASH:=$(PKG_HASH)
 #180c562691247a7feddf553706bc8fd5b5b9de3027154f94a767ea907a45e2de
 endef
