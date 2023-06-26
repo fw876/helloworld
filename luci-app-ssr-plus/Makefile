@@ -122,7 +122,7 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_TUIC-Client
         bool "Include tuic-client"
         depends on aarch||arm||i686||x86_64 
         depends on !(TARGET_x86_geode||TARGET_x86_legacy)
-        default y if i686||x86_64||arm||aarch64
+        default n if i686||x86_64||arm||aarch64
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_IPT2Socks
         bool "Include IPT2Socks"

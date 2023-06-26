@@ -308,8 +308,9 @@ local hysteria = {
 local tuic = {
         relay = {
                 server = server.server .. ":" .. server.server_port,
-                uuid = server.tuic_uuid,
-                password = server.tuic_passwd,
+                server_ip = server.tuic_ip,
+				uuid = server.tuic_uuid,
+				password = server.tuic_passwd,
                 certificates = server.certificate and { server.certpath } or nil,
                 udp_relay_mode = server.udp_relay_mode,
                 congestion_control = server.congestion_control,
@@ -321,11 +322,12 @@ local tuic = {
                 disable_sni = (server.disable_sni == "1"),
                 zero_rtt_handshake = (server.zero_rtt_handshake == "1"),
                 send_window = tonumber(server.send_window),
-                receive_window = tonumber(server.receive_window),
-                max_udp_relay_packet_size = tonumber(server.max_udp_relay_packet_size)
+                receive_window = tonumber(server.receive_window)
         },
         ["local"] = {
-                server = "0.0.0.0:" .. tonumber(local_port)
+                server = "0.0.0.0:" .. tonumber(local_port),
+				dual_stack = server.tuic_dual_stack,
+				max_packet_size = server.tuic_max_package_size
         }
 }
 local config = {}
