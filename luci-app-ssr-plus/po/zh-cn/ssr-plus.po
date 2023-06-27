@@ -856,8 +856,8 @@ msgstr "启用 Netflix 分流模式"
 msgid "TUIC User UUID"
 msgstr "TUIC用户uuid"
 
-msgid "The IP address of the TUIC proxy server, for overriding DNS resolving"
-msgstr "TUIC 服务器IP地址，用于覆盖DNS解析结果"
+msgid "TUIC Server IP Address"
+msgstr "TUIC 服务器IP地址"
 
 msgid "TUIC User Password"
 msgstr "TUIC用户密钥"

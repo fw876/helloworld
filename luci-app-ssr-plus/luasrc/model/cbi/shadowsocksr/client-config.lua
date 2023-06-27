@@ -355,7 +355,7 @@ o.default = uuid
 o:depends("type", "tuic")
 
 --Tuic IP
-o = s:option(Value, "tuic_ip", translate("The IP address of the TUIC proxy server, for overriding DNS resolving")
+o = s:option(Value, "tuic_ip", translate("TUIC Server IP Address"))
 o.rmempty = true
 o.datatype = "ip4addr"
 o.default = ""
@@ -430,12 +430,12 @@ o.default = 0
 o.rmempty = true
 
 --Tuic settings for the local inbound socks5 server
-o = s:option(Flag, "tuic_dual_stack", translate("Set if the listening socket should be dual-stack")
+o = s:option(Flag, "tuic_dual_stack", translate("Set if the listening socket should be dual-stack"))
 o:depends("type", "tuic")
 o.default = 0
 o.rmempty = true
 
-o = s:option(Flag, "tuic_max_package_size", translate("Maximum packet size the socks5 server can receive from external")
+o = s:option(Value, "tuic_max_package_size", translate("Maximum packet size the socks5 server can receive from external"))
 o:depends("type", "tuic")
 o.datatype = "uinteger"
 o.default = 1500

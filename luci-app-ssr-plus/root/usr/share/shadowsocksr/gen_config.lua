@@ -308,7 +308,7 @@ local hysteria = {
 local tuic = {
 		relay = {
 				server = server.server .. ":" .. server.server_port,
-				server_ip = server.tuic_ip,
+				ip = server.tuic_ip,
 				uuid = server.tuic_uuid,
 				password = server.tuic_passwd,
 				certificates = server.certificate and { server.certpath } or nil,
@@ -325,8 +325,8 @@ local tuic = {
 				receive_window = tonumber(server.receive_window)
         },
 		["local"] = {
-				server = "0.0.0.0:" .. tonumber(local_port),
-				dual_stack = server.tuic_dual_stack,
+				server = "[::]:" .. tonumber(local_port),
+				dual_stack = dual_stack = (server.tuic_dual_stack == "1") and true or false,
 				max_packet_size = server.tuic_max_package_size
 		}
 }
