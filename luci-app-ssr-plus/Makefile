@@ -10,7 +10,7 @@ PKG_CONFIG_DEPENDS:= \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Xray \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Hysteria \
-	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_TUIC \
+	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Tuic-Client \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_IPT2Socks \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Kcptun \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_NaiveProxy \
@@ -27,7 +27,7 @@ PKG_CONFIG_DEPENDS:= \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_ShadowsocksR_Libev_Server \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Trojan
 
-LUCI_TITLE:=SS/SSR/V2Ray/Trojan/NaiveProxy/Socks5/Tun LuCI interface
+LUCI_TITLE:=SS/SSR/V2Ray/Trojan/NaiveProxy/TUIC/Hysteria/Socks5/Tun LuCI interface
 LUCI_PKGARCH:=all
 LUCI_DEPENDS:= \
 	@(PACKAGE_libustream-mbedtls||PACKAGE_libustream-openssl||PACKAGE_libustream-wolfssl) \
@@ -40,7 +40,7 @@ LUCI_DEPENDS:= \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Xray:xray-core \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG:chinadns-ng \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Hysteria:hysteria \
-	+PACKAGE_$(PKG_NAME)_INCLUDE_TUIC:tuic-client \
+	+PACKAGE_$(PKG_NAME)_INCLUDE_TUIC-Client:tuic-client \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_IPT2Socks:ipt2socks \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Kcptun:kcptun-client \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_NaiveProxy:naiveproxy \
@@ -118,8 +118,10 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_Hysteria
 	bool "Include Hysteria"
 	default n
 
-config PACKAGE_$(PKG_NAME)_INCLUDE_TUIC
+config PACKAGE_$(PKG_NAME)_INCLUDE_TUIC-Client
 	bool "Include tuic-client"
+	depends on aarch||arm||i686||x86_64
+	depends on !(TARGET_x86_geode||TARGET_x86_legacy)
 	default n
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_IPT2Socks
