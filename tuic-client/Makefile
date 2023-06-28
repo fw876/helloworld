@@ -9,43 +9,42 @@ PKG_NAME:=tuic-client
 PKG_VERSION:=1.0.0
 PKG_RELEASE:=1
 
-PKG_SOURCE_HEADER:=tuic-client-$(PKG_VERSION)
-PKG_SOURCE_BODY:=unknown-linux-musl
-#PKG_SOURCE_FOOTER:=tar.xz
-PKG_SOURCE_URL:=https://https://github.com/EAimTY/tuic/releases/download/$(PKG_SOURCE_HEADER)-$(PKG_VERSION)/
-
-ifeq ($(ARCH),aarch64)
-  PKG_SOURCE:=$(PKG_SOURCE_HEADER)-aarch64-$(PKG_SOURCE_BODY)
-  PKG_HASH:=
-else ifeq ($(ARCH),arm)
-  # Referred to golang/golang-values.mk
-  ARM_CPU_FEATURES:=$(word 2,$(subst +,$(space),$(call qstrip,$(CONFIG_CPU_TYPE))))
-  ifeq ($(ARM_CPU_FEATURES),)
-    PKG_SOURCE:=$(PKG_SOURCE_HEADER)-arm-$(PKG_SOURCE_BODY)eabi
-    PKG_HASH:=5ec0a5708bc4d1c984b48e70cc96642bc89ade19ee9b299af1f4522fd421561e
-  else
-    PKG_SOURCE:=$(PKG_SOURCE_HEADER)-arm-$(PKG_SOURCE_BODY)eabihf
-    PKG_HASH:=949f60a860dad40170bc70889af7a826f22b6fbaef55095fe8ef413cdd658b4a
-  endif
-else ifeq ($(ARCH),i686)
-  PKG_SOURCE:=$(PKG_SOURCE_HEADER)-i686-$(PKG_SOURCE_BODY)
-  PKG_HASH:=5b5e98f593493850dc4a29517f537136dc0fd62ae56ba958bbefcc4ba9b467dd
-else ifeq ($(ARCH),x86_64)
-  PKG_SOURCE:=$(PKG_SOURCE_HEADER)-x86_64-$(PKG_SOURCE_BODY)
-  PKG_HASH:=6d1d73fb94bac7d15d360d9e1cbd9d6787faa20e7881ee41b7c444e7b520194a
-# Set the default value to make OpenWrt Package Checker happy
-else
-  PKG_SOURCE:=dummy
-  PKG_HASH:=dummy
-endif
-
-PKG_MAINTAINER:=Tianling Shen <cnsztl@immortalwrt.org>
-PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE
+PKG_MAINTAINER:=Tianling Shen <cnsztl@immortalwrt.org>
 
 include $(INCLUDE_DIR)/package.mk
 
-#TAR_CMD:=$(HOST_TAR) -C $(PKG_BUILD_DIR) $(TAR_OPTIONS)
+TUIC_TYPE:=tuic-client-$(PKG_VERSION)
+TUIC_FOOT:=unknown-linux-musl
+ifeq ($(ARCH),aarch64)
+    TUIC_ARCH:=$(TUIC_TYPE)-aarch64-$(TUIC_FOOT)
+    PKG_HASH:=29eaaf3bc05115acc7453ac26bacf9aff65211b1e8ca7f771b818248bec8601
+else ifeq ($ARCH),arm)
+    ARM_CPU_FEATURES:=$(word 2,$(subst +,$(space),$(call qstrip,$(CONFIG_CPU_TYPE))))
+    ifeq ($(ARM_CPU_FEATURES),)
+        TUIC_ARCH:=$(TUIC_TYPE)-armv7-$(TUIC_FOOT)eabi
+        PKG_HASH:=33a83ab05dc1a598552bf1f27114502b12c94b6e5333c6ac2def3739c00a4daf
+    else
+        TUIC_ARCH:=$(TUIC_TYPE)-armv7-$(TUIC_FOOT)eabihf
+        PKG_HASH:=e2cc1d81ac376ff2a94976e78c861f5cd21ad809ff5b587ae967e2a63e4c35e4
+    endif
+else ifeq ($(ARCH),i686)
+    TUIC_ARCH:=$(TUIC_TYPE)-i686-$(TUIC_FOOT)
+    PKG_HASH:=67d930b4381a8848bf98acbccb538c73b72ca9dde0aed3705f73e62a9922f758
+else ifeq ($(ARCH),x86_64)
+    TUIC_ARCH:=$(TUIC_TYPE)-x86_64-$(TUIC_FOOT)
+    PKG_HASH:=180c562691247a7feddf553706bc8fd5b5b9de3027154f94a767ea907a45e2de
+else
+    TUIC_ARCH:=dummy
+    PKG_HASH:=dummy
+endif
+
+define Download/tuic-client
+    URL:=https://github.com/EAimTY/tuic/releases/download/$(TUIC_TYPE)/
+    URL_FILE:=$(TUIC_ARCH)
+    FILE:=$(TUIC_ARCH)
+    HASH:=$(PKG_HASH)
+endef
 
 define Package/tuic-client
     SECTION:=net
@@ -54,23 +53,23 @@ define Package/tuic-client
     TITLE:=Delicately-TUICed 0-RTT proxy protocol
     URL:=https://github.com/EAimTY/tuic/
     DEPENDS:=@USE_MUSL @(aarch64||arm||i686||x86_64) @!(TARGET_x86_geode||TARGET_x86_legacy)
+    #PKGARCH:=all aarch64 arm i686 x86_64
 endef
 
-define Package/tuic-client/description
-        TUIC is a proxy protocol focusing on minimize the additional handshake
-         latency caused by relaying as much as possible, as well as keeping 
-        the protocol itself being simple and easy to implement.
-        TUIC is originally designed to be used on top of the QUIC protocol, 
-        but you can use it with any other protocol, e.g. TCP, in theory
+define Build/Prepare
+    $(call Build/Prepare/Default)
+ifneq ($(CONFIG_PACKAGE_tuic-client),)
+    $(call Download,tuic-client)
+endif
 endef
-
-  define Package/tuic-client/install
-        $(INSTALL_DIR) $(1)/usr/bin
-        $(INSTALL_BIN) $(PKG_BUILD_DIR)/ $(1)/usr/bin/tuic-client
-  endef
 
 define Build/Compile
 endef
 
- $(eval $(call BuildPackage,tuic-client))
+define Package/tuic-client/install
+    $(INSTALL_DIR) $(1)/usr/bin
+    $(INSTALL_BIN) $(DL_DIR)/$(TUIC_ARCH) $(1)/usr/bin/tuic-client
+    chmod +x $(1)/usr/bin/tuic-client
+endef
 
+$(eval $(call BuildPackage,tuic-client))
