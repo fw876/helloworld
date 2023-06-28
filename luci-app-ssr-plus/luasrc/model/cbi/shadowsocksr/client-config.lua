@@ -225,7 +225,6 @@ o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o = s:option(Value, "username", translate("Username"))
 o.rmempty = true
 o:depends("type", "naiveproxy")
---o:depends("type", "tuic")
 o:depends({type = "socks5", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "socks", auth_enable = true})
@@ -237,7 +236,6 @@ o:depends("type", "ssr")
 o:depends("type", "ss")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
-o:depends("type", "tuic")
 o:depends({type = "socks5", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "socks", socks_ver = "5", auth_enable = true})
@@ -356,6 +354,13 @@ o.rmempty = true
 o.default = uuid
 o:depends("type", "tuic")
 
+--Tuic IP
+o = s:option(Value, "tuic_ip", translate("TUIC Server IP Address"))
+o.rmempty = true
+o.datatype = "ip4addr"
+o.default = ""
+o:depends("type", "tuic")
+
 -- Tuic Password
 o = s:option(Value, "tuic_passwd", translate("TUIC User Password"))
 o.rmempty = true
@@ -365,8 +370,8 @@ o:depends("type", "tuic")
 
 o = s:option(ListValue, "udp_relay_mode", translate("UDP relay mode"))
 o:depends("type", "tuic")
-o:value("native", translate("native"))
-o:value("quic", translate("QUIC"))
+o:value("native", translate("native UDP characteristics")
+o:value("quic", translate("lossless UDP relay using QUIC streams")
 o.default = "native"
 o.rmempty = true
 
@@ -384,35 +389,34 @@ o.datatype = "uinteger"
 o.default = "3"
 o.rmempty = true
 
-o = s:option(Value, "timeout", translate("timeout for establishing a connection to server(second)"))
+o = s:option(Value, "timeout", translate("Timeout for establishing a connection to server(second)"))
 o:depends("type", "tuic")
 o.datatype = "uinteger"
 o.default = "8"
 o.rmempty = true
 
-o = s:option(Value, "gc_interval", translate("garbage collection interval(second)"))
+o = s:option(Value, "gc_interval", translate("Garbage collection interval(second)"))
 o:depends("type", "tuic")
 o.datatype = "uinteger"
 o.default = "3"
 o.rmempty = true
 
-o = s:option(Value, "gc_lifetime", translate("garbage collection lifetime(second)"))
+o = s:option(Value, "gc_lifetime", translate("Garbage collection lifetime(second)"))
 o:depends("type", "tuic")
 o.datatype = "uinteger"
 o.default = "15"
 o.rmempty = true
 
-
 o = s:option(Value, "send_window", translate("TUIC send window"))
-o.datatype = "uinteger"
 o:depends("type", "tuic")
-o.default = 20971520
+o.datatype = "uinteger"
+o.default = 16777216
 o.rmempty = true
 
 o = s:option(Value, "receive_window", translate("TUIC receive window"))
-o.datatype = "uinteger"
 o:depends("type", "tuic")
-o.default = 10485760
+o.datatype = "uinteger"
+o.default = 8388608
 o.rmempty = true
 
 o = s:option(Flag, "disable_sni", translate("Disable SNI"))
@@ -423,6 +427,18 @@ o.rmempty = true
 o = s:option(Flag, "zero_rtt_handshake", translate("Enable 0-RTT QUIC handshake"))
 o:depends("type", "tuic")
 o.default = 0
+o.rmempty = true
+
+--Tuic settings for the local inbound socks5 server
+o = s:option(Flag, "tuic_dual_stack", translate("Set if the listening socket should be dual-stack"))
+o:depends("type", "tuic")
+o.default = 0
+o.rmempty = true
+
+o = s:option(Value, "tuic_max_package_size", translate("Maximum packet size the socks5 server can receive from external"))
+o:depends("type", "tuic")
+o.datatype = "uinteger"
+o.default = 1500
 o.rmempty = true
 
 -- VmessId
