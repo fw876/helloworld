@@ -123,7 +123,7 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_TUIC-Client
 	bool "Include tuic-client"
 	select PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG
 	select PACKAGE_$(PKG_NAME)_INCLUDE_IPT2Socks
-	depends on aarch64||arm64||i686||x86_64
+	depends on aarch64||i686||x86_64
 	depends on !(TARGET_x86_geode||TARGET_x86_legacy)
 	default n
 
