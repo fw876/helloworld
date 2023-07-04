@@ -116,7 +116,7 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Hysteria
 	bool "Include Hysteria"
-        select PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG
+	select PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG
 	default n
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_TUIC-Client
