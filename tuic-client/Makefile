@@ -19,6 +19,15 @@ TUIC_FOOT:=unknown-linux-musl
 ifeq ($(ARCH),aarch64)
 	TUIC_ARCH:=$(TUIC_TYPE)-aarch64-$(TUIC_FOOT)
 	PKG_HASH:=c29eaaf3bc05115acc7453ac26bacf9aff65211b1e8ca7f771b818248bec8601
+else ifeq ($ARCH),arm64)
+	ARM_CPU_FEATURES:=$(word 2,$(subst +,$(space),$(call qstrip,$(CONFIG_CPU_TYPE))))
+	ifeq ($(ARM_CPU_FEATURES),)
+		TUIC_ARCH:=$(TUIC_TYPE)-armv7-$(TUIC_FOOT)eabi
+		PKG_HASH:=33a83ab05dc1a598552bf1f27114502b12c94b6e5333c6ac2def3739c00a4daf
+	else
+		TUIC_ARCH:=$(TUIC_TYPE)-armv7-$(TUIC_FOOT)eabihf
+		PKG_HASH:=e2cc1d81ac376ff2a94976e78c861f5cd21ad809ff5b587ae967e2a63e4c35e4
+	endif
 else ifeq ($(ARCH),i686)
 	TUIC_ARCH:=$(TUIC_TYPE)-i686-$(TUIC_FOOT)
 	PKG_HASH:=67d930b4381a8848bf98acbccb538c73b72ca9dde0aed3705f73e62a9922f758
