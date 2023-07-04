@@ -34,9 +34,6 @@ else ifeq ($(ARCH),i686)
 else ifeq ($(ARCH),x86_64)
 	TUIC_ARCH:=$(TUIC_TYPE)-x86_64-$(TUIC_FOOT)
 	PKG_HASH:=180c562691247a7feddf553706bc8fd5b5b9de3027154f94a767ea907a45e2de
-else
-	TUIC_ARCH:=dummy
-	PKG_HASH:=dummy
 endif
 
 define Download/tuic-client
