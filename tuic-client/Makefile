@@ -18,7 +18,7 @@ TUIC_TYPE:=tuic-client-$(PKG_VERSION)
 TUIC_FOOT:=unknown-linux-musl
 ifeq ($(ARCH),aarch64)
 	TUIC_ARCH:=$(TUIC_TYPE)-aarch64-$(TUIC_FOOT)
-	PKG_HASH:=29eaaf3bc05115acc7453ac26bacf9aff65211b1e8ca7f771b818248bec8601
+	PKG_HASH:=c29eaaf3bc05115acc7453ac26bacf9aff65211b1e8ca7f771b818248bec8601
 else ifeq ($ARCH),arm)
 	ARM_CPU_FEATURES:=$(word 2,$(subst +,$(space),$(call qstrip,$(CONFIG_CPU_TYPE))))
 	ifeq ($(ARM_CPU_FEATURES),)
