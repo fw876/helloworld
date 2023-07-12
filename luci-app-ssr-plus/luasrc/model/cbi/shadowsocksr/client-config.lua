@@ -370,8 +370,8 @@ o:depends("type", "tuic")
 
 o = s:option(ListValue, "udp_relay_mode", translate("UDP relay mode"))
 o:depends("type", "tuic")
-o:value("native", translate("native UDP characteristics")
-o:value("quic", translate("lossless UDP relay using QUIC streams")
+o:value("native", translate("native UDP characteristics"))
+o:value("quic", translate("lossless UDP relay using QUIC streams"))
 o.default = "native"
 o.rmempty = true
 
@@ -430,10 +430,10 @@ o.default = 0
 o.rmempty = true
 
 --Tuic settings for the local inbound socks5 server
-o = s:option(Flag, "tuic_dual_stack", translate("Set if the listening socket should be dual-stack"))
-o:depends("type", "tuic")
-o.default = 0
-o.rmempty = true
+--o = s:option(Flag, "tuic_dual_stack", translate("Set if the listening socket should be dual-stack"))
+--o:depends("type", "tuic")
+--o.default = 0
+--o.rmempty = true
 
 o = s:option(Value, "tuic_max_package_size", translate("Maximum packet size the socks5 server can receive from external"))
 o:depends("type", "tuic")
