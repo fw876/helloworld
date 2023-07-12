@@ -853,17 +853,38 @@ msgstr "应用"
 msgid "Enable Netflix Mode"
 msgstr "启用 Netflix 分流模式"
 
-msgid "TUIC user UUID"
+msgid "TUIC User UUID"
 msgstr "TUIC用户uuid"
 
+msgid "TUIC Server IP Address"
+msgstr "TUIC 服务器IP地址"
+
+msgid "TUIC User Password"
+msgstr "TUIC用户密钥"
+
 msgid "UDP relay mode"
-msgstr "tuic UDP中继模式"
+msgstr "UDP中继模式"
+
+msgid "native UDP characteristics"
+msgstr "原生UDP特性"
+
+msgid "lossless UDP relay using QUIC streams"
+msgstr "使用 QUIC 流的无损 UDP 中继"
 
 msgid "Congestion control algorithm"
 msgstr "拥塞控制算法"
 
-msgid "Heartbeat interval"
-msgstr "连接保活间隔"
+msgid "Heartbeat interval(second)"
+msgstr "保活心跳包发送间隔（单位：秒）"
+
+msgid "Timeout for establishing a connection to server(second)"
+msgstr "连接超时时间（单位：秒）"
+
+msgid "Garbage collection interval(second)"
+msgstr "UDP数据包片残片清理间隔（单位：秒）"
+
+msgid "Garbage collection lifetime(second)"
+msgstr "UDP数据包残片在服务器的保留时间（单位：秒）"
 
 msgid "Disable SNI"
 msgstr "关闭SNI服务器名称指示"
@@ -872,8 +893,13 @@ msgid "Enable 0-RTT QUIC handshake"
 msgstr "客户端启用 0-RTT QUIC 连接握手"
 
 msgid "TUIC send window"
-msgstr "发送窗口（无需确认即可发送的最大字节数）"
+msgstr "发送窗口（无需确认即可发送的最大字节数：默认8Mb*2）"
 
 msgid "TUIC receive window"
-msgstr "接收窗口（无需确认即可接收的最大字节数）"
+msgstr "接收窗口（无需确认即可接收的最大字节数：默认8Mb）"
 
+msgid "Set if the listening socket should be dual-stack"
+msgstr "设置监听套接字为双栈"
+
+msgid "Maximum packet size the socks5 server can receive from external"
+msgstr "socks5服务器可以从外部接收的最大数据包大小（单位：字节）"
