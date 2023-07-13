@@ -370,8 +370,8 @@ o:depends("type", "tuic")
 
 o = s:option(ListValue, "udp_relay_mode", translate("UDP relay mode"))
 o:depends("type", "tuic")
-o:value("native", translate("native UDP characteristics")
-o:value("quic", translate("lossless UDP relay using QUIC streams")
+o:value("native", translate("native UDP characteristics"))
+o:value("quic", translate("lossless UDP relay using QUIC streams"))
 o.default = "native"
 o.rmempty = true
 

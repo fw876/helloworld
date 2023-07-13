@@ -314,10 +314,10 @@ local tuic = {
 				certificates = server.certificate and { server.certpath } or nil,
 				udp_relay_mode = server.udp_relay_mode,
 				congestion_control = server.congestion_control,
-				heartbeat = server.heartbeat .. "s",
-				timeout = server.timeout .. "s",
-				gc_interval = server.gc_interval .. "s",
-				gc_lifetime = server.gc_lifetime .. "s",
+				heartbeat = server.heartbeat,
+				timeout = server.timeout,
+				gc_interval = server.gc_interval,
+				gc_lifetime = server.gc_lifetime,
 				alpn = server.tls_alpn,
 				disable_sni = (server.disable_sni == "1"),
 				zero_rtt_handshake = (server.zero_rtt_handshake == "1"),
@@ -326,7 +326,7 @@ local tuic = {
         },
 		["local"] = {
 				server = "[::]:" .. tonumber(local_port),
-				dual_stack = dual_stack = (server.tuic_dual_stack == "1") and true or false,
+				dual_stack = (server.tuic_dual_stack == "1") and true or false,
 				max_packet_size = server.tuic_max_package_size
 		}
 }
