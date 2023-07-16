@@ -383,28 +383,24 @@ o:value("new_reno", translate("New Reno"))
 o.default = "cubic"
 o.rmempty = true
 
-o = s:option(Value, "heartbeat", translate("Heartbeat interval(second)"))
+o = s:option(Value, "heartbeat_interval", translate("Heartbeat interval(second)"))
 o:depends("type", "tuic")
-o.datatype = "uinteger"
-o.default = "3"
+o.default = "3s"
 o.rmempty = true
 
 o = s:option(Value, "timeout", translate("Timeout for establishing a connection to server(second)"))
 o:depends("type", "tuic")
-o.datatype = "uinteger"
-o.default = "8"
+o.default = "8s"
 o.rmempty = true
 
 o = s:option(Value, "gc_interval", translate("Garbage collection interval(second)"))
 o:depends("type", "tuic")
-o.datatype = "uinteger"
-o.default = "3"
+o.default = "3s"
 o.rmempty = true
 
 o = s:option(Value, "gc_lifetime", translate("Garbage collection lifetime(second)"))
 o:depends("type", "tuic")
-o.datatype = "uinteger"
-o.default = "15"
+o.default = "15s"
 o.rmempty = true
 
 o = s:option(Value, "send_window", translate("TUIC send window"))
