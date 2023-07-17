@@ -885,5 +885,4 @@ if is_finded("kcptun-client") then
 	o:depends("type", "ssr")
 	o:depends("type", "ss")
 end
-
 return m

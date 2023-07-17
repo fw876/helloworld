@@ -30,6 +30,7 @@ include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 define Package/hysteria
   SECTION:=net
   CATEGORY:=Network
+  SUBMENU:=Web Servers/Proxies
   TITLE:=A feature-packed network utility optimized for networks of poor quality
   URL:=https://github.com/apernet/hysteria
   DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle
