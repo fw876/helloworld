@@ -61,58 +61,58 @@ define Package/$(PKG_NAME)/config
 select PACKAGE_luci-lib-ipkg if PACKAGE_$(PKG_NAME)
 
 choice
-	prompt "Shadowsocks Client Selection"
-	default PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Rust_Client if aarch64
-	default PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Libev_Client
+        prompt "Shadowsocks Client Selection"
+        default PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Rust_Client if aarch64
+        default PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Libev_Client
 
-	config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_NONE_Client
-	bool "None"
+        config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_NONE_Client
+        bool "None"
 
-	config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Libev_Client
-	bool "Shadowsocks-libev"
+        config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Libev_Client
+        bool "Shadowsocks-libev"
 
-	config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Rust_Client
-	bool "Shadowsocks-rust"
-	depends on aarch64||arm||i386||mips||mipsel||x86_64
-	depends on !(TARGET_x86_geode||TARGET_x86_legacy)
+        config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Rust_Client
+        bool "Shadowsocks-rust"
+        depends on aarch64||arm||i386||mips||mipsel||x86_64
+        depends on !(TARGET_x86_geode||TARGET_x86_legacy)
 endchoice
 
 choice
-	prompt "Shadowsocks Server Selection"
-	default PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Rust_Server if aarch64
-	default PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Libev_Server if i386||x86_64||arm
-	default PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_NONE_Server
+        prompt "Shadowsocks Server Selection"
+        default PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Rust_Server if aarch64
+        default PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Libev_Server if i386||x86_64||arm
+        default PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_NONE_Server
 
-	config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_NONE_Server
-	bool "None"
+        config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_NONE_Server
+        bool "None"
 
-	config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Libev_Server
-	bool "Shadowsocks-libev"
+        config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Libev_Server
+        bool "Shadowsocks-libev"
 
-	config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Rust_Server
-	bool "Shadowsocks-rust"
-	depends on aarch64||arm||i386||mips||mipsel||x86_64
-	depends on !(TARGET_x86_geode||TARGET_x86_legacy)
+        config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Rust_Server
+        bool "Shadowsocks-rust"
+        depends on aarch64||arm||i386||mips||mipsel||x86_64
+        depends on !(TARGET_x86_geode||TARGET_x86_legacy)
 endchoice
 
 choice
-	prompt "V2ray-core Selection"
-	default PACKAGE_$(PKG_NAME)_INCLUDE_Xray if aarch64||arm||i386||x86_64
-	default PACKAGE_$(PKG_NAME)_INCLUDE_NONE_V2RAY
+        prompt "V2ray-core Selection"
+        default PACKAGE_$(PKG_NAME)_INCLUDE_Xray if aarch64||arm||i386||x86_64
+        default PACKAGE_$(PKG_NAME)_INCLUDE_NONE_V2RAY
 
-	config PACKAGE_$(PKG_NAME)_INCLUDE_NONE_V2RAY
-	bool "None"
+        config PACKAGE_$(PKG_NAME)_INCLUDE_NONE_V2RAY
+        bool "None"
 
-	config PACKAGE_$(PKG_NAME)_INCLUDE_V2ray
-	bool "V2ray-core"
+        config PACKAGE_$(PKG_NAME)_INCLUDE_V2ray
+        bool "V2ray-core"
 
-	config PACKAGE_$(PKG_NAME)_INCLUDE_Xray
-	bool "Xray-core"
+        config PACKAGE_$(PKG_NAME)_INCLUDE_Xray
+        bool "Xray-core"
 endchoice
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG
-	bool "Include ChinaDNS-NG"
-	default y
+        bool "Include ChinaDNS-NG"
+        default y
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Hysteria
 	bool "Include Hysteria"
@@ -128,42 +128,42 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_TUIC-Client
 	default n
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_IPT2Socks
-	bool "Include IPT2Socks"
-	default n
+        bool "Include IPT2Socks"
+        default n
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Kcptun
-	bool "Include Kcptun"
-	default n
+        bool "Include Kcptun"
+        default n
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_NaiveProxy
-	bool "Include NaiveProxy"
-	depends on !(arc||armeb||mips||mips64||powerpc||TARGET_gemini)
-	default n
+        bool "Include NaiveProxy"
+        depends on !(arc||armeb||mips||mips64||powerpc||TARGET_gemini)
+        default n
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Redsocks2
-	bool "Include Redsocks2"
-	default n
+        bool "Include Redsocks2"
+        default n
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Simple_Obfs
-	bool "Include Shadowsocks Simple Obfs Plugin"
-	default y
+        bool "Include Shadowsocks Simple Obfs Plugin"
+        default y
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_V2ray_Plugin
-	bool "Include Shadowsocks V2ray Plugin"
-	default n
+        bool "Include Shadowsocks V2ray Plugin"
+        default n
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_ShadowsocksR_Libev_Client
-	bool "Include ShadowsocksR Libev Client"
-	default y
+        bool "Include ShadowsocksR Libev Client"
+        default y
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_ShadowsocksR_Libev_Server
-	bool "Include ShadowsocksR Libev Server"
-	default y if i386||x86_64||arm
+        bool "Include ShadowsocksR Libev Server"
+        default y if i386||x86_64||arm
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Trojan
-	bool "Include Trojan"
-	select PACKAGE_$(PKG_NAME)_INCLUDE_IPT2Socks
-	default n
+        bool "Include Trojan"
+        select PACKAGE_$(PKG_NAME)_INCLUDE_IPT2Socks
+        default n
 endef
 
 define Package/$(PKG_NAME)/conffiles
