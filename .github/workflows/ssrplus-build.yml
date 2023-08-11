@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
  
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
           
       - name: Initialization values
         run: |         
-          echo "date1=$(date +'%%y.%m.%d_%H.%M.%S')" >> $GITHUB_ENV          
+          echo "date1=$(date +'%y.%m.%d_%H.%M.%S')" >> $GITHUB_ENV          
           echo "date2=$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_ENV
           echo "date3=$(date +'%m/%d %Y')" >> $GITHUB_ENV
           echo "date4=$(date +'%m.%d')" >> $GITHUB_ENV
@@ -72,7 +72,7 @@ jobs:
           mkdir upload
           cp bin/packages/${{ matrix.arch }}/packages_ci/*.ipk ./upload || true
           echo "FIRMPATH=$PWD" >> $GITHUB_ENV
-          tar -czvf ${{matrix.arch}}-packages_${{env.date1}}.tar.gz ./upload
+          tar -czvf ${{matrix.arch}}-packages_${{env.date1}}.tar.gz ./upload/*.*
 
       - name: Collect metadata
         run: |
@@ -138,6 +138,6 @@ jobs:
         with:
           token: ${{ github.token }}
           repository: ${{ github.repository }}
-          retain_days: 0
-          keep_minimum_runs: 1
+          retain_days: 1
+          keep_minimum_runs: 0
 
