@@ -37,11 +37,11 @@ jobs:
           BRANCH="master"
           echo "Building for $BRANCH"
           echo "BRANCH=$BRANCH" >> $GITHUB_ENV
-
-      - name: Build
-        uses: immortalwrt/gh-action-sdk@master
-        run: |         
+          
           echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf
+          
+      - name: Build
+        uses: immortalwrt/gh-action-sdk@master      
         env:
           ARCH: ${{ matrix.arch }}-${{ env.BRANCH }}
           FEEDNAME: packages_ci
