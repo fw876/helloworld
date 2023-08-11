@@ -1,4 +1,4 @@
-name: Start build ssr+  two platforms by wk
+name: build ssr-plus+
 
 on:
   workflow_dispatch:
@@ -17,8 +17,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: aarch64_cortex-a53
-            target: mvebu-cortexa53
+          - arch: aarch64_generic
+            target: aarch64_generic
 
           - arch: x86_64
             target: x86-64
