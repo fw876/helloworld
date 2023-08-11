@@ -38,33 +38,11 @@ jobs:
           echo "Building for $BRANCH"
           echo "BRANCH=$BRANCH" >> $GITHUB_ENV
 
-      - name: Determine changed packages
-        run: |
-          # only detect packages with changes
-          PKG_ROOTS=$(find . -name Makefile | \
-            grep -v ".*/src/Makefile" | \
-            sed -e 's@./\(.*\)/Makefile@\1/@')
-          CHANGES=$(git diff --diff-filter=d --name-only origin/$BRANCH)
-
-          for ROOT in $PKG_ROOTS; do
-            for CHANGE in $CHANGES; do
-              if [[ "$CHANGE" == "$ROOT"* ]]; then
-                PACKAGES+=$(echo "$ROOT" | sed -e 's@\(.*\)/@\1 @')
-                break
-              fi
-            done
-          done
-          # fallback to test packages if nothing explicitly changes this is
-          # should run if other mechanics in packages.git changed
-          PACKAGES="${PACKAGES:-luci-app-ssr-plus}"
-
-          echo "Building $PACKAGES"
-          echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
-
       - name: Build
         uses: immortalwrt/gh-action-sdk@master
         env:
           ARCH: ${{ matrix.arch }}-${{ env.BRANCH }}
+          EXTRA_FEEDS: ${{ github.workspace }}/extra_feed.conf
           FEEDNAME: packages_ci
 
       - name: Move created packages to project dir
