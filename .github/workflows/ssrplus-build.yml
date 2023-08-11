@@ -71,8 +71,8 @@ jobs:
         run: | 
           mkdir upload
           cp bin/packages/${{ matrix.arch }}/packages_ci/*.ipk ./upload || true
-          echo "FIRMPATH=$PWD/upload" >> $GITHUB_ENV
-          tar -czvf ${{ env.FIRMPATH }}/${{matrix.arch}}-packages.tar.gz ${{ env.FIRMPATH }}/*.ipk
+          echo "FIRMPATH=$PWD" >> $GITHUB_ENV
+          tar -czvf ${{matrix.arch}}-packages_${{env.date1}}.tar.gz ./upload
 
       - name: Collect metadata
         run: |
