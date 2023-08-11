@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
  
 jobs:
   build:
@@ -26,9 +26,11 @@ jobs:
           fetch-depth: 0
           
       - name: Initialization values
-        run: |
-          export OWRT_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
-          echo "OWRT_DATE=$OWRT_DATE" >> $GITHUB_ENV
+        run: |         
+          echo "date1=$(date +'%%y.%m.%d_%H.%M.%S')" >> $GITHUB_ENV          
+          echo "date2=$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_ENV
+          echo "date3=$(date +'%m/%d %Y')" >> $GITHUB_ENV
+          echo "date4=$(date +'%m.%d')" >> $GITHUB_ENV
 
       - name: Determine branch name
         run: |
@@ -66,7 +68,10 @@ jobs:
           FEEDNAME: packages_ci
 
       - name: Move created packages to project dir
-        run: cp bin/packages/${{ matrix.arch }}/packages_ci/*.ipk . || true
+        run: | 
+          mkdir upload
+          cp bin/packages/${{ matrix.arch }}/packages_ci/*.ipk ./upload || true
+          echo "FIRMPATH=$PWD/upload" >> $GITHUB_ENV
 
       - name: Collect metadata
         run: |
@@ -76,7 +81,7 @@ jobs:
           echo "HEAD_ID=$(git rev-parse --short HEAD^2)" >> $GITHUB_ENV
           PRNUMBER=${GITHUB_REF_NAME%/merge}
           echo "PRNUMBER=$PRNUMBER" >> $GITHUB_ENV
-          echo "ARCHIVE_NAME=${{matrix.arch}}-PR$PRNUMBER-$MERGE_ID" >> $GITHUB_ENV
+          echo "ARCHIVE_NAME=${{matrix.arch}}-packages-$MERGE_ID" >> $GITHUB_ENV              
 
       - name: Generate metadata
         run: |
@@ -102,24 +107,24 @@ jobs:
           ls -al *.ipk >> PKG-INFO || true
           cat PKG-INFO
 
-      - name: Store packages
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{env.ARCHIVE_NAME}}-packages
-          path: |
-            *.ipk
-            PKG-INFO
+      #- name: Store packages
+      #  uses: actions/upload-artifact@v3
+      #  with:
+      #    name: ${{env.ARCHIVE_NAME}}-packages
+      #    path: |
+      #      ./upload/*.ipk
+      #      PKG-INFO
             
       - name: Release packages
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{env.ARCHIVE_NAME}}-packages_${{env.OWRT_DATE}}
-          files: ./*.ipk
+          tag_name: ${{env.ARCHIVE_NAME}}_${{env.date1}}
+          files: ${{ env.FIRMPATH }}/*.ipk
           body: |
             这是SSR Plus+升级包，内含多个设备！
             请选择你需要的升级包！
 
-      - name: Delete Old Releases
+      - name: Delete old releases
         uses: dev-drprasad/delete-older-releases@master      
         with:
           #要保留的最新版本的数量
