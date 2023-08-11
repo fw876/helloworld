@@ -8,7 +8,7 @@ env:
  
 jobs:
   build:
-    name: Test ${{ matrix.arch }}
+    name: Build ${{ matrix.arch }}
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -16,17 +16,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: aarch64_generic
-            target: aarch64_generic
-
-          - arch: x86_64
-            target: x86-64
-
+        arch:
+          - x86_64
+          - aarch64_generic
+          
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+          
+      - name: Initialization values
+        run: |
+          export OWRT_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
+          echo "OWRT_DATE=$OWRT_DATE" >> $GITHUB_ENV
 
       - name: Determine branch name
         run: |
@@ -58,7 +60,7 @@ jobs:
           echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
 
       - name: Build
-        uses: immortalwrt/gh-action-sdk@v4.1
+        uses: immortalwrt/gh-action-sdk@master
         env:
           ARCH: ${{ matrix.arch }}-${{ env.BRANCH }}
           FEEDNAME: packages_ci
@@ -108,7 +110,24 @@ jobs:
             *.ipk
             PKG-INFO
             
-      - name: Delete Old Workflows    
+      - name: Release packages
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{env.ARCHIVE_NAME}}-packages_${{env.OWRT_DATE}}
+          files: ./*.ipk
+          body: |
+            这是SSR Plus+升级包，内含多个设备！
+            请选择你需要的升级包！
+
+      - name: Delete Old Releases
+        uses: dev-drprasad/delete-older-releases@master      
+        with:
+          #要保留的最新版本的数量
+          keep_latest: 6
+          #删除与旧版本关联的标签, 没有任何关联版本的旧标签不会被删除
+          delete_tags: true
+            
+      - name: Delete old workflows    
         uses: Mattraks/delete-workflow-runs@v2
         with:
           token: ${{ github.token }}
