@@ -1,4 +1,4 @@
-name: build ssr-plus+
+name: Build SSR-Plus+
 
 on:
   workflow_dispatch:
