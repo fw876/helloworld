@@ -40,9 +40,10 @@ jobs:
 
       - name: Build
         uses: immortalwrt/gh-action-sdk@master
+        run: |         
+          echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf
         env:
           ARCH: ${{ matrix.arch }}-${{ env.BRANCH }}
-          EXTRA_FEEDS: ${{ github.workspace }}/extra_feed.conf
           FEEDNAME: packages_ci
 
       - name: Move created packages to project dir
