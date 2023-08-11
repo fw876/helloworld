@@ -24,6 +24,14 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+          token: ${{ secrets.ACCESS_TOKEN }} 
+          
+      - name: Sync files with dst-octocat-repsotiory!
+        uses: denis-tingajkin/sync-files@main
+        with:
+          git-author-email: 'ilove11502@gmail.com'
+          git-author-name: 'love-dy'
+          src-repository: https://github.com/fw876/helloworld
           
       - name: Initialization values
         run: |         
