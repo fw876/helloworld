@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.ACCESS_TOKEN }} 
           
-      - name: Sync files with dst-octocat-repsotiory!
+      - name: Sync files
         uses: denis-tingajkin/sync-files@main
         with:
           git-author-email: 'ilove11502@gmail.com'
@@ -34,11 +34,10 @@ jobs:
           src-repository: https://github.com/fw876/helloworld
           
       - name: Initialization values
-        run: |         
-          echo "date1=$(date +'%y.%m.%d_%H.%M.%S')" >> $GITHUB_ENV          
-          echo "date2=$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_ENV
-          echo "date3=$(date +'%m/%d %Y')" >> $GITHUB_ENV
-          echo "date4=$(date +'%m.%d')" >> $GITHUB_ENV
+        run: |               
+          echo "date1=$(date +'%Y.%m.%d-%H.%M')" >> $GITHUB_ENV
+          echo "date2=$(date +'%m/%d %Y')" >> $GITHUB_ENV
+          echo "date3=$(date +'%m.%d')" >> $GITHUB_ENV
 
       - name: Determine branch name
         run: |
@@ -70,7 +69,7 @@ jobs:
           echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
           
       - name: Build
-        uses: immortalwrt/gh-action-sdk@master      
+        uses: immortalwrt/gh-action-sdk@v4.1     
         env:
           ARCH: ${{ matrix.arch }}-${{ env.BRANCH }}
           FEEDNAME: packages_ci
