@@ -26,13 +26,6 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.ACCESS_TOKEN }} 
           
-      - name: Sync files
-        uses: denis-tingajkin/sync-files@main
-        with:
-          git-author-email: 'ilove11502@gmail.com'
-          git-author-name: 'love-dy'
-          src-repository: https://github.com/fw876/helloworld
-          
       - name: Initialization values
         run: |               
           echo "date1=$(date +'%Y.%m.%d-%H.%M')" >> $GITHUB_ENV
@@ -114,14 +107,6 @@ jobs:
           echo Full file listing: >> PKG-INFO
           ls -al *.ipk >> PKG-INFO || true
           cat PKG-INFO
-
-      #- name: Store packages
-      #  uses: actions/upload-artifact@v3
-      #  with:
-      #    name: ${{env.ARCHIVE_NAME}}-packages
-      #    path: |
-      #      ./ssrplus/*.ipk
-      #      PKG-INFO
             
       - name: Release packages
         uses: softprops/action-gh-release@master
@@ -147,4 +132,7 @@ jobs:
           repository: ${{ github.repository }}
           retain_days: 1
           keep_minimum_runs: 0
+          
+          
+#  #########################################################
 
