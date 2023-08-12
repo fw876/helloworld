@@ -903,3 +903,6 @@ msgstr "设置监听套接字为双栈"
 
 msgid "Maximum packet size the socks5 server can receive from external"
 msgstr "socks5服务器可以从外部接收的最大数据包大小（单位：字节）"
+
+msgid "Disable ChinaDNS-NG"
+msgstr "直通模式（禁用ChinaDNS-NG）"
