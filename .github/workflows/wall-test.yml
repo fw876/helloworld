@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [main]
+        target: [master]
 
     steps:
     - name: Checkout
@@ -43,7 +43,7 @@ jobs:
     - name: Clone packages
       run: |
         cd $GITHUB_WORKSPACE
-        chmod +x .github/diy/${{matrix.target}}.sh
+        chmod +x .github/diy/main.sh
         git clone -b ${{matrix.target}} https://github.com/love-dy/openwrt-ssrplus.git ${{matrix.target}}
         cd ${{matrix.target}}
         git rm -r --cache * >/dev/null 2>&1 &
