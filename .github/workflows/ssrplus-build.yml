@@ -1,10 +1,12 @@
+#
+# Copyright (c) 2022-2023 helloworld <https://github.com/fw876/helloworld>
+# Description: Build SSR-Plus+
+#
+
 name: Build SSR-Plus+
 
 on:
   workflow_dispatch:
-
-env:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
  
 jobs:
   build:
