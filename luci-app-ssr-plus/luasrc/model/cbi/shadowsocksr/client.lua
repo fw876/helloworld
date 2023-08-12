@@ -116,6 +116,7 @@ o.datatype = "ip4addrport"
 
 if is_finded("chinadns-ng") then
 	o = s:option(Value, "chinadns_forward", translate("Domestic DNS Server"))
+	o:value("", translate("Disable ChinaDNS-NG"))
 	o:value("wan", translate("Use DNS from WAN"))
 	o:value("wan_114", translate("Use DNS from WAN and 114DNS"))
 	o:value("114.114.114.114:53", translate("Nanjing Xinfeng 114DNS (114.114.114.114)"))
