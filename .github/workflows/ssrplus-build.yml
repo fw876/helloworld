@@ -28,6 +28,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.ACCESS_TOKEN }} 
           
+      - name: Sync files
+        uses: denis-tingajkin/sync-files@main
+        with:
+          git-author-email: 'ilove11502@github.com'
+          git-author-name: 'love-dy'
+          src-repository: https://github.com/fw876/helloworld
+          result-branch-name: master
+          
       - name: Initialization values
         run: |               
           echo "date1=$(date +'%Y.%m.%d-%H.%M')" >> $GITHUB_ENV
