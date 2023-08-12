@@ -40,6 +40,7 @@ jobs:
         cd $GITHUB_WORKSPACE
         chmod +x .github/diy/main.sh
         git clone https://github.com/love-dy/openwrt-ssrplus.git ssr_packages
+        
         cd ssr_packages
         git rm -r --cache * >/dev/null 2>&1 &
         rm -rf `find ./* -maxdepth 0 -type d ! -name "diy"` >/dev/null 2>&1
@@ -48,7 +49,7 @@ jobs:
         bash /$GITHUB_WORKSPACE/.github/diy/create_acl_for_luci.sh -a
         bash /$GITHUB_WORKSPACE/.github/diy/Modify.sh
 
-    - name: Upload
+    - name: Upload packages
       env: 
         ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
       run: |
