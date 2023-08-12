@@ -1,0 +1,78 @@
+--- a/dnsmasq/files/dnsmasq.init
++++ b/dnsmasq/files/dnsmasq.init
+@@ -411,6 +411,21 @@ dhcp_this_host_add() {
+ 	local mode="$3"
+ 	local routerstub routername ifdashname
+ 	local lanaddr lanaddr6 lanaddrs6 ulaprefix
++	
++	network_get_ipaddr lanaddr "lan"
++	if [ -n $lanaddr ]; then
++ 	lanaddr="$(echo "$lanaddr" | sed -e "s/\/24//")"
++	echo "
++	$lanaddr op" >/tmp/hosts/shortcuts
++	if [ -f /etc/nginx/conf.d/shortcuts.conf ]; then
++	if [[ "$lanaddr" != "`grep "set \$ip" /etc/nginx/conf.d/shortcuts.conf | head -n1 | cut -f 3 -d " " | sed -e 's/;//'`" ]]; then
++		sed -i "/set \$ip/c\set \$ip $lanaddr;" /etc/nginx/conf.d/shortcuts.conf
++		/etc/init.d/nginx reload
++	fi
++	cat /etc/nginx/conf.d/shortcuts.conf | tr "\n" "\r" |grep -oE 'server_name [a-z.-]*;[^;]*set \$ip [0-9.]*;' | sed -e 's/server_name \(.*\);.*location.*set $ip \(.*\);/\2 \1/' >>/tmp/hosts/shortcuts
++	cat /etc/nginx/conf.d/shortcuts.conf | tr "\n" "\r" |grep -oE 'server_name [a-z.-]*;[^;]*return 301 \$scheme://op' | sed -e 's/server_name \(.*\?\);.*/\1/' | sed -e "s/^/$lanaddr /">>/tmp/hosts/shortcuts
++	fi
++	fi
+ 
+ 	if [ "$mode" -gt 0 ] ; then
+ 		ifdashname="${ifname//./-}"
+@@ -931,6 +946,8 @@ dnsmasq_start()
+ 	append_bool "$cfg" noping "--no-ping"
+ 	append_bool "$cfg" rapidcommit "--dhcp-rapid-commit"
+ 	append_bool "$cfg" scriptarp "--script-arp"
++	append_bool "$cfg" filter_aaaa "--filter-aaaa"
++	append_parm "$cfg" mini_ttl "--min-ttl"
+ 
+ 	append_parm "$cfg" logfacility "--log-facility"
+ 	config_get logfacility "$cfg" "logfacility"
+@@ -1173,6 +1190,14 @@ dnsmasq_start()
+ 	esac
+ 
+ 	procd_close_instance
++	config_get_bool dns_redirect "$cfg" dns_redirect 0
++	config_get dns_port "$cfg" port 53
++	if [ "$dns_redirect" = 1 ]; then
++		iptables -t nat -A PREROUTING -m comment --comment "DNSMASQ" -p udp --dport 53 -j REDIRECT --to-ports $dns_port
++		iptables -t nat -A PREROUTING -m comment --comment "DNSMASQ" -p tcp --dport 53 -j REDIRECT --to-ports $dns_port
++		[ -n "$(command -v ip6tables)" ] && ip6tables -t nat -A PREROUTING -m comment --comment "DNSMASQ" -p udp --dport 53 -j REDIRECT --to-ports $dns_port
++		[ -n "$(command -v ip6tables)" ] && ip6tables -t nat -A PREROUTING -m comment --comment "DNSMASQ" -p tcp --dport 53 -j REDIRECT --to-ports $dns_port
++	fi
+ }
+ 
+ dnsmasq_stop()
+@@ -1190,6 +1215,15 @@ dnsmasq_stop()
+ 	rm -f ${BASEDHCPSTAMPFILE}.${cfg}.*.dhcp
+ }
+ 
++iptables_clear()
++{
++	config_get dns_port "$cfg" port 53
++	iptables -t nat -D PREROUTING -m comment --comment "DNSMASQ" -p udp --dport 53 -j REDIRECT --to-ports $dns_port 2>"/dev/null"
++	iptables -t nat -D PREROUTING -m comment --comment "DNSMASQ" -p tcp --dport 53 -j REDIRECT --to-ports $dns_port 2>"/dev/null"
++	[ -n "$(command -v ip6tables)" ] && ip6tables -t nat -D PREROUTING -m comment --comment "DNSMASQ" -p udp --dport 53 -j REDIRECT --to-ports $dns_port 2>"/dev/null"
++	[ -n "$(command -v ip6tables)" ] && ip6tables -t nat -D PREROUTING -m comment --comment "DNSMASQ" -p tcp --dport 53 -j REDIRECT --to-ports $dns_port 2>"/dev/null"
++}
++
+ add_interface_trigger()
+ {
+ 	local interface ignore
+@@ -1260,6 +1294,7 @@ start_service() {
+ }
+ 
+ reload_service() {
++	iptables_clear
+ 	rc_procd start_service "$@"
+ 	procd_send_signal dnsmasq "$@"
+ }
+@@ -1286,4 +1321,5 @@ stop_service() {
+ 	else
+ 		config_foreach dnsmasq_stop dnsmasq
+ 	fi
++	iptables_clear
+ }

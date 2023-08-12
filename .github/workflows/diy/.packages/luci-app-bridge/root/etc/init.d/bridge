@@ -1,0 +1,124 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+
+run_bridge()
+{
+	config_get enabled $1 enabled
+	config_get gateway $1 gateway
+	config_get ipaddr $1 ipaddr
+	config_get netmask $1 netmask
+	config_get network $1 network
+
+	ipv6=$(uci get network.globals.ula_prefix)
+	if=$(cat /etc/config/network | wc -l)
+
+	if [ "$enabled" = "1" ]; then
+
+	#防止重复配置
+	a=$(uci get network.bridge.device | sed 's/ /\n/g' |wc -l)
+	b=$(uci get network.bridge.ipaddr)
+	c=$(uci get network.bridge.netmask)
+	d=$(uci get network.bridge.gateway)
+	e=$(ls /sys/class/net | grep "eth" | wc -l)
+
+	if [ "$a" = "$network" ] || [ "$a" = "$e" ] && [ "$network" = "" ] || [ "$a" = "$network" ]; then
+	f=yes
+	else
+	f=no
+	fi
+
+	if [ "$b" = "$ipaddr" ] && [ "$c" = "$netmask" ] && [ "$d" = "$gateway" ] && [ "$f" = "yes" ]; then
+	break;
+	else
+
+	#模拟输入
+	if [ "$network" = "0" ] || [ "$network" = "" ]; then
+	eth=$(ls /sys/class/net | grep "eth" | tr '\n' ' ' | sed 's/[ ]*$//g')
+	else
+	eth=$(ETH $network | tr '\n' ' ' | sed 's/[ ]*$//g')
+	fi
+
+	#备份配置
+	if [ ! -f "/etc/bridge/firewall" ]; then
+	mkdir /etc/bridge
+	cp /etc/config/network /etc/bridge/network
+	cp /etc/config/firewall /etc/bridge/firewall
+
+	fi
+
+	#清空配置
+	cat /dev/null> /etc/config/network
+	cat /dev/null> /etc/config/firewall
+
+	#写入network网络接口
+	uci set network.loopback=interface
+	uci set network.loopback.device=lo
+	uci set network.loopback.proto=static
+	uci set network.loopback.ipaddr=127.0.0.1
+	uci set network.loopback.netmask=255.0.0.0
+	uci set network.globals=globals
+	uci set network.globals.ula_prefix=$ipv6
+	uci set network.bridge=interface
+	uci set network.bridge.type='bridge'
+	uci set network.bridge.device="$eth"
+	uci set network.bridge.proto='static'
+	uci set network.bridge.ipaddr=$ipaddr
+	uci set network.bridge.netmask=$netmask
+	uci set network.bridge.gateway=$gateway
+	uci set network.bridge.dns=$gateway
+	uci set network.bridge.force_link='0'
+	uci commit network
+
+	#写入firewall防火墙
+	uci add firewall zone
+	uci set firewall.@zone[0].input=ACCEPT
+	uci set firewall.@zone[0].output=ACCEPT
+	uci set firewall.@zone[0].forward=ACCEPT
+	uci set firewall.@zone[0].conntrack=1
+	uci set firewall.@zone[0].mtu_fix=1
+	uci set firewall.@zone[0].name=bridge
+	uci set firewall.@zone[0].network=bridge
+	uci commit firewall
+
+	#重启网络DNS服务与防火墙
+	/etc/init.d/network reload 2>/dev/null &
+	/etc/init.d/dnsmasq reload 2>/dev/null &
+	/etc/init.d/firewall reload 2>/dev/null &
+
+	fi
+
+	else
+
+	#恢复配置&删除备份
+	if [ -f "/etc/bridge/firewall" ]; then
+	cp /etc/bridge/network /etc/config/network
+	cp /etc/bridge/firewall /etc/config/firewall
+	rm -rf /etc/bridge
+
+	#重启网络DNS服务与防火墙
+	/etc/init.d/network reload 2>/dev/null &
+	/etc/init.d/dnsmasq reload 2>/dev/null &
+	/etc/init.d/firewall reload 2>/dev/null &
+	fi
+
+	fi
+}
+
+ETH()
+{
+	eth=0
+	while [ $eth -le $(expr "$1" - 1) ]
+	do
+	eth=`expr $eth + 1`
+	a=`expr $eth - 1`
+	echo "eth$a"
+	done
+}
+
+start()
+{
+	config_load bridge
+	config_foreach run_bridge bridge
+}
+

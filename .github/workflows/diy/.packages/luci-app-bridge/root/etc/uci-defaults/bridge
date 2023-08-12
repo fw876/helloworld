@@ -1,0 +1,13 @@
+#!/bin/sh
+
+uci -q batch <<-EOF >/dev/null
+	delete ucitrack.@bridge[-1]
+	add ucitrack bridge
+	set ucitrack.@bridge[-1].init=bridge
+	commit ucitrack
+EOF
+
+chmod +x /etc/init.d/bridge
+
+rm -f /tmp/luci-indexcache
+exit 0

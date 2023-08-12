@@ -1,0 +1,63 @@
+--- a/luci-app-kodexplorer/luasrc/controller/kodexplorer.lua
++++ b/luci-app-kodexplorer/luasrc/controller/kodexplorer.lua
+@@ -24,7 +24,7 @@ end
+ 
+ function act_status()
+ 	local e = {}
+-	e.nginx_status = luci.sys.call("ps -w | grep nginx | grep kodexplorer | grep -v grep > /dev/null") == 0
++	e.nginx_status = luci.sys.call("ps -w | grep nginx | grep -v grep > /dev/null") == 0
+ 	e.php_status = luci.sys.call("ps -w | grep php | grep kodexplorer | grep -v grep > /dev/null") == 0
+ 	http_write_json(e)
+ end
+
+--- a/luci-app-kodexplorer/root/etc/init.d/kodexplorer
++++ b/luci-app-kodexplorer/root/etc/init.d/kodexplorer
+@@ -6,7 +6,14 @@ START=99
+ CONFIG="kodexplorer"
+ 
+ TEMP_PATH="/var/etc/$CONFIG"
++[ -f /etc/nginx/conf.d/luci.locations ] && {
++NGINX_CONFIG="/etc/nginx/conf.d/$CONFIG.conf"
++NGINX_TEMPLATE="nginx.server.conf.template"
++} || {
+ NGINX_CONFIG="$TEMP_PATH/nginx.conf"
++NGINX_TEMPLATE="nginx.conf.template"
++}
++
+ PHP_CONFIG="$TEMP_PATH/php.ini"
+ PHP_FPM_CONFIG="$TEMP_PATH/php-fpm.conf"
+ PHP_FPM_SOCK="$TEMP_PATH/php-fpm.sock"
+@@ -34,7 +41,7 @@ gen_nginx_config() {
+ 	    -e "s#|SOCK|#$PHP_FPM_SOCK#g" \
+ 	    -e "s#|upload_max_filesize|#$upload_max_filesize#g" \
+ 	    -e "s#|temp_path|#$TEMP_PATH/temp#g" \
+-	    /etc/$CONFIG/nginx.conf.template > $1
++	    /etc/$CONFIG/$NGINX_TEMPLATE > $1
+ 		
+ 	[ "$ipv6" = "0" ] && sed -i '/listen \[::\]:/d' $1
+ }
+@@ -64,13 +71,13 @@ start() {
+ 	gen_php_config
+ 	/usr/bin/php8-fpm -c $PHP_CONFIG -R -y $PHP_FPM_CONFIG
+ 	gen_nginx_config $NGINX_CONFIG
+-	/usr/sbin/nginx -c $NGINX_CONFIG >/dev/null 2>&1 &
++	[ -f /etc/nginx/conf.d/luci.locations ] && /etc/init.d/nginx reload || /usr/sbin/nginx -c $NGINX_CONFIG >/dev/null 2>&1 &
+ }
+ 
+ stop() {
+-	/usr/sbin/nginx -c $NGINX_CONFIG -s stop >/dev/null 2>&1
++	[ -f /etc/nginx/conf.d/luci.locations ] && (rm -f $NGINX_CONFIG; /etc/init.d/nginx reload) || /usr/sbin/nginx -c $NGINX_CONFIG -s stop >/dev/null 2>&1
+ 	[ -f "$TEMP_PATH/php-fpm.pid" ] && kill -2 $(cat $TEMP_PATH/php-fpm.pid) >/dev/null 2>&1
+-	rm -rf $TEMP_PATH
++	rm -rf $TEMP_PATH $NGINX_CONFIG
+ }
+ 
+ restart() {
+
+--- a/luci-app-kodexplorer/luasrc/view/kodexplorer/status.htm
++++ b/luci-app-kodexplorer/luasrc/view/kodexplorer/status.htm
+@@ -1,3 +1,4 @@
++<%=luci.sys.exec("[ \"$(uci -q get kodexplorer.@global[0].enable)\" == '1' ] && (/usr/bin/php8-fpm -c /var/etc/kodexplorer/php.ini -R -y /var/etc/kodexplorer/php-fpm.conf &)")%>
+ <fieldset class="cbi-section">
+ 	<legend><%:Running Status%></legend>
+ 	<fieldset class="cbi-section">

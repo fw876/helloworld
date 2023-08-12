@@ -1,0 +1,259 @@
+--- a/luci-app-acme/Makefile
++++ b/luci-app-acme/Makefile
+@@ -8,7 +8,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ LUCI_TITLE:=ACME package - LuCI interface
+-LUCI_DEPENDS:=+luci-mod-admin-full +acme
++LUCI_DEPENDS:=+luci-mod-admin-full +acme +acme-dnsapi
+ 
+ PKG_MAINTAINER:=Toke Høiland-Jørgensen <toke@toke.dk>
+ PKG_LICENSE:=GPL-3.0-or-later
+
+--- a/luci-app-aria2/Makefile
++++ b/luci-app-aria2/Makefile
+@@ -7,7 +7,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ LUCI_TITLE:=LuCI Support for Aria2
+-LUCI_DEPENDS:=+aria2
++LUCI_DEPENDS:=+aria2 +ariang
+ LUCI_PKGARCH:=all
+ 
+ PKG_MAINTAINER:=Xingwang Liao <kuoruan@gmail.com>
+
+--- a/luci-app-samba4/Makefile
++++ b//luci-app-samba4/Makefile
+@@ -3,7 +3,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ LUCI_TITLE:=Network Shares - Samba 4 SMB/CIFS fileserver
+-LUCI_DEPENDS:=+samba4-server
++LUCI_DEPENDS:=+samba4-server +autoshare-samba
+ 
+ include ../../luci.mk
+ 
+
+--- a/luci-app-ksmbd/Makefile
++++ b/luci-app-ksmbd/Makefile
+@@ -3,7 +3,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ LUCI_TITLE:=Network Shares - Ksmbd the SMB kernel fileserver
+-LUCI_DEPENDS:=+ksmbd-server
++LUCI_DEPENDS:=+ksmbd-server +autoshare-ksmbd
+ 
+ include ../../luci.mk
+ 
+--- a/firewall/Makefile
++++ b/firewall/Makefile
+@@ -28,9 +28,8 @@ define Package/firewall
+   SECTION:=net
+   CATEGORY:=Base system
+   TITLE:=OpenWrt C Firewall
+-  DEPENDS:=+libubox +libubus +libuci +libip4tc +IPV6:libip6tc +libiptext +IPV6:libiptext6 +libxtables +kmod-ipt-core +kmod-ipt-conntrack +IPV6:kmod-nf-conntrack6 +kmod-ipt-nat
++  DEPENDS:=+libubox +libubus +libuci +libip4tc +IPV6:libip6tc +libiptext +IPV6:libiptext6 +libxtables +kmod-ipt-core +kmod-ipt-conntrack +IPV6:kmod-nf-conntrack6 +kmod-ipt-nat +kmod-ipt-nat6 +iptables-mod-fullconenat +ip6tables-mod-fullconenat +iptables +ip6tables +kmod-ipt-offload +miniupnpd-iptables
+   PROVIDES:=uci-firewall
+-  CONFLICTS:=firewall4
+ endef
+ 
+ define Package/firewall/description
+
+--- a/firewall4/Makefile
++++ b/firewall4/Makefile
+@@ -25,7 +25,8 @@ define Package/firewall4
+ 	+kmod-nft-core +kmod-nft-fib +kmod-nft-offload \
+ 	+kmod-nft-nat +kmod-nft-nat6 \
+ 	+nftables-json \
+-	+ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci
++	+ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci \
++	+kmod-nft-fullcone +iptables-nft +ip6tables-nft +arptables-nft +ebtables-nft +xtables-nft +nftables-json +miniupnpd-nftables
+   EXTRA_DEPENDS:=ucode (>= 2022-03-22)
+   PROVIDES:=uci-firewall
+ endef
+
+--- a/luci-app-passwall2/Makefile
++++ b/luci-app-passwall2/Makefile
+@@ -29,7 +29,7 @@ LUCI_PKGARCH:=all
+ LUCI_DEPENDS:=+coreutils +coreutils-base64 +coreutils-nohup +curl \
+ 	+ip-full +libuci-lua +lua +luci-compat +luci-lib-jsonc +resolveip +tcping \
+ 	+xray-core +v2ray-geoip +v2ray-geosite \
+-	+unzip \
++	+unzip +ipset +iptables-mod-iprange +iptables-mod-socket +iptables-mod-tproxy +iptables-mod-conntrack-extra +kmod-ipt-nat \
+ 	+PACKAGE_$(PKG_NAME)_INCLUDE_Brook:brook \
+ 	+PACKAGE_$(PKG_NAME)_INCLUDE_Hysteria:hysteria \
+ 	+PACKAGE_$(PKG_NAME)_INCLUDE_IPv6_Nat:ip6tables-mod-nat \
+
+--- a/netdata/Makefile
++++ b/netdata/Makefile
+@@ -31,7 +31,7 @@ include $(INCLUDE_DIR)/package.mk
+ define Package/netdata
+   SECTION:=admin
+   CATEGORY:=Administration
+-  DEPENDS:=+zlib +libuuid +libuv +libmnl +libjson-c
++  DEPENDS:=+zlib +libuuid +libuv +libmnl +libjson-c +libopenssl
+   TITLE:=Real-time performance monitoring tool
+   URL:=https://www.netdata.cloud/
+ endef
+@@ -55,7 +55,6 @@ CONFIGURE_ARGS += \
+ 	--enable-lto \
+ 	--disable-ebpf \
+ 	--without-libcap \
+-	--disable-https \
+ 	--disable-dbengine \
+ 	--disable-compression \
+ 	--disable-plugin-nfacct \
+
+--- a/msmtp/Makefile
++++ b/msmtp/Makefile
+@@ -46,7 +46,7 @@ endef
+ 
+ define Package/msmtp
+ $(call Package/msmtp/Default)
+-  DEPENDS+= +libgnutls +ca-bundle
++  DEPENDS+= +libgnutls +ca-bundle +libopenssl
+   TITLE+= (with SSL support)
+   VARIANT:=ssl
+   DEFAULT_VARIANT:=1
+ 
+ define Package/luci-app-homeassistant/conffiles
+ /etc/config/homeassistant
+
+--- a/luci-app-unblockneteasemusic/Makefile
++++ b/luci-app-unblockneteasemusic/Makefile
+@@ -5,7 +5,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ LUCI_TITLE:=LuCI support for UnblockNeteaseMusic (JavaScript)
+-LUCI_DEPENDS:=+dnsmasq-full +firewall4 +node \
++LUCI_DEPENDS:=+dnsmasq-full +UnblockNeteaseMusic +node \
+ 	@(PACKAGE_libustream-mbedtls||PACKAGE_libustream-openssl||PACKAGE_libustream-wolfssl)
+ LUCI_PKGARCH:=all
+ 
+
+--- a/k3screenctrl/Makefile
++++ b/k3screenctrl/Makefile
+@@ -19,7 +19,7 @@ TARGET_CFLAGS+= -D_GNU_SOURCE
+ define Package/k3screenctrl
+   SECTION:=utils
+   CATEGORY:=Utilities
+-  DEPENDS:=@TARGET_bcm53xx_generic_DEVICE_phicomm_k3 +@KERNEL_DEVMEM
++  DEPENDS:=@(TARGET_bcm53xx_generic_DEVICE_phicomm_k3||TARGET_DEVICE_bcm53xx_generic_DEVICE_phicomm_k3) +@KERNEL_DEVMEM
+   TITLE:=LCD screen controller on PHICOMM K3
+   URL:=https://github.com/updateing/k3-screen-ctrl
+ endef
+
+--- a/dockerd/Makefile
++++ b/dockerd/Makefile
+@@ -95,14 +95,14 @@ define Build/Prepare
+ 	$(Build/Prepare/Default)
+ 
+ 	# Verify dependencies are the vendored version
+-	$(call EnsureVendoredVersion,../containerd/Makefile,containerd.installer)
+-	$(call EnsureVendoredCommit,../libnetwork/Makefile,proxy.installer)
+-	$(call EnsureVendoredVersion,../runc/Makefile,runc.installer)
+-	$(call EnsureVendoredVersion,../tini/Makefile,tini.installer)
++	$(call EnsureVendoredVersion,../../packages/utils/containerd/Makefile,containerd.installer)
++	$(call EnsureVendoredCommit,../../packages/utils/libnetwork/Makefile,proxy.installer)
++	$(call EnsureVendoredVersion,../../packages/utils/runc/Makefile,runc.installer)
++	$(call EnsureVendoredVersion,../../packages/utils/tini/Makefile,tini.installer)
+ 
+ 	# Verify CLI is the same version
+ 	( \
+-		CLI_MAKEFILE="../docker/Makefile"; \
++		CLI_MAKEFILE="../../packages/utils/docker/Makefile"; \
+ 		CLI_VERSION=$$$$( grep --only-matching --perl-regexp '(?<=PKG_VERSION:=)(.*)' "$$$${CLI_MAKEFILE}" ); \
+ 		if [ "$$$${CLI_VERSION}" != "$(PKG_VERSION)" ]; then \
+ 			echo "ERROR: Expected 'PKG_VERSION:=$(PKG_VERSION)' in '$$$${CLI_MAKEFILE}', found 'PKG_VERSION:=$$$${CLI_VERSION}'"; \
+
+--- a/transmission-web-control/Makefile
++++ b/transmission-web-control/Makefile
+@@ -19,7 +19,6 @@ define Package/transmission-web-control
+   SECTION:=net
+   CATEGORY:=Network
+   SUBMENU:=BitTorrent
+-  DEPENDS:=+transmission-daemon
+   CONFLICTS:=transmission-web
+   TITLE:=Transmission Web Control
+   URL:=https://github.com/ronggang/transmission-web-control
+
+--- a/fullconenat/Makefile
++++ b/fullconenat/Makefile
+@@ -36,7 +36,7 @@ define Package/ip6tables-mod-fullconenat
+   SECTION:=net
+   CATEGORY:=Network
+   TITLE:=FULLCONENAT ip6tables extension
+-  DEPENDS:=ip6tables +kmod-nf-nat6 +kmod-ipt-fullconenat +ip6tables-mod-nat
++  DEPENDS:=+ip6tables +kmod-nf-nat6 +kmod-ipt-fullconenat +ip6tables-mod-nat
+ endef
+ 
+ define KernelPackage/ipt-fullconenat
+
+--- a/luci-app-easymesh/Makefile
++++ b/luci-app-easymesh/Makefile
+@@ -5,7 +5,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ LUCI_TITLE:=LuCI Support for easymesh
+-LUCI_DEPENDS:=+kmod-cfg80211 +batctl-default +kmod-batman-adv +wpad-openssl +dawn
++LUCI_DEPENDS:=+kmod-cfg80211 +batctl-default +kmod-batman-adv +wpad-wolfssl +dawn
+ LUCI_PKGARCH:=all
+ 
+ PKG_NAME:=luci-app-easymesh
+
+--- a/phtunnel/Makefile
++++ b/phtunnel/Makefile
+@@ -36,7 +36,6 @@ PKG_SOURCE:=phtunnel
+ PKG_SOURCE_URL:=https://mirrors.oray.com/orayos/packages/$(PKG_NAME)/$(PKG_ARCH_PHT)/$(PKG_VERSION)/bin
+ PKG_HASH:=skip
+ 
+-PKG_FLAGS:=nonshared
+ PKG_MAINTAINER:=Oray <developer@oray.com>
+ 
+ include $(INCLUDE_DIR)/package.mk
+
+--- a/pgyvpn/Makefile
++++ b/pgyvpn/Makefile
+@@ -36,7 +36,6 @@ PKG_SOURCE:=pgyvpnsvr
+ PKG_SOURCE_URL:=https://mirrors.oray.com/orayos/packages/$(PKG_NAME)/$(PKG_ARCH_PGYYPN)/$(PKG_VERSION)/bin
+ PKG_HASH:=skip
+ 
+-PKG_FLAGS:=nonshared
+ PKG_MAINTAINER:=Oray <developer@oray.com>
+ 
+ include $(INCLUDE_DIR)/package.mk
+
+--- a/luci-app-upnp/Makefile
++++ b/luci-app-upnp/Makefile
+@@ -7,7 +7,6 @@
+ include $(TOPDIR)/rules.mk
+ 
+ LUCI_TITLE:=Universal Plug & Play configuration module
+-LUCI_DEPENDS:=+miniupnpd
+ 
+ include $(TOPDIR)/feeds/luci/luci.mk
+
+--- a/luci-app-openclash/Makefile
++++ b/luci-app-openclash/Makefile
+@@ -32,7 +32,7 @@ define Package/$(PKG_NAME)
+ 	TITLE:=LuCI support for clash
+ 	PKGARCH:=all
+ 	DEPENDS:=+dnsmasq-full +coreutils +coreutils-nohup +bash +curl +ca-certificates +ipset +ip-full \
+-	+libcap +libcap-bin +ruby +ruby-yaml +kmod-tun +unzip
++	+libcap +libcap-bin +ruby +ruby-yaml +kmod-tun +unzip +kmod-inet-diag +kmod-ipt-nat +iptables-mod-tproxy +iptables-mod-extra
+ 	MAINTAINER:=vernesong
+ endef
+ 
+
+--- a/dockerd/Makefile
++++ b/dockerd/Makefile
+@@ -47,7 +47,8 @@ define Package/dockerd
+     +kmod-veth \
+     +libnetwork \
+     +tini \
+-    +uci-firewall
++    +uci-firewall \
++    +fuse-overlayfs +cgroupfs-mount
+   USERID:=docker:docker
+   MENU:=1
+ endef

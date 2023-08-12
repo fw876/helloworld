@@ -1,0 +1,82 @@
+name: Sync packages test
+
+on:
+  #push:
+  #  paths:
+  #    - '.github/workflows/wall-test.yml'
+  #    - '.github/diy/main.sh'
+  #schedule:
+  #  - cron: 0 */8 * * *
+  #repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: 'packages'
+        required: false
+        default: 'false'	
+
+jobs:
+  build:
+    if: github.event.repository.owner.id == github.event.sender.id || ! github.event.sender.id
+    runs-on: ubuntu-latest
+
+    name: Update ${{matrix.target}}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [main]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Initialization environment
+      run : |
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
+        sudo timedatectl set-timezone "Asia/Shanghai"
+        
+    - name: Clone packages
+      run: |
+        cd $GITHUB_WORKSPACE
+        chmod +x .github/diy/${{matrix.target}}.sh
+        git clone -b ${{matrix.target}} https://github.com/love-dy/small-package.git ${{matrix.target}}
+        cd ${{matrix.target}}
+        git rm -r --cache * >/dev/null 2>&1 &
+        rm -rf `find ./* -maxdepth 0 -type d ! -name "diy"` >/dev/null 2>&1
+        $GITHUB_WORKSPACE/.github/diy/${{matrix.target}}.sh
+        bash /$GITHUB_WORKSPACE/.github/diy/convert_translation.sh
+        bash /$GITHUB_WORKSPACE/.github/diy/create_acl_for_luci.sh -a
+        bash /$GITHUB_WORKSPACE/.github/diy/Modify.sh
+
+    - name: Upload
+      env: 
+        ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+      run: |
+        if [ -e $GITHUB_WORKSPACE/LICENSE ]; then
+          cp $GITHUB_WORKSPACE/LICENSE $GITHUB_WORKSPACE/${{matrix.target}}
+        fi
+        if [ -e $GITHUB_WORKSPACE/README.md ]; then
+          cp $GITHUB_WORKSPACE/README.md $GITHUB_WORKSPACE/${{matrix.target}}
+        fi
+        cd $GITHUB_WORKSPACE/${{matrix.target}}
+        if git status --porcelain | grep .; then
+          git add .
+          git commit -am "update $(date '+%Y-%m-%d %H:%M:%S')"
+          git push --quiet "https://${{ secrets.ACCESS_TOKEN }}@github.com/love-dy/small-package.git" HEAD:${{matrix.target}}
+        else
+          echo "nothing to commit"
+          exit 0
+        fi || exit 0
+
+    - name: Delete workflow runs
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+        token: ${{ github.token }}
+        repository: ${{ github.repository }}
+        retain_days: 1
+        keep_minimum_runs: 1
+
+ 

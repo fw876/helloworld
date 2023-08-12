@@ -1,0 +1,43 @@
+--- a/luci-app-uugamebooster/root/etc/init.d/uuplugin
++++ b/luci-app-uugamebooster/root/etc/init.d/uuplugin
+@@ -21,3 +21,7 @@ start_service() {
+     procd_close_instance
+ 	fi
+ }
++
++service_triggers() {
++        procd_add_reload_trigger "uuplugin"
++}
+
+--- a/luci-app-wifidog/root/etc/init.d/wifidog
++++ b/luci-app-wifidog/root/etc/init.d/wifidog
+@@ -150,3 +150,8 @@ start_service() {
+ status() {
+     /usr/bin/wdctl status
+ }
++
++service_triggers() {
++	procd_add_reload_trigger "wifidog"
++}
++
+
+--- a/luci-app-docker/root/etc/init.d/dockerd
++++ b/luci-app-docker/root/etc/init.d/dockerd
+@@ -19,3 +19,7 @@ start_service() {
+ 	procd_set_param limits nofile="${nofile} ${nofile}"
+ 	procd_close_instance
+ }
++
++service_triggers() {
++	procd_add_reload_trigger "dockerd"
++}
+
+--- a/transmission/files/transmission.init
++++ b/transmission/files/transmission.init
+@@ -143,3 +143,6 @@ start_service() {
+ 	config_foreach transmission 'transmission'
+ }
+ 
++service_triggers() {
++	procd_add_reload_trigger "transmission"
++}

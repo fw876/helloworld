@@ -1,0 +1,6 @@
+
+config bridge 'bridge'
+	option gateway '192.168.1.1'
+	option ipaddr '192.168.1.2'
+	option netmask '255.255.255.0'
+

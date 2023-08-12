@@ -1,0 +1,48 @@
+msgid "Transparent bridge"
+msgstr "透明网桥"
+
+msgid "Passerelle transparente"
+msgstr "开启透明网桥"
+
+msgid "<font color=green>Let the routing become a transparent bridge device that communicates with the superior routing without perception and has the function of firewall.</font>"
+msgstr "<font color=green>让路由成为与上级路由通信，无感知，并具备防火墙功能的透明网桥设备。</font>"
+
+msgid "Settings"
+msgstr "设置"
+
+msgid "GatewayIP"
+msgstr "网关IP"
+
+msgid "Superior routing IP"
+msgstr "上级路由IP"
+
+msgid "Bridge IP"
+msgstr "网桥IP"
+
+msgid "Need to be on the same network segment as the upper-level route but do not conflict with other device IPs."
+msgstr "需要和上级路由在同一个网段但不要和其它设备IP冲突 "
+
+msgid "Netmask"
+msgstr "子网掩码"
+
+msgid "Number of network ports"
+msgstr "网口数"
+
+msgid "The number of physical network ports on the soft route is automatically detected when left blank."
+msgstr "软路由物理网口数量，留空则自动探测。"
+
+msgid "Setting instructions:"
+msgstr "设置说明："
+
+msgid ""
+"<li>Applicable to network environments that have superior routing and require some functions of soft routing but do not want multi-level NAT.</li>"
+"The switch or client needs to be connected to the network port of the soft route.<li>"
+"The WEB console of the soft route after the transparent bridge is enabled is the bridge IP.</li>"
+"Some features on the soft route will be invalid after enabling the transparent bridge, such as Full Cone, multi-dial, etc.<li>"
+"After closing, restore the network settings when the plugin is installed, and the WEB console reverts to the original set IP.</li>"
+msgstr ""
+"<li><font color=orange>✯</font>适用于有上级路由，需要软路由的一些功能但又不想多级NAT的网络环境。</li>"
+"<font color=orange>✯</font>交换机或客户端需要连接到软路由的网口下面。<li>"
+"<font color=orange>✯</font>启用透明网桥后软路由的WEB控制台为网桥IP。</li>"
+"<font color=orange>✯</font>启用透明网桥后软路由上的一些功能会失效，如：Full Cone、多拨等。<li>"
+"<font color=orange>✯</font>关闭后恢复插件安装时的网络设置，WEB控制台恢复为原始设置的IP。</li>"

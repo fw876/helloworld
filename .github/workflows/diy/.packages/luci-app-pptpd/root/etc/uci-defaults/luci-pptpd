@@ -1,0 +1,12 @@
+#!/bin/sh
+
+uci -q batch <<-EOF >/dev/null
+	delete ucitrack.@pptpd[-1]
+	add ucitrack pptpd
+	set ucitrack.@pptpd[-1].init=pptpd
+	commit ucitrack
+EOF
+
+chmod +x /etc/init.d/pptpd
+rm -f /tmp/luci-indexcahe
+exit 0

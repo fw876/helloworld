@@ -1,0 +1,118 @@
+--- a/autocore/Makefile
++++ b/autocore/Makefile
+@@ -24,7 +24,7 @@ define Package/autocore
+     +TARGET_bcm27xx:bcm27xx-userland \
+     +TARGET_bcm53xx:nvram \
+     +TARGET_mvebu:mhz \
+-    +TARGET_x86:ethtool \
++    +ethtool \
+     +TARGET_x86:lm-sensors
+   PROVIDES:=autocore-arm autocore-x86
+ endef
+ 
+--- a/autocore/files/generic/cpuinfo
++++ b/autocore/files/generic/cpuinfo
+@@ -7,7 +7,7 @@ CPUFREQ_PATH="/sys/devices/system/cpu/cpufreq"
+ THERMAL_PATH="/sys/class/thermal"
+ 
+ cpu_arch="$(awk -F ': ' '/model name/ {print $2}' "$CPUINFO_PATH" | head -n1)"
+-[ -n "${cpu_arch}" ] || cpu_arch="?"
++[ -n "${cpu_arch}" ] || cpu_arch="ARMv8 Processor"
+ 
+ case "$DISTRIB_TARGET" in
+ "x86"/*)
+@@ -45,6 +45,7 @@ case "$DISTRIB_TARGET" in
+ 	elif grep -q "AuthenticAMD" "/proc/cpuinfo"; then
+ 		cpu_temp="$(sensors "k*temp-*" 2>"/dev/null" | awk '/Tdie/ {print $2}' | head -n1 | tr -d "+")"
+ 	fi
++	[ -n "${cpu_temp}" ] || cpu_temp="$(sensors 2>/dev/null | grep 'Core 0' | cut -c12-)"
+ 	;;
+ *)
+ 	[ ! -e "$THERMAL_PATH/thermal_zone0/temp" ] || \
+
+--- a/luci-base/root/usr/libexec/rpcd/luci
++++ b/luci-base/root/usr/libexec/rpcd/luci
+@@ -207,6 +207,8 @@ local methods = {
+ 	getFeatures = {
+ 		call = function()
+ 			local fs = require "nixio.fs"
++			local sys = require "luci.sys"
++			local kernel_version = sys.exec("echo -n $(uname -r)")
+ 			local rv = {}
+ 			local ok, fd
+ 
+@@ -214,6 +216,7 @@ local methods = {
+ 			rv.firewall4     = fs.access("/sbin/fw4")
+ 			rv.opkg          = fs.access("/bin/opkg")
+ 			rv.offloading    = fs.access("/sys/module/xt_FLOWOFFLOAD/refcnt") or fs.access("/sys/module/nft_flow_offload/refcnt")
++			rv.fullconenat   = fs.access("/lib/modules/" .. kernel_version .. "/xt_FULLCONENAT.ko") or fs.access("/lib/modules/" .. kernel_version .. "/nft_fullcone.ko")
+ 			rv.br2684ctl     = fs.access("/usr/sbin/br2684ctl")
+ 			rv.swconfig      = fs.access("/sbin/swconfig")
+ 			rv.odhcpd        = fs.access("/usr/sbin/odhcpd")
+@@ -618,6 +621,66 @@ local methods = {
+ 			end
+ 			return { result = res }
+ 		end
++	},
++
++	getCPUBench = {
++		call = function()
++			local sys = require "luci.sys"
++			local cpubench = {}
++
++			cpubench.cpubench = sys.exec("cat /etc/bench.log 2>/dev/null")
++			return cpubench
++		end
++	},
++
++	getCPUInfo = {
++		call = function()
++			local sys = require "luci.sys"
++			local cpuinfo = {}
++
++			cpuinfo.cpuinfo = sys.exec("/sbin/cpuinfo")
++
++			return cpuinfo
++		end
++	},
++
++	getCPUUsage = {
++		call = function()
++			local sys = require "luci.sys"
++			local cpuusage = {}
++
++			cpuusage.cpuusage = sys.exec("top -n1 | awk '/^CPU/ {printf(\"%d%\", 100 - $8)}'") or "6%"
++			return cpuusage
++		end
++	},
++
++	getETHInfo = {
++		call = function()
++			local sys = require "luci.sys"
++			local result = sys.exec("ethinfo 2>/dev/null")
++			return { result = result }
++		end
++	},
++
++	getOnlineUsers = {
++		call = function()
++			local sys = require "luci.sys"
++			local onlineusers = {}
++
++			onlineusers.onlineusers = sys.exec("cat /proc/net/arp | grep 'br-lan' | grep '0x2' | wc -l")
++			return onlineusers
++
++		end
++	},
++
++	getTempInfo = {
++		call = function()
++			local sys = require "luci.sys"
++			local tempinfo = {}
++
++			tempinfo.tempinfo = sys.exec("/sbin/tempinfo 2>/dev/null")
++			return tempinfo
++		end
+ 	}
+ }
+ 

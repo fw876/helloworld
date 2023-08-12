@@ -1,0 +1,25 @@
+--- a/luci-base/root/www/index.html
++++ b/luci-base/root/www/index.html
+@@ -15,6 +15,5 @@
+ 		</style>
+ 	</head>
+ 	<body>
+-		<a href="cgi-bin/luci/">LuCI - Lua Configuration Interface</a>
+ 	</body>
+ </html>
+
+--- a/luci-base/htdocs/luci-static/resources/ui.js
++++ b/luci-base/htdocs/luci-static/resources/ui.js
+@@ -3129,12 +3129,6 @@ var UIMenu = baseclass.singleton(/** @lends LuCI.ui.menu.prototype */ {
+ 
+ 				for (var i = 0; root != null && i < path.length; i++)
+ 					root = L.isObject(root.children) ? root.children[path[i]] : null;
+-
+-				if (root)
+-					subnode = Object.assign({}, subnode, {
+-						children: root.children,
+-						action: root.action
+-					});
+ 			}
+ 
+ 			children.push(subnode);

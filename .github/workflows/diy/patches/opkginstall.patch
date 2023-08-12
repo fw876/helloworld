@@ -1,0 +1,242 @@
+--- a/luci-app-opkg/htdocs/luci-static/resources/view/opkg.js
++++ b/luci-app-opkg/htdocs/luci-static/resources/view/opkg.js
+@@ -184,7 +184,7 @@ function parseList(s, dest)
+ 			val = RegExp.$2.trim();
+ 		}
+ 		else if (pkg) {
+-			dest.pkgs[pkg.name] = pkg;
++			dest.pkgs[pkg.name] = dest.pkgs[pkg.name] ? dest.pkgs[pkg.name] : pkg;
+ 
+ 			var provides = dest.providers[pkg.name] ? [] : [ pkg.name ];
+ 
+@@ -248,7 +248,7 @@ function display(pattern)
+ 			var avail = packages.available.pkgs[name],
+ 			    inst  = packages.installed.pkgs[name];
+ 
+-			if (!inst || !inst.installed)
++			if (!inst || !inst.installed || pkg.name.includes('kmod-') || pkg.name.includes('busybox') || pkg.name.includes('base-files'))
+ 				continue;
+ 
+ 			if (!avail || compareVersion(avail.version, pkg.version) <= 0)
+@@ -261,6 +261,7 @@ function display(pattern)
+ 			btn = E('div', {
+ 				'class': 'btn cbi-button-positive',
+ 				'data-package': name,
++				'action': 'upgrade',
+ 				'click': handleInstall
+ 			}, _('Upgrade…'));
+ 		}
+@@ -284,12 +285,14 @@ function display(pattern)
+ 				btn = E('div', {
+ 					'class': 'btn cbi-button-action',
+ 					'data-package': name,
++					'action': 'install',
+ 					'click': handleInstall
+ 				}, _('Install…'));
+-			else if (inst.installed && inst.version != pkg.version)
++			else if (inst.installed && compareVersion(pkg.version, inst.version) > 0)
+ 				btn = E('div', {
+ 					'class': 'btn cbi-button-positive',
+ 					'data-package': name,
++					'action': 'upgrade',
+ 					'click': handleInstall
+ 				}, _('Upgrade…'));
+ 			else
+@@ -392,6 +395,12 @@ function handleMode(ev)
+ 
+ 	currentDisplayMode = tab.getAttribute('data-mode');
+ 
++	if (currentDisplayMode == "updates"){
++	var filterv = document.querySelector('input[name="filter"]')
++	if ( filterv.value == "luci-app-")
++		filterv.value = ""
++	}
++
+ 	display(document.querySelector('input[name="filter"]').value);
+ 
+ 	ev.target.blur();
+@@ -660,6 +669,7 @@ function handleReset(ev)
+ function handleInstall(ev)
+ {
+ 	var name = ev.target.getAttribute('data-package'),
++	    action = ev.target.getAttribute('action'),
+ 	    pkg = packages.available.pkgs[name],
+ 	    depcache = {},
+ 	    size;
+@@ -785,7 +795,8 @@ function handleInstall(ev)
+ 						'id': 'overwrite-cb',
+ 						'type': 'checkbox',
+ 						'name': 'overwrite',
+-						'disabled': isReadonlyView
++						'disabled': isReadonlyView,
++						'checked': true
+ 					}), ' ',
+ 					E('label', { 'for': 'overwrite-cb' }), ' ',
+ 					_('Allow overwriting conflicting package files')
+@@ -799,7 +810,7 @@ function handleInstall(ev)
+ 			}, _('Cancel')),
+ 			' ',
+ 			E('div', {
+-				'data-command': 'install',
++				'data-command': action,
+ 				'data-package': name,
+ 				'class': 'btn cbi-button-action',
+ 				'click': handleOpkg,
+@@ -985,6 +996,10 @@ function handleOpkg(ev)
+ 
+ 		var argv = [ cmd, '--force-removal-of-dependent-packages' ];
+ 
++		argv.push('--force-checksum');
++		
++		argv.push('--force-depends');
++
+ 		if (rem && rem.checked)
+ 			argv.push('--autoremove');
+ 
+@@ -1090,8 +1105,8 @@ function updateLists(data)
+ 		    mount = L.toArray(data[0].filter(function(m) { return m.mount == '/' || m.mount == '/overlay' }))
+ 		    	.sort(function(a, b) { return a.mount > b.mount })[0] || { size: 0, free: 0 };
+ 
+-		pg.firstElementChild.style.width = Math.floor(mount.size ? ((100 / mount.size) * mount.free) : 100) + '%';
+-		pg.setAttribute('title', '%s (%1024mB)'.format(pg.firstElementChild.style.width, mount.free));
++		pg.firstElementChild.style.width = Math.floor(mount.size ? ((100 / mount.size) * (mount.size-mount.free)) : 100) + '%';
++		pg.setAttribute('title', '%.1024mB / %.1024mB (%s)'.format((mount.size-mount.free), mount.size, pg.firstElementChild.style.width));
+ 
+ 		parseList(data[1], packages.available);
+ 		parseList(data[2], packages.installed);
+@@ -1130,14 +1145,14 @@ return view.extend({
+ 
+ 			E('div', { 'class': 'controls' }, [
+ 				E('div', {}, [
+-					E('label', {}, _('Free space') + ':'),
++					E('label', {}, _('Used space') + ':'),
+ 					E('div', { 'class': 'cbi-progressbar', 'title': _('unknown') }, E('div', {}, [ '\u00a0' ]))
+ 				]),
+ 
+ 				E('div', {}, [
+ 					E('label', {}, _('Filter') + ':'),
+ 					E('span', { 'class': 'control-group' }, [
+-						E('input', { 'type': 'text', 'name': 'filter', 'placeholder': _('Type to filter…'), 'value': query, 'input': handleInput }),
++						E('input', { 'type': 'text', 'name': 'filter', 'placeholder': _('Type to filter…'), 'value': 'luci-app-', 'input': handleInput }),
+ 						E('button', { 'class': 'btn cbi-button', 'click': handleReset }, [ _('Clear') ])
+ 					])
+ 				]),
+@@ -1154,6 +1169,7 @@ return view.extend({
+ 					E('label', {}, _('Actions') + ':'), ' ',
+ 					E('span', { 'class': 'control-group' }, [
+ 						E('button', { 'class': 'btn cbi-button-positive', 'data-command': 'update', 'click': handleOpkg, 'disabled': isReadonlyView }, [ _('Update lists…') ]), ' ',
++						E('button', { 'class': 'btn cbi-button-negative', 'data-command': 'upgradeall', 'click': handleOpkg, 'disabled': isReadonlyView }, [ _('Upgrade all…') ]), ' ',
+ 						E('button', { 'class': 'btn cbi-button-action', 'click': handleUpload, 'disabled': isReadonlyView }, [ _('Upload Package…') ]), ' ',
+ 						E('button', { 'class': 'btn cbi-button-neutral', 'click': handleConfig }, [ _('Configure opkg…') ])
+ 					])
+
+--- a/luci-app-opkg/root/usr/libexec/opkg-call
++++ b/luci-app-opkg/root/usr/libexec/opkg-call
+@@ -13,13 +13,13 @@ case "$action" in
+ 		lists_dir=$(sed -rne 's#^lists_dir \S+ (\S+)#\1#p' /etc/opkg.conf /etc/opkg/*.conf 2>/dev/null | tail -n 1)
+ 		find "${lists_dir:-/usr/lib/opkg/lists}" -type f '!' -name '*.sig' | xargs -r gzip -cd
+ 	;;
+-	install|update|remove)
++	install|update|upgrade|upgradeall|remove)
+ 		(
+ 			opkg="opkg"
+ 
+ 			while [ -n "$1" ]; do
+ 				case "$1" in
+-					--autoremove|--force-overwrite|--force-removal-of-dependent-packages)
++					--autoremove|--force-overwrite|--force-removal-of-dependent-packages|--force-checksum|--force-depends)
+ 						opkg="$opkg $1"
+ 						shift
+ 					;;
+@@ -33,10 +33,45 @@ case "$action" in
+ 			done
+ 
+ 			if flock -x 200; then
+-				$opkg $action "$@" </dev/null >/tmp/opkg.out 2>/tmp/opkg.err
+-				code=$?
+-				stdout=$(cat /tmp/opkg.out)
++				if [ $action == "upgradeall" ]; then
++					opkg update </dev/null >/tmp/opkg.out 2>/tmp/opkg.err
++					code=$?
++					if [ $code == 0 ]; then
++						. /etc/profile.d/opkg.sh
++						if [[ "$(cat `opkg export au`)" ]] && lock -n /var/lock/opkg-upgrade; then
++						 opkg upgr </dev/null >>/tmp/opkg.out 2>>/tmp/opkg.err
++						 code=$?
++						 lock -u /var/lock/opkg-upgrade
++						else
++							echo "🎉 所有软件包已是最新~" >>/tmp/opkg.out
++							code=0
++						fi
++					fi
++				else
++					$opkg $action "$@" </dev/null >/tmp/opkg.out 2>/tmp/opkg.err
++					code=$?
++				fi
++				pkgn="$(echo $@ | cut -d - -f 3-)"
++				case "$action" in
++					install|upgrade)
++					if [ "$(opkg list-installed | cut -f 1 -d ' ' | grep -w $@)" ]; then
++							rm -f /tmp/opkg.err
++							([ -f /etc/profile.d/opkg.sh ] && . /etc/profile.d/opkg.sh && opkg save) &
++					fi
++					;;
++					remove)
++						if [ ! "$(opkg list-installed | cut -f 1 -d ' ' | grep -w $@)" ]; then
++							rm -f /tmp/opkg.err
++							([ -f /etc/profile.d/opkg.sh ] && . /etc/profile.d/opkg.sh && opkg save) &
++						fi
++					;;
++				esac
+ 				stderr=$(cat /tmp/opkg.err)
++				[ -n "$stderr" ] || {
++					echo "🎉 已完成, 请关闭本窗口~" >>/tmp/opkg.out
++					code=0
++				}
++				stdout=$(cat /tmp/opkg.out)
+ 			else
+ 				code=255
+ 				stderr="Failed to acquire lock"
+@@ -53,7 +88,7 @@ case "$action" in
+ 	;;
+ 	*)
+ 		echo "Usage: $0 {list-installed|list-available}"       >&2
+-		echo "       $0 {install|upgrade|remove} pkg[ pkg...]" >&2
++		echo "       $0 {install|upgrade|upgradeall|remove} pkg[ pkg...]" >&2
+ 		exit 1
+ 	;;
+ esac
+
+--- a/luci-app-opkg/root/usr/share/rpcd/acl.d/luci-app-opkg.json
++++ b/luci-app-opkg/root/usr/share/rpcd/acl.d/luci-app-opkg.json
+@@ -20,6 +20,8 @@
+ 				"/usr/libexec/opkg-call install *": [ "exec" ],
+ 				"/usr/libexec/opkg-call remove *": [ "exec" ],
+ 				"/usr/libexec/opkg-call update *": [ "exec" ],
++				"/usr/libexec/opkg-call upgrade *": [ "exec" ],
++				"/usr/libexec/opkg-call upgradeall *": [ "exec" ],
+ 				"/etc/opkg.conf": [ "write" ],
+ 				"/etc/opkg/*.conf": [ "write" ],
+ 				"/tmp/upload.ipk": [ "write" ]
+
+--- a/luci-mod-system/htdocs/luci-static/resources/view/system/flash.js
++++ b/luci-mod-system/htdocs/luci-static/resources/view/system/flash.js
+@@ -261,6 +261,7 @@ return view.extend({
+ 					body.push(E('p', {}, E('label', { 'class': 'btn' }, [
+ 						opts.backup_pkgs[0], ' ', _('Include in backup a list of current installed packages at /etc/backup/installed_packages.txt')
+ 					])));
++					opts.backup_pkgs[0].checked = true;
+ 				};
+ 
+ 				var cntbtn = E('button', {
+@@ -302,6 +303,10 @@ return view.extend({
+ 				opts.keep[0].addEventListener('change', function(ev) {
+ 					opts.skip_orig[0].disabled = !ev.target.checked;
+ 					opts.backup_pkgs[0].disabled = !ev.target.checked;
++					if (ev.target.checked == false){
++						opts.skip_orig[0].checked =false
++						opts.backup_pkgs[0].checked =false
++					}
+ 
+ 				});
+ 
