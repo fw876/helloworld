@@ -1,8 +1,0 @@
---- /dev/null
-+++ b/luci-app-aria2/root/etc/uci-defaults/luci-aria2
-@@ -0,0 +1,5 @@
-+#!/bin/sh
-+
-+cd /usr/share/aria2 && sh ./tracker.sh >/dev/null 2>&1 &
-+
-+exit 0
