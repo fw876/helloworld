@@ -33,7 +33,7 @@ jobs:
         with:
           git-author-email: 'ilove11502@github.com'
           git-author-name: 'love-dy'
-          src-repository: https://github.com/fw876/helloworld
+          src-repository: https://github.com/fw876/helloworld.git
           result-branch-name: master
           
       - name: Initialization values
