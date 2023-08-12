@@ -1,4 +1,4 @@
-name: Sync packages test
+name: Sync Packages
 
 on:
   #push:
