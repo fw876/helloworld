@@ -1,9 +1,10 @@
 name: Test Build
 
 on:
-  pull_request:
-    paths-ignore:
-      - '**.md'
+  watch:
+    types: [started]
+
+workflow_dispatch:
 
 jobs:
   build:
@@ -22,20 +23,11 @@ jobs:
           - arch: mipsel_24kc
             target: mt7621
 
-          - arch: powerpc_464fp
-            target: apm821xx-nand
-
-          - arch: powerpc_8548
-            target: mpc85xx-p1010
-
           - arch: aarch64_cortex-a53
             target: mvebu-cortexa53
 
           - arch: arm_cortex-a15_neon-vfpv4
             target: armvirt-32
-
-          - arch: i386_pentium-mmx
-            target: x86-geode
 
           - arch: x86_64
             target: x86-64
