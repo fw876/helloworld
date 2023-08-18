@@ -1,11 +1,9 @@
 name: Test Build
 
 on:
-  watch:
-    types: [started]
-
-workflow_dispatch:
-
+  pull_request:
+    paths-ignore:
+      - '**.md'
 jobs:
   build:
     name: Test ${{ matrix.arch }}
