@@ -106,11 +106,11 @@ msgstr "混淆参数（可选）"
 msgid "Authentication type"
 msgstr "验证类型"
 
-msgid "Port Hopping"
-msgstr "端口跃迁"
+msgid "Enable Port Hopping"
+msgstr "启用端口跃迁"
 
 msgid "Port Range"
-msgstr "端口范围"
+msgstr "端口范围值"
 
 msgid "Authentication payload"
 msgstr "验证载荷"
