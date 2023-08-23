@@ -755,11 +755,6 @@ start_server() {
 	server_service() {
 		[ "$(uci_get_by_name $1 enable 0)" == "0" ] && return 1
 		let server_count=server_count+1
-		if [ "$server_count" == "1" ]; then
-			if ! (iptables-save -t filter | grep SSR-SERVER-RULE >/dev/null); then
-				iptables -N SSR-SERVER-RULE && iptables -t filter -I INPUT -j SSR-SERVER-RULE
-			fi
-		fi
 		local type=$(uci_get_by_name $1 type)
 		case "$type" in
 		ss | ssr)
@@ -773,32 +768,23 @@ start_server() {
 			echolog "Server:Socks5 Server$server_count Started!"
 			;;
 		esac
-		iptables -t filter -A SSR-SERVER-RULE -p tcp --dport $(uci_get_by_name $1 server_port) -j ACCEPT
-		iptables -t filter -A SSR-SERVER-RULE -p udp --dport $(uci_get_by_name $1 server_port) -j ACCEPT
-		return 0
-	}
-	gen_serv_include() {
-		local FWI=$(uci get firewall.shadowsocksr.path 2>/dev/null)
-		[ -n "$FWI" ] || return 0
-		if [ ! -f $FWI ]; then
-			echo '#!/bin/sh' >$FWI
+		ssr_server_port=$(uci show shadowsocksr | grep 'server_config.*server_port' | awk -F"'" '{print $2}' | tr "\n" " ")
+		if [ -n "$ssr_server_port" ]; then
+			uci -q delete firewall.shadowsocksr_server
+			uci set firewall.shadowsocksr_server=rule
+			uci set firewall.shadowsocksr_server.name="shadowsocksr_server"
+			uci set firewall.shadowsocksr_server.target="ACCEPT"
+			uci set firewall.shadowsocksr_server.src="wan"
+			uci set firewall.shadowsocksr_server.dest_port="$ssr_server_port"
+			uci set firewall.shadowsocksr_server.enabled="1"
+			uci commit firewall
+			/etc/init.d/firewall reload >/dev/null 2>&1
 		fi
-		extract_rules() {
-			echo "*filter"
-			iptables-save -t filter | grep SSR-SERVER-RULE | sed -e "s/^-A INPUT/-I INPUT/"
-			echo 'COMMIT'
-		}
-		cat <<-EOF >>$FWI
-			iptables-save -c | grep -v "SSR-SERVER" | iptables-restore -c
-			iptables-restore -n <<-EOT
-			$(extract_rules)
-			EOT
-		EOF
+		return 0
 	}
 
 	config_load $NAME
 	config_foreach server_service server_config
-	gen_serv_include
 	return 0
 }
 
@@ -923,12 +909,6 @@ stop() {
 	unlock
 	set_lock
 	/usr/bin/ssr-rules -f
-	local srulecount=$(iptables -L | grep SSR-SERVER-RULE | wc -l)
-	if [ $srulecount -gt 0 ]; then
-		iptables -F SSR-SERVER-RULE
-		iptables -t filter -D INPUT -j SSR-SERVER-RULE
-		iptables -X SSR-SERVER-RULE 2>/dev/null
-	fi
 	if [ -z "$switch_server" ]; then
 		$PS -w | grep -v "grep" | grep ssr-switch | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 &
 		rm -f /var/lock/ssr-switch.lock
@@ -957,6 +937,9 @@ stop() {
 		rm -rf /tmp/dnsmasq.d/dnsmasq-ssrplus.conf $TMP_DNSMASQ_PATH $TMP_PATH/*-ssr-*.json $TMP_PATH/ssr-server*.json
 		/etc/init.d/dnsmasq restart >/dev/null 2>&1
 	fi
+	uci -q delete firewall.shadowsocksr_server
+	uci commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
 	del_cron
 	unset_lock
 }
