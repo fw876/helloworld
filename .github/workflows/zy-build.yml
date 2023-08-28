@@ -1,4 +1,4 @@
-name: Start build ssr+  two platforms by wk
+name: build ssr+
 
 on:
  workflow_dispatch:
