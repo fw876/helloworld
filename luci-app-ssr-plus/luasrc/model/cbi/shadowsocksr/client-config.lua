@@ -205,13 +205,13 @@ o:depends("type", "socks5")
 
 o = s:option(Value, "server_port", translate("Server Port"))
 o.datatype = "port"
-o.rmempty = false
+o.rmempty = ({port_hopping=0 and false or true})
 o:depends("type", "ssr")
 o:depends("type", "ss")
 o:depends("type", "v2ray")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
-o:depends("type", "hysteria")
+o:depends({type="hysteria",port_hopping=0})
 o:depends("type", "tuic")
 o:depends("type", "socks5")
 
@@ -308,6 +308,16 @@ o = s:option(Value, "obfs_param", translate("Obfs param (optional)"))
 o:depends("type", "ssr")
 
 -- [[ Hysteria ]]--
+o = s:option(Flag, "port_hopping", translate("Enable Port Hopping"))
+o:depends("type", "hysteria")
+o.rmempty = true
+o.default = "0"
+
+o = s:option(Value, "port_range", translate("Port Range"))
+o:depends({type = "hysteria", port_hopping = "1"})
+o.datatype = "portrange"
+o.rmempty = true
+
 o = s:option(ListValue, "hysteria_protocol", translate("Protocol"))
 o:depends("type", "hysteria")
 o:value("udp", translate("udp"))
