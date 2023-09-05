@@ -19,7 +19,7 @@ TUIC_FOOT:=unknown-linux-musl
 ifeq ($(ARCH),aarch64)
 	TUIC_ARCH:=$(TUIC_TYPE)-aarch64-$(TUIC_FOOT)
 	PKG_HASH:=c29eaaf3bc05115acc7453ac26bacf9aff65211b1e8ca7f771b818248bec8601
-else ifeq ($ARCH),arm64)
+else ifeq ($ARCH),arm)
 	ARM_CPU_FEATURES:=$(word 2,$(subst +,$(space),$(call qstrip,$(CONFIG_CPU_TYPE))))
 	ifeq ($(ARM_CPU_FEATURES),)
 		TUIC_ARCH:=$(TUIC_TYPE)-armv7-$(TUIC_FOOT)eabi
@@ -49,7 +49,7 @@ define Package/tuic-client
 	SUBMENU:=Web Servers/Proxies
 	TITLE:=Delicately-TUICed 0-RTT proxy protocol
 	URL:=https://github.com/EAimTY/tuic/
-	DEPENDS:=@USE_MUSL @(aarch64||arm64||i686||x86_64) @!(TARGET_x86_geode||TARGET_x86_legacy)
+	DEPENDS:=@USE_MUSL @(aarch64||arm||i686||x86_64) @!(TARGET_x86_geode||TARGET_x86_legacy)
 	#PKGARCH:=all aarch64 arm i686 x86_64
 endef
 
