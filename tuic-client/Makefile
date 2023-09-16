@@ -19,7 +19,8 @@ TUIC_FOOT:=unknown-linux-musl
 ifeq ($(ARCH),aarch64)
 	TUIC_ARCH:=$(TUIC_TYPE)-aarch64-$(TUIC_FOOT)
 	PKG_HASH:=c29eaaf3bc05115acc7453ac26bacf9aff65211b1e8ca7f771b818248bec8601
-else ifeq ($ARCH),arm64)
+else ifeq ($(ARCH),arm)
+# Referred to golang/golang-values.mk
 	ARM_CPU_FEATURES:=$(word 2,$(subst +,$(space),$(call qstrip,$(CONFIG_CPU_TYPE))))
 	ifeq ($(ARM_CPU_FEATURES),)
 		TUIC_ARCH:=$(TUIC_TYPE)-armv7-$(TUIC_FOOT)eabi
@@ -28,12 +29,16 @@ else ifeq ($ARCH),arm64)
 		TUIC_ARCH:=$(TUIC_TYPE)-armv7-$(TUIC_FOOT)eabihf
 		PKG_HASH:=e2cc1d81ac376ff2a94976e78c861f5cd21ad809ff5b587ae967e2a63e4c35e4
 	endif
-else ifeq ($(ARCH),i686)
+else ifeq ($(ARCH),i386)
 	TUIC_ARCH:=$(TUIC_TYPE)-i686-$(TUIC_FOOT)
 	PKG_HASH:=67d930b4381a8848bf98acbccb538c73b72ca9dde0aed3705f73e62a9922f758
 else ifeq ($(ARCH),x86_64)
 	TUIC_ARCH:=$(TUIC_TYPE)-x86_64-$(TUIC_FOOT)
 	PKG_HASH:=180c562691247a7feddf553706bc8fd5b5b9de3027154f94a767ea907a45e2de
+# Set the default value to make OpenWrt Package Checker happy
+else
+  PKG_SOURCE:=dummy
+  PKG_HASH:=dummy
 endif
 
 define Download/tuic-client
@@ -49,8 +54,7 @@ define Package/tuic-client
 	SUBMENU:=Web Servers/Proxies
 	TITLE:=Delicately-TUICed 0-RTT proxy protocol
 	URL:=https://github.com/EAimTY/tuic/
-	DEPENDS:=@USE_MUSL @(aarch64||arm64||i686||x86_64) @!(TARGET_x86_geode||TARGET_x86_legacy)
-	#PKGARCH:=all aarch64 arm i686 x86_64
+	DEPENDS:=@USE_MUSL @(aarch64||arm||i386||x86_64) @!(TARGET_x86_geode||TARGET_x86_legacy)
 endef
 
 define Build/Prepare
@@ -66,7 +70,6 @@ endef
 define Package/tuic-client/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(DL_DIR)/$(TUIC_ARCH) $(1)/usr/bin/tuic-client
-	chmod +x $(1)/usr/bin/tuic-client
 endef
 
 $(eval $(call BuildPackage,tuic-client))
