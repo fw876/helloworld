@@ -305,6 +305,18 @@ local hysteria = {
 	fast_open = (server.fast_open == "1") and true or false,
 	lazy_start = (server.lazy_start == "1") and true or false
 }
+local shadowtls = {
+        client = {
+                server_addr = server.server .. ":" .. server.server_port,
+                listen = "127.0.0.1:" .. tonumber(local_port),
+                tls_names = server.shadowtls_sni,
+                password = server.password 
+        },
+        v3 = (server.shadowtls_protocol == "v3") and true or false,
+        disable_nodelay = (server.disable_nodelay == "1") and true or false,
+        fastopen = (server.fastopen == "1") and true or false,
+        strict = (server.strict == "1") and true or false
+}
 local tuic = {
 		relay = {
 				server = server.server .. ":" .. server.server_port,
@@ -325,8 +337,8 @@ local tuic = {
 				receive_window = tonumber(server.receive_window)
         },
 		["local"] = {
-				server = "0.0.0.0:" .. tonumber(local_port),
-				--dual_stack = (server.tuic_dual_stack == "1") and true or false,
+				server = "[::]:" .. tonumber(local_port),
+				dual_stack = (server.tuic_dual_stack == "1") and true or false,
 				max_packet_size = tonumber(server.tuic_max_package_size)
 		}
 }
