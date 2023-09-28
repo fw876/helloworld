@@ -13,7 +13,7 @@ RELEASE_HEAD:=$(PKG_NAME)
 RELEASE_FOOT:=unknown-linux-musl
 ifeq ($(ARCH),aarch64)
 	RELEASE_ARCH:=$(RELEASE_HEAD)-aarch64-$(RELEASE_FOOT)
-	PKG_HASH:=c29eaaf3bc05115acc7453ac26bacf9aff65211b1e8ca7f771b818248bec8601
+	PKG_HASH:=62081cdb011bcf82064c0f3313ee581df536914106108b137efdc5014c207b5b
 else ifeq ($(ARCH),arm)
 	ARM_CPU_FEATURES:=$(word 2,$(subst +,$(space),$(call qstrip,$(CONFIG_CPU_TYPE))))
 	ifeq ($(ARM_CPU_FEATURES),)
