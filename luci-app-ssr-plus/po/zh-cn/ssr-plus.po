@@ -106,20 +106,85 @@ msgstr "混淆参数（可选）"
 msgid "Authentication type"
 msgstr "验证类型"
 
+msgid "Users Authentication"
+msgstr "用户验证"
+
+msgid "NOTE: If the server uses the userpass authentication, the format must be username:password."
+msgstr "注意： 如果服务器使用 userpass 验证，格式必须是 username:password。"
+
 msgid "Enable Port Hopping"
 msgstr "启用端口跃迁"
 
 msgid "Port Range"
 msgstr "端口范围值"
 
-msgid "Authentication payload"
-msgstr "验证载荷"
+msgid "Enable Lazy Mode"
+msgstr "启用懒狗模式"
+
+msgid "Enable Obfuscation"
+msgstr "启用混淆功能"
+
+msgid "Obfuscation Type"
+msgstr "混淆类型"
+
+msgid "Obfuscation Password"
+msgstr "混淆密码"
+
+msgid "Hysterir QUIC parameters"
+msgstr "QUIC参数"
+
+msgid "QUIC initStreamReceiveWindow"
+msgstr "QUIC初始流接收窗口大小。"
+
+msgid "QUIC maxStreamReceiveWindow"
+msgstr "QUIC最大的流接收窗口大小"
+
+msgid "QUIC initConnReceiveWindow"
+msgstr "QUIC初始的连接接收窗口大小"
+
+msgid "QUIC maxConnReceiveWindow"
+msgstr "QUIC最大的连接接收窗口大小"
+
+msgid "QUIC maxIdleTimeout(Unit:second)"
+msgstr "QUIC最长空闲超时时间（单位：秒）"
+
+msgid "The keep-alive period.(Unit:second)"
+msgstr "心跳包发送间隔（单位：秒）"
+
+
+msgid "Certificate fingerprint"
+msgstr "证书指纹"
+
+msgid "shadowTLS protocol Version"
+msgstr "ShadowTLS协议版本"
+
+msgid "TLS 1.3 Strict mode"
+msgstr "TLS 1.3 限定模式"
+
+msgid "Disable TCP No_delay"
+msgstr "禁用TCP无延迟"
+
+msgid "shadow-TLS SNI"
+msgstr "服务器名称指示"
+
+msgid "Shadow-TLS ChainPoxy type"
+msgstr "代理链类型"
+
+msgid "Shadowsocks-rust Version"
+msgstr "shadowsocks rust版本"
+
+msgid "Vmess Protocol"
+msgstr "VMESS协议"
+
+msgid "Shadowsocks password"
+msgstr "shadowsocks密码"
 
 msgid "QUIC connection receive window"
 msgstr "QUIC 连接接收窗口"
 
 msgid "QUIC stream receive window"
 msgstr "QUIC 流接收窗口"
+
 
 msgid "Lazy Start"
 msgstr "延迟启动"
