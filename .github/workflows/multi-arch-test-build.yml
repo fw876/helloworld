@@ -5,6 +5,9 @@ on:
     paths-ignore:
       - '**.md'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Test ${{ matrix.arch }}
