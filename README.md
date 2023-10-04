@@ -82,3 +82,4 @@ e.g.:
 rm -rf feeds/packages/lang/golang
 svn co https://github.com/openwrt/packages/branches/openwrt-22.03/lang/golang feeds/packages/lang/golang
 ```
+[![Test Build](https://github.com/xprears/helloworld/actions/workflows/multi-arch-test-build.yml/badge.svg?branch=master)](https://github.com/xprears/helloworld/actions/workflows/multi-arch-test-build.yml)
