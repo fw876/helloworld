@@ -1,4 +1,4 @@
-name: Test Build
+name: Newest
 
 on:
   pull_request:
