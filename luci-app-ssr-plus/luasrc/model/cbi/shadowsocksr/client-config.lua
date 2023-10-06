@@ -393,12 +393,6 @@ o.datatype = "uinteger"
 o.rmempty = true
 o.default = "20971520"
 
-o = s:option(Value, "maxincomingstreams", translate("QUIC maxIncomingStreams"))
-o:depends({type = "hysteria",flag_quicparam = "1"})
-o.datatype = "uinteger"
-o.rmempty = true
-o.default = "1024"
-
 o = s:option(Value, "maxidletimeout", translate("QUIC maxIdleTimeout(Unit:second)"))
 o:depends({type = "hysteria",flag_quicparam = "1"})
 o.rmempty = true
