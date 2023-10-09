@@ -284,12 +284,20 @@ local hysteria = {
 	down = tonumber(server.downlink_capacity) and tonumber(server.downlink_capacity) .. " mbps" or nil 
 	},
 	socks5 = (proto:find("tcp") and tonumber(socks_port) and tonumber(socks_port) ~= 0) and {
-			listen = "0.0.0.0:" .. tonumber(socks_port),
-			disable_udp = false
+		listen = "0.0.0.0:" .. tonumber(socks_port),
+		disable_udp = false
 	} or nil,
---[[			tcpTProxy = (proto:find("tcp") and local_port ~= "0") and {
+	transport = {
+		type = server.transport_protocol,
+		udp = { 
+			hopInterval = tonumber(server.hopinterval) and tonumber(server.hopinterval) .. "s" or nil
+		}
+	},
+--[[			
+	tcpTProxy = (proto:find("tcp") and local_port ~= "0") and {
 	listen = "0.0.0.0:" .. tonumber(local_port)
-} or nil,]]
+} or nil,
+]]
 	tcpRedirect = (proto:find("tcp") and local_port ~= "0") and {
 					listen = "0.0.0.0:" .. tonumber(local_port)
 	} or nil,
@@ -305,8 +313,8 @@ local hysteria = {
 		maxStreamReceiveWindow = (server.maxstreamseceivewindow and server.maxstreamseceivewindow or nil),
 		initConnReceiveWindow = (server.initconnreceivewindow and server.initconnreceivewindow or nil),
 		maxConnReceiveWindow = (server.maxconnreceivewindow and server.maxconnreceivewindow or nil),
-		maxIdleTimeout = (server.maxincomingstreams and server.maxincomingstreams or nil),
-		keepAlivePeriod = (server.maxincomingstreams and server.keepaliveperiod or nil),
+		maxIdleTimeout = (tonumber(server.maxidletimeout) and tonumber(server.maxidletimeout) .. "s" or nil),
+		keepAlivePeriod = (tonumber(server.keepaliveperiod) and tonumber(server.keepaliveperiod) .. "s" or nil),
 		disable_mtu_discovery = (server.disablepathmtudiscovery == "1") and true or false
 	} or nil,
 	auth = server.hy2_auth,

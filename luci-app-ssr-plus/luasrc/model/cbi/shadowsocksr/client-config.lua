@@ -328,7 +328,7 @@ o = s:option(Value, "hy2_auth", translate("Users Authentication"))
 o:depends("type", "hysteria")
 o.rmempty = false
 
-o = s:option(ListValue, "hysteria_protocol", translate("Protocol"))
+o = s:option(ListValue, "transport_protocol", translate("Protocol"))
 o:depends("type", "hysteria")
 o:value("udp", translate("udp"))
 o.default = "udp"
@@ -338,6 +338,12 @@ o = s:option(Flag, "port_hopping", translate("Enable Port Hopping"))
 o:depends("type", "hysteria")
 o.rmempty = true
 o.default = "0"
+
+o = s:option(Value, "hopinterval", translate("Port Hopping Interval(Unit:Second)"))
+o:depends({type = "hysteria", port_hopping = 1})
+o.datatype = "uinteger"
+o.rmempty = true
+o.default = "30"
 
 o = s:option(Value, "port_range", translate("Port Range"))
 o:depends({type = "hysteria", port_hopping = 1})
@@ -396,12 +402,14 @@ o.default = "20971520"
 o = s:option(Value, "maxidletimeout", translate("QUIC maxIdleTimeout(Unit:second)"))
 o:depends({type = "hysteria",flag_quicparam = "1"})
 o.rmempty = true
-o.default = "30s"
+o.datatype = "uinteger"
+o.default = "30"
 
 o = s:option(Value, "keepaliveperiod", translate("The keep-alive period.(Unit:second)"))
 o:depends({type = "hysteria",flag_quicparam = "1"})
 o.rmempty = true
-o.default = "10s"
+o.datatype = "uinteger"
+o.default = "10"
 
 o = s:option(Flag, "disablepathmtudiscovery", translate("Disable Path MTU discovery"))
 o:depends({type = "hysteria",flag_quicparam = "1"})
@@ -767,14 +775,14 @@ o:depends("transport", "kcp")
 o.default = 50
 o.rmempty = true
 
-o = s:option(Value, "uplink_capacity", translate("Uplink Capacity"))
+o = s:option(Value, "uplink_capacity", translate("Uplink Capacity(Default:Mbps)"))
 o.datatype = "uinteger"
 o:depends("transport", "kcp")
 o:depends("type", "hysteria")
 o.default = 5
 o.rmempty = true
 
-o = s:option(Value, "downlink_capacity", translate("Downlink Capacity"))
+o = s:option(Value, "downlink_capacity", translate("Downlink Capacity(Default:Mbps)"))
 o.datatype = "uinteger"
 o:depends("transport", "kcp")
 o:depends("type", "hysteria")
@@ -832,6 +840,7 @@ o:depends({type = "v2ray", v2ray_protocol = "shadowsocks", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "socks", socks_ver = "5", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "http", reality = false})
 o:depends("type", "trojan")
+o:depends("type", "hysteria")
 
 -- [[ TLS部分 ]] --
 o = s:option(Flag, "tls_sessionTicket", translate("Session Ticket"))
@@ -887,7 +896,6 @@ o = s:option(Value, "tls_host", translate("TLS Host"))
 o.datatype = "hostname"
 o:depends("tls", true)
 o:depends("reality", true)
-o:depends("type", "hysteria")
 o.rmempty = true
 
 o = s:option(DynamicList, "tls_alpn", translate("TLS ALPN"))

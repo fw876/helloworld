@@ -118,6 +118,9 @@ msgstr "启用端口跃迁"
 msgid "Port Range"
 msgstr "端口范围值"
 
+msgid "Port Hopping Interval(Unit:Second)"
+msgstr "端口跃迁间隔（单位：秒）"
+
 msgid "Enable Lazy Mode"
 msgstr "启用懒狗模式"
 
@@ -870,11 +873,11 @@ msgstr "最大传输单元"
 msgid "TTI"
 msgstr "传输时间间隔"
 
-msgid "Uplink Capacity"
-msgstr "上行链路容量"
+msgid "Uplink Capacity(Default:Mbps)"
+msgstr "上行链路容量（默认：Mbps）"
 
-msgid "Downlink Capacity"
-msgstr "下行链路容量"
+msgid "Downlink Capacity(Default:Mbps)"
+msgstr "下行链路容量（默认：Mbps）"
 
 msgid "Read Buffer Size"
 msgstr "读取缓冲区大小"
