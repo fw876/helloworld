@@ -220,7 +220,7 @@ o:depends("type", "ss_rust")
 o:depends("type", "v2ray")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
-o:depends({type = "hysteria",port_hopping = 0})
+o:depends({type = "hysteria",port_hopping = "0"})
 o:depends("type", "tuic")
 o:depends("type", "shadowtls")
 o:depends("type", "socks5")
@@ -340,13 +340,13 @@ o.rmempty = true
 o.default = "0"
 
 o = s:option(Value, "hopinterval", translate("Port Hopping Interval(Unit:Second)"))
-o:depends({type = "hysteria", port_hopping = 1})
+o:depends({type = "hysteria", port_hopping = "1"})
 o.datatype = "uinteger"
 o.rmempty = true
 o.default = "30"
 
 o = s:option(Value, "port_range", translate("Port Range"))
-o:depends({type = "hysteria", port_hopping = 1})
+o:depends({type = "hysteria", port_hopping = "1"})
 o.rmempty = false
 
 o = s:option(Flag, "lazy_mode", translate("Enable Lazy Mode"))
