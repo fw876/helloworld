@@ -442,14 +442,6 @@ function config:new(o)
 end
 function config:handleIndex(index)
 	local switch = {
-		ss_rust = function()
-			ss.protocol = socks_port
-			if server.plugin and server.plugin ~= "none" then
-				ss.plugin = server.plugin
-				ss.plugin_opts = server.plugin_opts or nil
-			end
-			print(json.stringify(ss, 1))
-		end,
 		ss = function()
 			ss.protocol = socks_port
 			if server.plugin and server.plugin ~= "none" then

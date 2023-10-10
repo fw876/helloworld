@@ -145,10 +145,10 @@ if is_finded("ssr-redir") then
 	o:value("ssr", translate("ShadowsocksR"))
 end
 if is_finded("ss-local") or is_finded("ss-redir") then
-	o:value("ss", translate("Shadowsocks-libev New Version"))
+	o:value("ss", translate("Shadowsocks-libev Version"))
 end
 if is_finded("sslocal") or is_finded("ssmanager") then
-	o:value("ss_rust", translate("Shadowsocks-rust Version"))
+	o:value("ss", translate("Shadowsocks-rust Version"))
 end
 if is_finded("trojan") then
 	o:value("trojan", translate("Trojan"))
@@ -202,7 +202,6 @@ o.datatype = "host"
 o.rmempty = false
 o:depends("type", "ssr")
 o:depends("type", "ss")
-o:depends("type", "ss_rust")
 o:depends("type", "v2ray")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
@@ -216,7 +215,6 @@ o.datatype = "port"
 o.rmempty = true
 o:depends("type", "ssr")
 o:depends("type", "ss")
-o:depends("type", "ss_rust")
 o:depends("type", "v2ray")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
@@ -244,7 +242,6 @@ o.password = true
 o.rmempty = true
 o:depends("type", "ssr")
 o:depends("type", "ss")
-o:depends("type", "ss_rust")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
 o:depends("type", "shadowtls")
@@ -267,7 +264,6 @@ for _, v in ipairs(encrypt_methods_ss) do
 end
 o.rmempty = true
 o:depends("type", "ss")
-o:depends("type", "ss_rust")
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 
 o = s:option(Flag, "uot", translate("UDP over TCP"))
@@ -295,12 +291,10 @@ if is_finded("xray-plugin") then
 end
 o.rmempty = true
 o:depends("type", "ss")
-o:depends("type", "ss_rust")
 
 o = s:option(Value, "plugin_opts", translate("Plugin Opts"))
 o.rmempty = true
 o:depends("type", "ss")
-o:depends("type", "ss_rust")
 
 o = s:option(ListValue, "protocol", translate("Protocol"))
 for _, v in ipairs(protocol) do
@@ -989,7 +983,6 @@ o.rmempty = true
 o.default = "0"
 o:depends("type", "ssr")
 o:depends("type", "ss")
-o:depends("type", "ss_rust")
 o:depends("type", "trojan")
 o:depends("type", "hysteria")
 
@@ -1008,26 +1001,22 @@ if is_finded("kcptun-client") then
 	o.default = "0"
 	o:depends("type", "ssr")
 	o:depends("type", "ss")
-	o:depends("type", "ss_rust")
 
 	o = s:option(Value, "kcp_port", translate("KcpTun Port"))
 	o.datatype = "port"
 	o.default = 4000
 	o:depends("type", "ssr")
 	o:depends("type", "ss")
-	o:depends("type", "ss_rust")
 
 	o = s:option(Value, "kcp_password", translate("KcpTun Password"))
 	o.password = true
 	o:depends("type", "ssr")
 	o:depends("type", "ss")
-	o:depends("type", "ss_rust")
 
 	o = s:option(Value, "kcp_param", translate("KcpTun Param"))
 	o.default = "--nocomp"
 	o:depends("type", "ssr")
 	o:depends("type", "ss")
-	o:depends("type", "ss_rust")
 end
 
 return m

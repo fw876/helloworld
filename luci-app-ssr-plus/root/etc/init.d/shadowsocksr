@@ -270,7 +270,6 @@ get_name() {
 	case "$1" in
 	ss) echo "Shadowsocks" ;;
 	ssr) echo "ShadowsocksR" ;;
-	ss_rust) echo "Shadowsocks-Rust";;
 	esac
 }
 
@@ -300,7 +299,7 @@ gen_config_file() { #server1 type2 code3 local_port4 socks_port5 chain6 threads5
 		;;
 	esac
 	case "$2" in
-	ss | ssr | ss_rust)
+	ss | ssr)
 		lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 ${ss_protocol:-redir} >$config_file
 		if [ "$3" == "3" ]; then
 			lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $tmp_port socks >$shunt_dns_config_file
@@ -457,7 +456,7 @@ start_udp() {
 start_shunt() {
 	local type=$(uci_get_by_name $SHUNT_SERVER type)
 	case "$type" in
-	ss | ssr |ss_rust)
+	ss | ssr)
 		gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port
 		ss_program="$(first_type ${type}local ${type}-redir)"
 		ln_start_bin $ss_program ${type}-redir -c $shunt_config_file
@@ -584,7 +583,7 @@ start_local() {
 	[ "$LOCAL_SERVER" == "$SHUNT_SERVER" ] && tmp_local_port=$local_port
 	local type=$(uci_get_by_name $LOCAL_SERVER type)
 	case "$type" in
-	ss | ssr | ss_rust)
+	ss | ssr)
 		gen_config_file $LOCAL_SERVER $type 4 $local_port
 		ss_program="$(first_type ${type}local ${type}-local)"
 		ln_start_bin $ss_program ${type}-local -c $local_config_file
