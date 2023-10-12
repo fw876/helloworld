@@ -8,6 +8,9 @@ local proto = arg[2]
 local local_port = arg[3] or "0"
 local socks_port = arg[4] or "0"
 
+local chain = arg[5] or "0"
+local chain_local_port = string.split(chain, "/")[2] or "0"
+
 local server = ucursor:get_all("shadowsocksr", server_section)
 local outbound_settings = nil
 
@@ -275,59 +278,159 @@ local ss = {
 	reuse_port = true
 }
 local hysteria = {
-	server = server.server .. ":" .. server.server_port,
-	protocol = server.hysteria_protocol,
-	up_mbps = tonumber(server.uplink_capacity),
-	down_mbps = tonumber(server.downlink_capacity),
+	server = server.server_port and (server.server .. ":" .. server.server_port) or (server.server .. ":" .. server.port_range),
+	bandwidth = {
+	up = tonumber(server.uplink_capacity) and tonumber(server.uplink_capacity) .. " mbps" or nil,
+	down = tonumber(server.downlink_capacity) and tonumber(server.downlink_capacity) .. " mbps" or nil 
+	},
 	socks5 = (proto:find("tcp") and tonumber(socks_port) and tonumber(socks_port) ~= 0) and {
 		listen = "0.0.0.0:" .. tonumber(socks_port),
-		timeout = 300,
 		disable_udp = false
 	} or nil,
-	redirect_tcp = (proto:find("tcp") and local_port ~= "0") and {
-		listen = "0.0.0.0:" .. tonumber(local_port),
-		timeout = 300
+	transport = {
+		type = server.transport_protocol,
+		udp = { 
+			hopInterval = tonumber(server.hopinterval) and tonumber(server.hopinterval) .. "s" or nil
+		}
+	},
+--[[			
+	tcpTProxy = (proto:find("tcp") and local_port ~= "0") and {
+	listen = "0.0.0.0:" .. tonumber(local_port)
+} or nil,
+]]
+	tcpRedirect = (proto:find("tcp") and local_port ~= "0") and {
+					listen = "0.0.0.0:" .. tonumber(local_port)
 	} or nil,
-	tproxy_udp = (proto:find("udp") and local_port ~= "0") and {
-		listen = "0.0.0.0:" .. tonumber(local_port),
-		timeout = 60
+	udpTProxy = (proto:find("udp") and local_port ~= "0") and {
+					listen = "0.0.0.0:" .. tonumber(local_port)
 	} or nil,
-	obfs = server.seed,
-	auth = (server.auth_type == "1") and server.auth_payload or nil,
-	auth_str = (server.auth_type == "2") and server.auth_payload or nil,
-	alpn = server.quic_tls_alpn,
-	server_name = server.tls_host,
-	insecure = (server.insecure == "1") and true or false,
-	ca = (server.certificate) and server.certpath or nil,
-	recv_window_conn = tonumber(server.recv_window_conn),
-	recv_window = tonumber(server.recv_window),
-	disable_mtu_discovery = (server.disable_mtu_discovery == "1") and true or false,
+	obfs = (server.flag_obfs == "1") and {
+				type = server.obfs_type,
+				salamander = { password = server.salamander }
+	} or nil,
+	quic = (server.flag_quicparam == "1" ) and {
+		initStreamReceiveWindow = (server.initstreamreceivewindow and server.initstreamreceivewindow or nil),
+		maxStreamReceiveWindow = (server.maxstreamseceivewindow and server.maxstreamseceivewindow or nil),
+		initConnReceiveWindow = (server.initconnreceivewindow and server.initconnreceivewindow or nil),
+		maxConnReceiveWindow = (server.maxconnreceivewindow and server.maxconnreceivewindow or nil),
+		maxIdleTimeout = (tonumber(server.maxidletimeout) and tonumber(server.maxidletimeout) .. "s" or nil),
+		keepAlivePeriod = (tonumber(server.keepaliveperiod) and tonumber(server.keepaliveperiod) .. "s" or nil),
+		disable_mtu_discovery = (server.disablepathmtudiscovery == "1") and true or false
+	} or nil,
+	auth = server.hy2_auth,
+	tls = (server.tls_host) and {
+		sni = server.tls_host,
+		insecure = (server.insecure == "1") and true or false,
+		pinSHA256 = (server.insecure == "1") and server.pinsha256 or nil
+	} or {
+		sni = server.server,
+		insecure = (server.insecure == "1") and true or false
+	},
 	fast_open = (server.fast_open == "1") and true or false,
-	lazy_start = (server.lazy_start == "1") and true or false
+	lazy = (server.lazy_mode == "1") and true or false
+}
+local shadowtls = {
+	client = {
+		server_addr = server.server_port and server.server .. ":" .. server.server_port or nil,
+		listen = "127.0.0.1:" .. tonumber(local_port),
+		tls_names = server.shadowtls_sni,
+		password = server.password 
+	},
+	v3 = (server.shadowtls_protocol == "v3") and true or false,
+	disable_nodelay = (server.disable_nodelay == "1") and true or false,
+	fastopen = (server.fastopen == "1") and true or false,
+	strict = (server.strict == "1") and true or false
+}
+local chain_sslocal = {
+		locals = local_port ~= "0" and {
+		{
+			local_address = "0.0.0.0",
+			local_port = (chain_local_port == "0" and tonumber(server.local_port) or tonumber(chain_local_port)),
+			mode = (proto:find("tcp,udp") and "tcp_and_udp") or proto .. "_only",
+			protocol = "redir",
+			tcp_redir = "redirect",
+		--tcp_redir = "tproxy",
+			udp_redir = "tproxy"
+		},
+		socks_port ~= "0" and {
+			protocol = "socks",
+			local_address = "0.0.0.0",
+			local_port = tonumber(socks_port)
+		} or nil
+	} or {{ 
+			protocol = "socks",
+			local_address = "0.0.0.0",
+			ocal_port = tonumber(socks_port)
+			}},
+		servers = {
+			{
+				server = "127.0.0.1",
+				server_port = (tonumber(local_port) == 0 and tonumber(chain_local_port) or tonumber(local_port)),
+				method = server.sslocal_method,
+				password = server.sslocal_password
+			}
+		}
+}
+local chain_vmess = {
+	inbounds = (local_port ~= "0") and {
+	{
+		port =  (chain_local_port == "0" and tonumber(server.local_port) or tonumber(chain_local_port)),
+		protocol = "dokodemo-door",
+			settings = {
+			network = proto, 
+			followRedirect = true
+		},
+		streamSettings = {
+			sockopt = {tproxy = "redirect"}
+		},
+		sniffing = {
+			enable = true,
+			destOverride = {"http","tls"}
+		}
+	},
+		(proto:find("tcp") and socks_port ~= "0") and {
+		protocol = "socks",
+		port = tonumber(socks_port)
+		} or nil
+	} or { protocol = "socks",port = tonumber(socks_port) },
+	outbound = {
+		protocol = "vmess",
+		settings = {
+			vnext = {{
+				address = "127.0.0.1",
+				port =  (tonumber(local_port) == 0 and tonumber(chain_local_port) or tonumber(local_port)),
+				users = {{
+				id = (server.vmess_uuid),
+				security = server.vmess_method,
+				level = 0
+				}}
+			}}
+		}
+	}
 }
 local tuic = {
 		relay = {
-				server = server.server .. ":" .. server.server_port,
-				ip = server.tuic_ip,
-				uuid = server.tuic_uuid,
-				password = server.tuic_passwd,
-				certificates = server.certificate and { server.certpath } or nil,
-				udp_relay_mode = server.udp_relay_mode,
-				congestion_control = server.congestion_control,
-				heartbeat = server.heartbeat and server.heartbeat .. "s" or nil,
-				timeout = server.timeout and server.timeout .. "s" or nil,
-				gc_interval = server.gc_interval and server.gc_interval .. "s" or nil,
-				gc_lifetime = server.gc_lifetime and server.gc_lifetime .. "s" or nil,
-				alpn = server.tls_alpn,
-				disable_sni = (server.disable_sni == "1") and true or false,
-				zero_rtt_handshake = (server.zero_rtt_handshake == "1") and true or false,
-				send_window = tonumber(server.send_window),
-				receive_window = tonumber(server.receive_window)
-        },
+			server = server.server_port and server.server .. ":" .. server.server_port,
+			ip = server.tuic_ip,
+			uuid = server.tuic_uuid,
+			password = server.tuic_passwd,
+			certificates = server.certificate and { server.certpath } or nil,
+			udp_relay_mode = server.udp_relay_mode,
+			congestion_control = server.congestion_control,
+			heartbeat = server.heartbeat and server.heartbeat .. "s" or nil,
+			timeout = server.timeout and server.timeout .. "s" or nil,
+			gc_interval = server.gc_interval and server.gc_interval .. "s" or nil,
+			gc_lifetime = server.gc_lifetime and server.gc_lifetime .. "s" or nil,
+			alpn = server.tls_alpn,
+			disable_sni = (server.disable_sni == "1") and true or false,
+			zero_rtt_handshake = (server.zero_rtt_handshake == "1") and true or false,
+			send_window = tonumber(server.send_window),
+			receive_window = tonumber(server.receive_window)
+		},
 		["local"] = {
-				server = "0.0.0.0:" .. tonumber(local_port),
-				--dual_stack = (server.tuic_dual_stack == "1") and true or false,
-				max_packet_size = tonumber(server.tuic_max_package_size)
+			server = tonumber(socks_port) and (server.tuic_dual_stack == "1" and "[::1]:" or "127.0.0.1:")  .. (socks_port == "0" and local_port or tonumber(socks_port)),
+			dual_stack = (server.tuic_dual_stack == "1") and true or false,
+			max_packet_size = tonumber(server.tuic_max_package_size)
 		}
 }
 local config = {}
@@ -367,6 +470,28 @@ function config:handleIndex(index)
 		hysteria = function()
 			print(json.stringify(hysteria, 1))
 		end,
+		shadowtls = function()
+			local chain_switch = {
+				sslocal = function()
+					if (chain:find("chain")) then
+						print(json.stringify(chain_sslocal, 1))
+					else
+						print(json.stringify(shadowtls, 1))
+					end
+				end,
+				vmess = function()
+					if (chain:find("chain")) then
+						print(json.stringify(chain_vmess, 1))
+					else
+						print(json.stringify(shadowtls, 1))
+					end
+				end
+			}
+			local ChainType = server.chain_type
+				if chain_switch[ChainType] then
+					chain_switch[ChainType]()
+				end
+			end,
 		tuic = function()
 			print(json.stringify(tuic, 1))
 		end
