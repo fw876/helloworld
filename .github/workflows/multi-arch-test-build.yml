@@ -22,12 +22,6 @@ jobs:
           - arch: mipsel_24kc
             target: mt7621
 
-          - arch: powerpc_464fp
-            target: apm821xx-nand
-
-          - arch: powerpc_8548
-            target: mpc85xx-p1010
-
           - arch: aarch64_cortex-a53
             target: mvebu-cortexa53
 
