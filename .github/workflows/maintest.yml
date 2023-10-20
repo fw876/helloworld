@@ -1,4 +1,4 @@
-name: temp test by wk
+name: Start build ssr+  two platforms by dz
 
 on:
  workflow_dispatch:
@@ -11,6 +11,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - arch: aarch64_cortex-a53
+            target: mvebu-cortexa53
+
           - arch: x86_64
             target: x86-64
 
@@ -43,8 +46,7 @@ jobs:
           done
           # fallback to test packages if nothing explicitly changes this is
           # should run if other mechanics in packages.git changed
-         
-          PACKAGES="${PACKAGES:-luci-app-poweroff}"
+          PACKAGES="${PACKAGES:-luci-app-ssr-plus}"
 
           echo "Building $PACKAGES"
           echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
@@ -98,4 +100,4 @@ jobs:
           name: ${{env.ARCHIVE_NAME}}-packages
           path: |
             *.ipk
-            
+            PKG-INFO
