@@ -39,7 +39,7 @@ jobs:
 
       - name: Determine branch name
         run: |
-          BRANCH="${GITHUB_BASE_REF#refs/heads/}"
+          BRANCH="master"
           echo "Building for $BRANCH"
           echo "BRANCH=$BRANCH" >> $GITHUB_ENV
 
@@ -115,12 +115,4 @@ jobs:
           name: ${{env.ARCHIVE_NAME}}-packages
           path: |
             *.ipk
-            PKG-INFO
-
-      - name: Store logs
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{env.ARCHIVE_NAME}}-logs
-          path: |
-            logs/
             PKG-INFO
