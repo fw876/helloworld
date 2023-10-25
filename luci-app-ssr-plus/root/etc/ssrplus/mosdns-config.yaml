@@ -1,0 +1,34 @@
+log:
+    level: info
+plugins:
+    - tag: forward_google
+      type: forward
+      args:
+        upstreams:
+            - addr: tcp://DNS_SERVER
+
+    - tag: main_sequence_disable_IPv6
+      type: sequence
+      args:
+        - exec: prefer_ipv4
+        - exec: $forward_google
+        - matches: 
+          - qtype 28 65
+          exec: reject 0
+
+    - tag: main_sequence_with_IPv6
+      type: sequence
+      args:
+        - exec: $forward_google
+
+    - tag: udp_server
+      type: udp_server
+      args:
+        entry: DNS_MODE
+        listen: 0.0.0.0:DNS_PORT
+      
+    - tag: tcp_server
+      type: tcp_server
+      args:
+        entry: DNS_MODE
+        listen: 0.0.0.0:DNS_PORT

@@ -57,6 +57,32 @@ o:value("https://ispip.clang.cn/all_cn_cidr.txt", translate("Clang.CN.CIDR"))
 o:value("https://fastly.jsdelivr.net/gh/gaoyifan/china-operator-ip@ip-lists/china.txt", translate("china-operator-ip"))
 o.default = "https://ispip.clang.cn/all_cn.txt"
 
+o = s:option(ListValue, "shunt_dns_mode", translate("DNS Query Mode For Shunt Mode"))
+o:value("1", translate("Use DNS2SOCKS query and cache"))
+o:value("2", translate("Use MOSDNS query"))
+o.default = 1
+
+o = s:option(Value, "shunt_dns_server", translate("Anti-pollution DNS Server For Shunt Mode"))
+o:value("8.8.4.4:53", translate("Google Public DNS (8.8.4.4)"))
+o:value("8.8.8.8:53", translate("Google Public DNS (8.8.8.8)"))
+o:value("208.67.222.222:53", translate("OpenDNS (208.67.222.222)"))
+o:value("208.67.220.220:53", translate("OpenDNS (208.67.220.220)"))
+o:value("209.244.0.3:53", translate("Level 3 Public DNS (209.244.0.3)"))
+o:value("209.244.0.4:53", translate("Level 3 Public DNS (209.244.0.4)"))
+o:value("4.2.2.1:53", translate("Level 3 Public DNS (4.2.2.1)"))
+o:value("4.2.2.2:53", translate("Level 3 Public DNS (4.2.2.2)"))
+o:value("4.2.2.3:53", translate("Level 3 Public DNS (4.2.2.3)"))
+o:value("4.2.2.4:53", translate("Level 3 Public DNS (4.2.2.4)"))
+o:value("1.1.1.1:53", translate("Cloudflare DNS (1.1.1.1)"))
+o:depends("shunt_dns_mode")
+o.description = translate("Custom DNS Server format as IP:PORT (default: 8.8.4.4:53)")
+o.datatype = "ip4addrport"
+
+o = s:option(Flag, "shunt_mosdns_ipv6", translate("Disable IPv6 In MOSDNS Query Mode (Shunt Mode)"))
+o:depends({shunt_dns_mode = "2"})
+o.rmempty = false
+o.default = "0"
+
 o = s:option(Flag, "netflix_enable", translate("Enable Netflix Mode"))
 o.rmempty = false
 
