@@ -1,26 +1,26 @@
 log:
     level: info
 plugins:
-    - tag: forward_google
+    - tag: forward_google_shunt
       type: forward
       args:
         upstreams:
             - addr: tcp://DNS_SERVER
               socks5: "127.0.0.1:SOCKS_PORT"
 
-    - tag: main_sequence_disable_IPv6
+    - tag: shunt_sequence_disable_IPv6
       type: sequence
       args:
         - exec: prefer_ipv4
-        - exec: $forward_google
+        - exec: $forward_google_shunt
         - matches: 
           - qtype 28 65
           exec: reject 0
 
-    - tag: main_sequence_with_IPv6
+    - tag: shunt_sequence_with_IPv6
       type: sequence
       args:
-        - exec: $forward_google
+        - exec: $forward_google_shunt
 
     - tag: udp_server
       type: udp_server
