@@ -92,7 +92,7 @@ o.default = 1
 o = s:option(ListValue, "pdnsd_enable", translate("Resolve Dns Mode"))
 o:value("1", translate("Use DNS2TCP query"))
 o:value("2", translate("Use DNS2SOCKS query and cache"))
-o:value("3", translate("Use MOSDNS query"))
+o:value("3", translate("Use MOSDNS query (Not Support Oversea Mode)"))
 o:value("0", translate("Use Local DNS Service listen port 5335"))
 o.default = 1
 
@@ -112,12 +112,21 @@ o:value("114.114.114.114:53", translate("Oversea Mode DNS-1 (114.114.114.114)"))
 o:value("114.114.115.115:53", translate("Oversea Mode DNS-2 (114.114.115.115)"))
 o:depends("pdnsd_enable", "1")
 o:depends("pdnsd_enable", "2")
-o:depends("pdnsd_enable", "3")
 o.description = translate("Custom DNS Server format as IP:PORT (default: 8.8.4.4:53)")
 o.datatype = "ip4addrport"
 
+o = s:option(ListValue, "tunnel_forward_mosdns", translate("Anti-pollution DNS Server"))
+o:value("tcp://8.8.4.4:53,tcp://8.8.8.8:53", translate("Google Public DNS"))
+o:value("tcp://208.67.222.222:53,tcp://208.67.220.220:53", translate("OpenDNS"))
+o:value("tcp://209.244.0.3:53,tcp://209.244.0.4:53", translate("Level 3 Public DNS-1 (209.244.0.3-4)"))
+o:value("tcp://4.2.2.1:53,tcp://4.2.2.2:53", translate("Level 3 Public DNS-2 (4.2.2.1-2)"))
+o:value("tcp://4.2.2.3:53,tcp://4.2.2.4:53", translate("Level 3 Public DNS-3 (4.2.2.3-4)"))
+o:value("tcp://1.1.1.1:53,tcp://1.0.0.1:53", translate("Cloudflare DNS"))
+o:depends("pdnsd_enable", "3")
+o.description = translate("Custom DNS Server for mosdns")
+
 o = s:option(Flag, "mosdns_ipv6", translate("Disable IPv6 in MOSDNS query mode"))
-o:depends({pdnsd_enable = "3"})
+o:depends("pdnsd_enable", "3")
 o.rmempty = false
 o.default = "0"
 

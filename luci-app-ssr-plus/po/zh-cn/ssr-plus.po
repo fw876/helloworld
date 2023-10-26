@@ -531,8 +531,8 @@ msgstr "使用 DNS2TCP 查询"
 msgid "Use DNS2SOCKS query and cache"
 msgstr "使用 DNS2SOCKS 查询并缓存"
 
-msgid "Use MOSDNS query"
-msgstr "使用 MOSDNS 查询"
+msgid "Use MOSDNS query (Not Support Oversea Mode)"
+msgstr "使用 MOSDNS 查询 (不支持海外用户回国模式)"
 
 msgid "Disable IPv6 in MOSDNS query mode"
 msgstr "禁止 MOSDNS 返回 IPv6 记录"

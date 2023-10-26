@@ -201,7 +201,13 @@ start_dns() {
 			;;
 		3)
 			local mosdns_ipv6="$(uci_get_by_type global mosdns_ipv6)"
-			cat /etc/ssrplus/mosdns-config.yaml | sed "s/DNS_SERVER/$dnsserver/g" | sed "s/DNS_PORT/$dns_port/g" > $TMP_PATH/mosdns-config.yaml
+			local mosdns_dnsserver="$(uci_get_by_type global tunnel_forward_mosdns)"
+			output=$(for i in $(echo $mosdns_dnsserver | sed "s/,/ /g"); do
+				echo "            - addr: $i"
+				echo "              enable_pipeline: true"
+			done)
+
+			awk -v line=14 -v text="$output" 'NR == line+1 {print text} 1' /etc/ssrplus/mosdns-config.yaml | sed "s/DNS_PORT/$dns_port/g" > $TMP_PATH/mosdns-config.yaml
 			if [ "$mosdns_ipv6" == "0" ]; then
 				sed -i "s/DNS_MODE/main_sequence_with_IPv6/g" $TMP_PATH/mosdns-config.yaml
 			else
@@ -466,14 +472,21 @@ start_udp() {
 
 shunt_dns_command() {
 	local shunt_dns_mode="$(uci_get_by_type global shunt_dns_mode)"
-	local shunt_dns_server="$(uci_get_by_type global shunt_dns_server)"
-	local shunt_mosdns_ipv6="$(uci_get_by_type global shunt_mosdns_ipv6)"
+	local shunt_dnsserver="$(uci_get_by_type global shunt_dnsserver)"
 	case "$shunt_dns_mode" in
 	1)
-		ln_start_bin $(first_type dns2socks) dns2socks 127.0.0.1:$tmp_port $shunt_dns_server 127.0.0.1:$tmp_shunt_dns_port -q
+		ln_start_bin $(first_type dns2socks) dns2socks 127.0.0.1:$tmp_port $shunt_dnsserver 127.0.0.1:$tmp_shunt_dns_port -q
 		;;
 	2)
-		cat /etc/ssrplus/mosdns-config-shunt.yaml | sed "s/DNS_SERVER/$shunt_dns_server/g" | sed "s/SOCKS_PORT/$tmp_port/g" | sed "s/DNS_PORT/$tmp_shunt_dns_port/g" > $TMP_PATH/mosdns-config-shunt.yaml
+		local shunt_mosdns_ipv6="$(uci_get_by_type global shunt_mosdns_ipv6)"
+		local shunt_mosdns_dnsserver="$(uci_get_by_type global shunt_mosdns_dnsserver)"
+		output=$(for i in $(echo $shunt_mosdns_dnsserver | sed "s/,/ /g"); do
+			echo "            - addr: $i"
+			echo "              socks5: \"127.0.0.1:$tmp_port\""
+			echo "              enable_pipeline: true"
+		done)
+		awk -v line=14 -v text="$output" 'NR == line+1 {print text} 1' /etc/ssrplus/mosdns-config-shunt.yaml | sed "s/DNS_PORT/$tmp_shunt_dns_port/g" > $TMP_PATH/mosdns-config-shunt.yaml
+
 		if [ "$shunt_mosdns_ipv6" == "0" ]; then
 			sed -i "s/DNS_MODE/shunt_sequence_with_IPv6/g" $TMP_PATH/mosdns-config-shunt.yaml
 		else
