@@ -178,17 +178,23 @@ ln_start_bin() {
 	${file_func:-echolog "  - ${ln_name}"} "$@" >/dev/null 2>&1 &
 }
 
+add_dns_into_ipset() {
+	case "$1" in
+	gfw) ipset add gfwlist ${2%:*} 2>/dev/null ;;
+	oversea) ipset add oversea ${2%:*} 2>/dev/null ;;
+	*) ipset add ss_spec_wan_ac ${2%:*} nomatch 2>/dev/null ;;
+	esac
+}
+
 start_dns() {
 	local ssrplus_dns="$(uci_get_by_type global pdnsd_enable 0)"
 	local dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
 	local run_mode="$(uci_get_by_type global run_mode)"
 
 	if [ "$ssrplus_dns" != "0" ]; then
-		case "$run_mode" in
-		gfw) ipset add gfwlist ${dnsserver%:*} 2>/dev/null ;;
-		oversea) ipset add oversea ${dnsserver%:*} 2>/dev/null ;;
-		*) ipset add ss_spec_wan_ac ${dnsserver%:*} nomatch 2>/dev/null ;;
-		esac
+		if [ -n "$dnsserver" ]; then
+			add_dns_into_ipset $run_mode $dnsserver
+		fi
 		case "$ssrplus_dns" in
 		1)
 			ln_start_bin $(first_type dns2tcp) dns2tcp -L 127.0.0.1#$dns_port -R ${dnsserver/:/#}
@@ -203,6 +209,9 @@ start_dns() {
 			local mosdns_ipv6="$(uci_get_by_type global mosdns_ipv6)"
 			local mosdns_dnsserver="$(uci_get_by_type global tunnel_forward_mosdns)"
 			output=$(for i in $(echo $mosdns_dnsserver | sed "s/,/ /g"); do
+				dnsserver=${i%:*}
+				dnsserver=${i##*/}
+				add_dns_into_ipset $run_mode $dnsserver
 				echo "            - addr: $i"
 				echo "              enable_pipeline: true"
 			done)
