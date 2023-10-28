@@ -67,6 +67,43 @@ o.default = "https://fastly.jsdelivr.net/gh/QiuSimons/Netflix_IP/NF_only.txt"
 o.description = translate("Customize Netflix IP Url")
 o:depends("netflix_enable", "1")
 
+o = s:option(ListValue, "shunt_dns_mode", translate("DNS Query Mode For Shunt Mode"))
+o:value("1", translate("Use DNS2SOCKS query and cache"))
+o:value("2", translate("Use MOSDNS query"))
+o:depends("netflix_enable", "1")
+o.default = 1
+
+o = s:option(Value, "shunt_dnsserver", translate("Anti-pollution DNS Server For Shunt Mode"))
+o:value("8.8.4.4:53", translate("Google Public DNS (8.8.4.4)"))
+o:value("8.8.8.8:53", translate("Google Public DNS (8.8.8.8)"))
+o:value("208.67.222.222:53", translate("OpenDNS (208.67.222.222)"))
+o:value("208.67.220.220:53", translate("OpenDNS (208.67.220.220)"))
+o:value("209.244.0.3:53", translate("Level 3 Public DNS (209.244.0.3)"))
+o:value("209.244.0.4:53", translate("Level 3 Public DNS (209.244.0.4)"))
+o:value("4.2.2.1:53", translate("Level 3 Public DNS (4.2.2.1)"))
+o:value("4.2.2.2:53", translate("Level 3 Public DNS (4.2.2.2)"))
+o:value("4.2.2.3:53", translate("Level 3 Public DNS (4.2.2.3)"))
+o:value("4.2.2.4:53", translate("Level 3 Public DNS (4.2.2.4)"))
+o:value("1.1.1.1:53", translate("Cloudflare DNS (1.1.1.1)"))
+o:depends("shunt_dns_mode", "1")
+o.description = translate("Custom DNS Server format as IP:PORT (default: 8.8.4.4:53)")
+o.datatype = "ip4addrport"
+
+o = s:option(ListValue, "shunt_mosdns_dnsserver", translate("Anti-pollution DNS Server"))
+o:value("tcp://8.8.4.4:53,tcp://8.8.8.8:53", translate("Google Public DNS"))
+o:value("tcp://208.67.222.222:53,tcp://208.67.220.220:53", translate("OpenDNS"))
+o:value("tcp://209.244.0.3:53,tcp://209.244.0.4:53", translate("Level 3 Public DNS-1 (209.244.0.3-4)"))
+o:value("tcp://4.2.2.1:53,tcp://4.2.2.2:53", translate("Level 3 Public DNS-2 (4.2.2.1-2)"))
+o:value("tcp://4.2.2.3:53,tcp://4.2.2.4:53", translate("Level 3 Public DNS-3 (4.2.2.3-4)"))
+o:value("tcp://1.1.1.1:53,tcp://1.0.0.1:53", translate("Cloudflare DNS"))
+o:depends("shunt_dns_mode", "2")
+o.description = translate("Custom DNS Server for mosdns")
+
+o = s:option(Flag, "shunt_mosdns_ipv6", translate("Disable IPv6 In MOSDNS Query Mode (Shunt Mode)"))
+o:depends("shunt_dns_mode", "2")
+o.rmempty = false
+o.default = "0"
+
 o = s:option(Flag, "adblock", translate("Enable adblock"))
 o.rmempty = false
 
