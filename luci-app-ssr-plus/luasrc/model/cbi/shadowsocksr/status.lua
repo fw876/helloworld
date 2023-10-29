@@ -112,7 +112,7 @@ else
 	s.value = style_blue .. bold_on .. translate("Not Running") .. bold_off .. font_off
 end
 
-if uci:get_first("shadowsocksr", 'global', 'pdnsd_enable', '0') == '1' then
+if uci:get_first("shadowsocksr", 'global', 'pdnsd_enable', '0') ~= '0' then
 	s = m:field(DummyValue, "pdnsd_run", translate("DNS Anti-pollution"))
 	s.rawhtml = true
 	if pdnsd_run == 1 then
@@ -169,7 +169,7 @@ s.rawhtml = true
 s.template = "shadowsocksr/refresh"
 s.value = ip_count .. " " .. translate("Records")
 
-if uci:get_first("shadowsocksr", 'global', 'netflix_enable', '0') == '1' then
+if uci:get_first("shadowsocksr", 'global', 'netflix_enable', '0') ~= '0' then
 s = m:field(DummyValue, "nfip_data", translate("Netflix IP Data"))
 s.rawhtml = true
 s.template = "shadowsocksr/refresh"
