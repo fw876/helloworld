@@ -543,6 +543,9 @@ msgstr "分流模式下的 DNS 查询模式"
 msgid "Anti-pollution DNS Server For Shunt Mode"
 msgstr "分流模式下的访问国外域名 DNS 服务器"
 
+msgid "Custom DNS Server for mosdns"
+msgstr "MOSDNS 自定义 DNS 服务器"
+
 msgid "Disable IPv6 In MOSDNS Query Mode (Shunt Mode)"
 msgstr "禁止 MOSDNS 返回 IPv6 记录 (分流模式)"
 
