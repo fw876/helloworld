@@ -69,7 +69,7 @@ o:depends("netflix_enable", "1")
 
 o = s:option(ListValue, "shunt_dns_mode", translate("DNS Query Mode For Shunt Mode"))
 o:value("1", translate("Use DNS2SOCKS query and cache"))
-o:value("2", translate("Use MOSDNS query"))
+o:value("2", translate("Use MosDNS query"))
 o:depends("netflix_enable", "1")
 o.default = 1
 
@@ -97,9 +97,9 @@ o:value("tcp://4.2.2.1:53,tcp://4.2.2.2:53", translate("Level 3 Public DNS-2 (4.
 o:value("tcp://4.2.2.3:53,tcp://4.2.2.4:53", translate("Level 3 Public DNS-3 (4.2.2.3-4)"))
 o:value("tcp://1.1.1.1:53,tcp://1.0.0.1:53", translate("Cloudflare DNS"))
 o:depends("shunt_dns_mode", "2")
-o.description = translate("Custom DNS Server for mosdns")
+o.description = translate("Custom DNS Server for MosDNS")
 
-o = s:option(Flag, "shunt_mosdns_ipv6", translate("Disable IPv6 In MOSDNS Query Mode (Shunt Mode)"))
+o = s:option(Flag, "shunt_mosdns_ipv6", translate("Disable IPv6 In MosDNS Query Mode (Shunt Mode)"))
 o:depends("shunt_dns_mode", "2")
 o.rmempty = false
 o.default = "0"

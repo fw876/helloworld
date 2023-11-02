@@ -14,6 +14,8 @@ local gfw_count = 0
 local ad_count = 0
 local ip_count = 0
 local nfip_count = 0
+local mainland_domain_count = 0
+local non_mainland_domain_count = 0
 local Process_list = luci.sys.exec("busybox ps -w")
 local uci = luci.model.uci.cursor()
 -- html constants
@@ -50,6 +52,14 @@ end
 
 if nixio.fs.access("/etc/ssrplus/netflixip.list") then
 	nfip_count = tonumber(luci.sys.exec("cat /etc/ssrplus/netflixip.list | wc -l"))
+end
+
+if nixio.fs.access("/etc/ssrplus/mosdns-chinadns/geosite_cn.txt") then
+	mainland_domain_count = tonumber(luci.sys.exec("cat /etc/ssrplus/mosdns-chinadns/geosite_cn.txt | wc -l"))
+end
+
+if nixio.fs.access("/etc/ssrplus/mosdns-chinadns/geosite_geolocation_not_cn.txt") then
+	non_mainland_domain_count = tonumber(luci.sys.exec("cat /etc/ssrplus/mosdns-chinadns/geosite_geolocation_not_cn.txt | wc -l"))
 end
 
 if Process_list:find("udp.only.ssr.reudp") then
@@ -170,10 +180,24 @@ s.template = "shadowsocksr/refresh"
 s.value = ip_count .. " " .. translate("Records")
 
 if uci:get_first("shadowsocksr", 'global', 'netflix_enable', '0') ~= '0' then
-s = m:field(DummyValue, "nfip_data", translate("Netflix IP Data"))
-s.rawhtml = true
-s.template = "shadowsocksr/refresh"
-s.value = nfip_count .. " " .. translate("Records")
+	s = m:field(DummyValue, "nfip_data", translate("Netflix IP Data"))
+	s.rawhtml = true
+	s.template = "shadowsocksr/refresh"
+	s.value = nfip_count .. " " .. translate("Records")
+end
+
+if uci:get_first("shadowsocksr", 'global', 'pdnsd_enable', '0') == '3' then
+	s = m:field(DummyValue, "geo_data", translate("Loyalsoldier's GeoData"))
+	s.rawhtml = true
+	s.template = "shadowsocksr/refresh"
+
+	s = m:field(DummyValue, "mainland_domain_count", translate("Loyalsoldier's GeoData: Mainland Domain Data"))
+	s.rawhtml = true
+	s.value = mainland_domain_count .. " " .. translate("Records")
+
+	s = m:field(DummyValue, "non_mainland_domain_count", translate("Loyalsoldier's GeoData: Non-Mainland Domain Data"))
+	s.rawhtml = true
+	s.value = non_mainland_domain_count .. " " .. translate("Records")
 end
 
 if uci:get_first("shadowsocksr", 'global', 'adblock', '0') == '1' then

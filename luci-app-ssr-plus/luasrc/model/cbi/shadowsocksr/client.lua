@@ -93,7 +93,7 @@ o = s:option(ListValue, "pdnsd_enable", translate("Resolve Dns Mode"))
 o:value("1", translate("Use DNS2TCP query"))
 o:value("2", translate("Use DNS2SOCKS query and cache"))
 if is_finded("mosdns") then
-o:value("3", translate("Use MOSDNS query (Not Support Oversea Mode)"))
+o:value("3", translate("Use MosDNS query (Not Support Oversea Mode)"))
 end
 o:value("0", translate("Use Local DNS Service listen port 5335"))
 o.default = 1
@@ -125,9 +125,9 @@ o:value("tcp://4.2.2.1:53,tcp://4.2.2.2:53", translate("Level 3 Public DNS-2 (4.
 o:value("tcp://4.2.2.3:53,tcp://4.2.2.4:53", translate("Level 3 Public DNS-3 (4.2.2.3-4)"))
 o:value("tcp://1.1.1.1:53,tcp://1.0.0.1:53", translate("Cloudflare DNS"))
 o:depends("pdnsd_enable", "3")
-o.description = translate("Custom DNS Server for mosdns")
+o.description = translate("Custom DNS Server for MosDNS")
 
-o = s:option(Flag, "mosdns_ipv6", translate("Disable IPv6 in MOSDNS query mode"))
+o = s:option(Flag, "mosdns_disable_ipv6", translate("Disable IPv6 in MosDNS query mode (only for Non-CN domain)"))
 o:depends("pdnsd_enable", "3")
 o.rmempty = false
 o.default = "0"
@@ -141,8 +141,8 @@ if is_finded("chinadns-ng") then
 	o:value("119.29.29.29:53", translate("DNSPod Public DNS (119.29.29.29)"))
 	o:value("223.5.5.5:53", translate("AliYun Public DNS (223.5.5.5)"))
 	o:value("180.76.76.76:53", translate("Baidu Public DNS (180.76.76.76)"))
-	o:value("101.226.4.6:53", translate("360 Security DNS (China Telecom) (101.226.4.6)"))
-	o:value("123.125.81.6:53", translate("360 Security DNS (China Unicom) (123.125.81.6)"))
+	o:value("101.226.4.6:53", translate("DNS Pai (CT/CMCC/CU) (101.226.4.6)"))
+	o:value("123.125.81.6:53", translate("DNS Pai (CU) (123.125.81.6)"))
 	o:value("1.2.4.8:53", translate("CNNIC SDNS (1.2.4.8)"))
 	o:depends({pdnsd_enable = "1", run_mode = "router"})
 	o:depends({pdnsd_enable = "2", run_mode = "router"})
@@ -164,5 +164,24 @@ if is_finded("chinadns-ng") then
 	end
 end
 
-return m
+if is_finded("mosdns") then
+	o = s:option(Value, "chinadns_forward_mosdns", translate("Domestic DNS Server (ChinaDNS Mode With MosDNS)"))
+	o:value("", translate("Disable ChinaDNS in MosDNS"))
+	o:value("wan", translate("Use DNS from WAN"))
+	o:value("udp://114.114.114.114:53,udp://114.114.115.115:53", translate("Nanjing Xinfeng 114DNS"))
+	o:value("udp://119.29.29.29:53,udp://119.29.29.29:53", translate("DNSPod Public DNS"))
+	o:value("udp://223.5.5.5:53,udp://223.6.6.6:53", translate("AliYun Public DNS"))
+	o:value("udp://180.76.76.76:53,udp://180.76.76.76:53", translate("Baidu Public DNS"))
+	o:value("udp://101.226.4.6:53,udp://218.30.118.6:53", translate("DNS Pai (CT/CMCC/CU)"))
+	o:value("udp://123.125.81.6:53,udp://140.207.198.6:53", translate("DNS Pai (CU)"))
+	o:value("udp://1.2.4.8:53,udp://210.2.4.8:53", translate("CNNIC SDNS"))
+	o:depends({pdnsd_enable = "3", run_mode = "router"})
+	o.description = translate("Custom DNS Server format as IP:PORT (default: disabled)")
+end
 
+o = s:option(Flag, "mosdns_dnsleak", translate("Prevent DNS leak (Only Work With ChinaDNS Mode)"))
+o:depends({pdnsd_enable = "3", run_mode = "router"})
+o.rmempty = false
+o.default = "0"
+
+return m
