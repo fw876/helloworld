@@ -188,7 +188,6 @@ msgstr "QUIC 连接接收窗口"
 msgid "QUIC stream receive window"
 msgstr "QUIC 流接收窗口"
 
-
 msgid "Lazy Start"
 msgstr "延迟启动"
 
@@ -558,11 +557,17 @@ msgstr "使用 MosDNS 查询"
 msgid "Custom DNS Server for MosDNS"
 msgstr "MosDNS 自定义 DNS 服务器"
 
+msgid "Domestic DNS Server (ChinaDNS Mode With MosDNS)"
+msgstr "国内 DNS 服务器 (MosDNS 下的 ChinaDNS 模式)"
+
 msgid "Disable IPv6 In MosDNS Query Mode (Shunt Mode)"
 msgstr "禁止 MosDNS 返回 IPv6 记录 (分流模式)"
 
 msgid "Prevent DNS leak (Only Work With ChinaDNS Mode)"
 msgstr "防止DNS泄漏 (仅适用于ChinaDNS模式)"
+
+msgid "Disable ChinaDNS in MosDNS"
+msgstr "禁用 MosDNS 下的 ChinaDNS 模式"
 
 msgid "DNS Server IP:Port"
 msgstr "DNS 服务器 IP:Port"
