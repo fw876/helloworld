@@ -33,11 +33,9 @@ plugins:
       type: udp_server
       args:
         entry: DNS_MODE
-        listen: 0.0.0.0:DNS_PORT
       
     - tag: tcp_server
       type: tcp_server
       args:
         entry: DNS_MODE
-        listen: 0.0.0.0:DNS_PORT
 

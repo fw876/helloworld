@@ -188,7 +188,6 @@ msgstr "QUIC 连接接收窗口"
 msgid "QUIC stream receive window"
 msgstr "QUIC 流接收窗口"
 
-
 msgid "Lazy Start"
 msgstr "延迟启动"
 
@@ -390,6 +389,15 @@ msgstr "【中国大陆 IP 段】数据库"
 msgid "Netflix IP Data"
 msgstr "【Netflix IP 段】数据库"
 
+msgid "Loyalsoldier's GeoData"
+msgstr "【GeoData】数据库 (Loyalsoldier)"
+
+msgid "Loyalsoldier's GeoData: Mainland Domain Data"
+msgstr "【GeoData 中的大陆域名】数据库 (Loyalsoldier)"
+
+msgid "Loyalsoldier's GeoData: Non-Mainland Domain Data"
+msgstr "【GeoData 中的非大陆域名】数据库 (Loyalsoldier)"
+
 msgid "Advertising Data"
 msgstr "【广告屏蔽】数据库"
 
@@ -531,11 +539,11 @@ msgstr "使用 DNS2TCP 查询"
 msgid "Use DNS2SOCKS query and cache"
 msgstr "使用 DNS2SOCKS 查询并缓存"
 
-msgid "Use MOSDNS query (Not Support Oversea Mode)"
-msgstr "使用 MOSDNS 查询 (不支持海外用户回国模式)"
+msgid "Use MosDNS query (Not Support Oversea Mode)"
+msgstr "使用 MosDNS 查询 (不支持海外用户回国模式)"
 
-msgid "Disable IPv6 in MOSDNS query mode"
-msgstr "禁止 MOSDNS 返回 IPv6 记录"
+msgid "Disable IPv6 in MosDNS query mode (only for Non-CN domain)"
+msgstr "禁止 MosDNS 返回 IPv6 记录 (仅限非大陆域名)"
 
 msgid "DNS Query Mode For Shunt Mode"
 msgstr "分流模式下的 DNS 查询模式"
@@ -543,14 +551,23 @@ msgstr "分流模式下的 DNS 查询模式"
 msgid "Anti-pollution DNS Server For Shunt Mode"
 msgstr "分流模式下的访问国外域名 DNS 服务器"
 
-msgid "Use MOSDNS query"
-msgstr "使用 MOSDNS 查询"
+msgid "Use MosDNS query"
+msgstr "使用 MosDNS 查询"
 
-msgid "Custom DNS Server for mosdns"
-msgstr "MOSDNS 自定义 DNS 服务器"
+msgid "Custom DNS Server for MosDNS"
+msgstr "MosDNS 自定义 DNS 服务器"
 
-msgid "Disable IPv6 In MOSDNS Query Mode (Shunt Mode)"
-msgstr "禁止 MOSDNS 返回 IPv6 记录 (分流模式)"
+msgid "Domestic DNS Server (ChinaDNS Mode With MosDNS)"
+msgstr "国内 DNS 服务器 (MosDNS 下的 ChinaDNS 模式)"
+
+msgid "Disable IPv6 In MosDNS Query Mode (Shunt Mode)"
+msgstr "禁止 MosDNS 返回 IPv6 记录 (分流模式)"
+
+msgid "Prevent DNS leak (Only Work With ChinaDNS Mode)"
+msgstr "防止DNS泄漏 (仅适用于ChinaDNS模式)"
+
+msgid "Disable ChinaDNS in MosDNS"
+msgstr "禁用 MosDNS 下的 ChinaDNS 模式"
 
 msgid "DNS Server IP:Port"
 msgstr "DNS 服务器 IP:Port"
