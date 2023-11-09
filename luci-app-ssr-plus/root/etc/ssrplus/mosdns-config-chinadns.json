@@ -1,0 +1,202 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "plugins": [
+    {
+      "tag": "lazy_cache",
+      "type": "cache",
+      "args": {
+        "size": 20000,
+        "lazy_cache_ttl": 86400
+      }
+    },
+    {
+      "tag": "geosite_cn",
+      "type": "domain_set",
+      "args": {
+        "files": [
+          "/etc/ssrplus/mosdns-chinadns/geosite_cn.txt",
+          "/etc/ssrplus/white.list"
+        ]
+      }
+    },
+    {
+      "tag": "geoip_cn",
+      "type": "ip_set",
+      "args": {
+        "files": [
+          "/etc/ssrplus/china_ssr.txt"
+        ]
+      }
+    },
+    {
+      "tag": "geosite_not_cn",
+      "type": "domain_set",
+      "args": {
+        "files": [
+          "/etc/ssrplus/mosdns-chinadns/geosite_geolocation_not_cn.txt",
+          "/etc/ssrplus/black.list"
+        ]
+      }
+    },
+    {
+      "tag": "forward_remote",
+      "type": "forward",
+      "args": {
+        "concurrent": 2,
+        "upstreams": null
+      }
+    },
+    {
+      "tag": "forward_local",
+      "type": "forward",
+      "args": {
+        "concurrent": 2,
+        "upstreams": null
+      }
+    },
+    {
+      "tag": "local_sequence",
+      "type": "sequence",
+      "args": [
+        {
+          "exec": "$forward_local"
+        }
+      ]
+    },
+    {
+      "tag": "remote_sequence_with_IPv6",
+      "type": "sequence",
+      "args": [
+        {
+          "exec": "$forward_remote"
+        }
+      ]
+    },
+    {
+      "tag": "remote_sequence_disable_IPv6",
+      "type": "sequence",
+      "args": [
+        {
+          "exec": "prefer_ipv4"
+        },
+        {
+          "exec": "$forward_remote"
+        },
+        {
+          "matches": [
+            "qtype 28 65"
+          ],
+          "exec": "reject 0"
+        }
+      ]
+    },
+    {
+      "tag": "query_is_local_domain",
+      "type": "sequence",
+      "args": [
+        {
+          "matches": "qname $geosite_cn",
+          "exec": "$local_sequence"
+        }
+      ]
+    },
+    {
+      "tag": "query_is_proxy_domain",
+      "type": "sequence",
+      "args": [
+        {
+          "matches": "qname $geosite_not_cn"
+        },
+        {
+          "exec": "ipset blacklist,inet,24"
+        }
+      ]
+    },
+    {
+      "tag": "query_is_local_ip",
+      "type": "sequence",
+      "args": [
+        {
+          "exec": "$local_sequence"
+        },
+        {
+          "matches": "!resp_ip $geoip_cn",
+          "exec": "drop_resp"
+        }
+      ]
+    },
+    {
+      "tag": "query_is_remote_ip",
+      "type": "sequence",
+      "args": [
+        {
+          "exec": "$remote_sequence_disable_IPv6"
+        },
+        {
+          "exec": "ipset blacklist,inet,24"
+        }
+      ]
+    },
+    {
+      "tag": "fallback",
+      "type": "fallback",
+      "args": {
+        "primary": "query_is_local_ip",
+        "secondary": "query_is_remote_ip",
+        "threshold": 600,
+        "always_standby": true
+      }
+    },
+    {
+      "tag": "has_resp_sequence",
+      "type": "sequence",
+      "args": [
+        {
+          "matches": "has_resp",
+          "exec": "accept"
+        }
+      ]
+    },
+    {
+      "tag": "main_sequence",
+      "type": "sequence",
+      "args": [
+        {
+          "exec": "$lazy_cache"
+        },
+        {
+          "exec": "$query_is_local_domain"
+        },
+        {
+          "exec": "jump has_resp_sequence"
+        },
+        {
+          "exec": "$query_is_proxy_domain"
+        },
+        {
+          "exec": "jump has_resp_sequence"
+        },
+        {
+          "exec": "$fallback"
+        }
+      ]
+    },
+    {
+      "tag": "udp_server",
+      "type": "udp_server",
+      "args": {
+        "entry": "main_sequence"
+      }
+    },
+    {
+      "tag": "tcp_server",
+      "type": "tcp_server",
+      "args": {
+        "entry": "main_sequence"
+      }
+    }
+  ]
+}
+
