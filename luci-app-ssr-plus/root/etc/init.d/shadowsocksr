@@ -99,9 +99,9 @@ get_host_ip() {
 	echo $ip
 }
 
-yq_ssr() {
+jq_ssr() {
     temp_file="$(echo "$2" | awk -F '.' '{print $1"-temp."$2}')"
-    cat $2 | yq e "$1" -M > "$temp_file"
+    cat $2 | jq "$1" > "$temp_file"
     mv "$temp_file" "$2"
 }
 
@@ -219,45 +219,45 @@ start_dns() {
 			local mosdns_dnsleak="$(uci_get_by_type global mosdns_dnsleak)"
 			local netflix_enable="$(uci_get_by_type global netflix_enable)"
 			if [ "$run_mode" = "router" ] && [ -n "$chinadns_mosdns" ]; then
-				mosdns_config_file="$TMP_PATH/mosdns-config-chinadns.yaml"
-				cp /etc/ssrplus/mosdns-config-chinadns.yaml $mosdns_config_file
+				mosdns_config_file="$TMP_PATH/mosdns-config-chinadns.json"
+				cp /etc/ssrplus/mosdns-config-chinadns.json $mosdns_config_file
 				tmp=$(for i in $(echo $mosdns_dnsserver | sed "s/,/ /g"); do
 					dnsserver=${i%:*}
 					dnsserver=${i##*/}
 					add_dns_into_ipset $run_mode $dnsserver
-					yq_ssr '.plugins[4].args.upstreams += [{"addr":"'"${i}"'","enable_pipeline":"true"}]' $mosdns_config_file
+					jq_ssr '.plugins[4].args.upstreams += [{"addr":"'"${i}"'","enable_pipeline":"true"}]' $mosdns_config_file
 				done)
 
 				if [ "$chinadns_mosdns" = "wan" ]; then
 					wandns=$(ifstatus wan | jsonfilter -e '@["dns-server"]' | sed 's/\[//g; s/\]//g' | sed 's/"//g' | sed 's/ //g' | sed 's/,/ /g')
 					tmp=$(for i in $(echo $wandns); do
 						i="udp://$i:53"
-						yq_ssr '.plugins[5].args.upstreams += [{"addr":"'"${i}"'"}]' $mosdns_config_file
+						jq_ssr '.plugins[5].args.upstreams += [{"addr":"'"${i}"'"}]' $mosdns_config_file
 					done)
 				else
 					tmp=$(for i in $(echo $chinadns_mosdns | sed "s/,/ /g"); do
-						yq_ssr '.plugins[5].args.upstreams += [{"addr":"'"${i}"'"}]' $mosdns_config_file
+						jq_ssr '.plugins[5].args.upstreams += [{"addr":"'"${i}"'"}]' $mosdns_config_file
 					done)
 				fi
 
 				if [ "$mosdns_disable_ipv6" == "0" ]; then
-					yq_ssr '.plugins[10].args[0].exec="$remote_sequence_with_IPv6" | .plugins[12].args[0].exec="$remote_sequence_with_IPv6"' $mosdns_config_file
+					jq_ssr '.plugins[10].args[0].exec="$remote_sequence_with_IPv6" | .plugins[12].args[0].exec="$remote_sequence_with_IPv6"' $mosdns_config_file
 				else
-					yq_ssr '.plugins[10].args[0].exec="$remote_sequence_disable_IPv6" | .plugins[12].args[0].exec="$remote_sequence_disable_IPv6"' $mosdns_config_file
+					jq_ssr '.plugins[10].args[0].exec="$remote_sequence_disable_IPv6" | .plugins[12].args[0].exec="$remote_sequence_disable_IPv6"' $mosdns_config_file
 				fi
 
 				if [ "$mosdns_dnsleak" != "0" ]; then
-					yq_ssr '.plugins[13].args.primary="query_is_remote_ip"' $mosdns_config_file
+					jq_ssr '.plugins[13].args.primary="query_is_remote_ip"' $mosdns_config_file
 				fi
 
-				yq_ssr '.plugins[16].args.listen="0.0.0.0:'${dns_port}'" | .plugins[17].args.listen="0.0.0.0:'${dns_port}'"' $mosdns_config_file
+				jq_ssr '.plugins[16].args.listen="0.0.0.0:'${dns_port}'" | .plugins[17].args.listen="0.0.0.0:'${dns_port}'"' $mosdns_config_file
 				
 				if [ "$netflix_enable" == 1 ]; then
-					yq_ssr '.plugins |= (.[:4] + [{"tag": "netflix_domain", "type": "domain_set", "args": {"files": ["/etc/ssrplus/netflix.list"]}}] + .[4:])' $mosdns_config_file
-					yq_ssr '.plugins |= (.[:7] + [{"tag": "forward_netflix", "type": "forward", "args": {"upstreams": [{"addr":"udp://127.0.0.1:'"${tmp_shunt_dns_port}"'"}]}}] + .[7:])' $mosdns_config_file
-					yq_ssr '.plugins |= (.[:11] + [{"tag": "netflix_sequence", "type": "sequence", "args": [{"exec": "$forward_netflix"}]}] + .[11:])' $mosdns_config_file
-					yq_ssr '.plugins |= (.[:14] + [{"tag": "query_is_netflix_domain", "type": "sequence", "args": [{"matches": "qname $netflix_domain", "exec": "$netflix_sequence"}, {"exec": "ipset netflix,inet,24"}]}] + .[14:])' $mosdns_config_file
-					yq_ssr '.plugins[19].args |= (.[:3] + [{"exec": "$query_is_netflix_domain"}, {"exec": "jump has_resp_sequence"}] + .[3:])' $mosdns_config_file
+					jq_ssr '.plugins |= (.[:4] + [{"tag": "netflix_domain", "type": "domain_set", "args": {"files": ["/etc/ssrplus/netflix.list"]}}] + .[4:])' $mosdns_config_file
+					jq_ssr '.plugins |= (.[:7] + [{"tag": "forward_netflix", "type": "forward", "args": {"upstreams": [{"addr":"udp://127.0.0.1:'"${tmp_shunt_dns_port}"'"}]}}] + .[7:])' $mosdns_config_file
+					jq_ssr '.plugins |= (.[:11] + [{"tag": "netflix_sequence", "type": "sequence", "args": [{"exec": "$forward_netflix"}]}] + .[11:])' $mosdns_config_file
+					jq_ssr '.plugins |= (.[:14] + [{"tag": "query_is_netflix_domain", "type": "sequence", "args": [{"matches": "qname $netflix_domain", "exec": "$netflix_sequence"}, {"exec": "ipset netflix,inet,24"}]}] + .[14:])' $mosdns_config_file
+					jq_ssr '.plugins[19].args |= (.[:3] + [{"exec": "$query_is_netflix_domain"}, {"exec": "jump has_resp_sequence"}] + .[3:])' $mosdns_config_file
 				fi
 
 				pdnsd_enable_flag=3
@@ -268,21 +268,21 @@ start_dns() {
 					server=127.0.0.1#$dns_port
 				EOF
 			else
-				mosdns_config_file="$TMP_PATH/mosdns-config.yaml"
-				cp /etc/ssrplus/mosdns-config.yaml $mosdns_config_file
+				mosdns_config_file="$TMP_PATH/mosdns-config.json"
+				cp /etc/ssrplus/mosdns-config.json $mosdns_config_file
 				tmp=$(for i in $(echo $mosdns_dnsserver | sed "s/,/ /g"); do
 					dnsserver=${i%:*}
 					dnsserver=${i##*/}
 					add_dns_into_ipset $run_mode $dnsserver
-					yq_ssr '.plugins[1].args.upstreams += [{"addr":"'"${i}"'","enable_pipeline":"true"}]' $mosdns_config_file
+					jq_ssr '.plugins[1].args.upstreams += [{"addr":"'"${i}"'","enable_pipeline":"true"}]' $mosdns_config_file
 				done)
 
 				if [ "$mosdns_disable_ipv6" == "0" ]; then
-					yq_ssr '.plugins[4].args.entry="main_sequence_with_IPv6" | .plugins[5].args.entry="main_sequence_with_IPv6"' $mosdns_config_file
+					jq_ssr '.plugins[4].args.entry="main_sequence_with_IPv6" | .plugins[5].args.entry="main_sequence_with_IPv6"' $mosdns_config_file
 				else
-					yq_ssr '.plugins[4].args.entry="main_sequence_disable_IPv6" | .plugins[5].args.entry="main_sequence_disable_IPv6"' $mosdns_config_file
+					jq_ssr '.plugins[4].args.entry="main_sequence_disable_IPv6" | .plugins[5].args.entry="main_sequence_disable_IPv6"' $mosdns_config_file
 				fi
-				yq_ssr '.plugins[4].args.listen="0.0.0.0:'${dns_port}'" | .plugins[5].args.listen="0.0.0.0:'${dns_port}'"' $mosdns_config_file
+				jq_ssr '.plugins[4].args.listen="0.0.0.0:'${dns_port}'" | .plugins[5].args.listen="0.0.0.0:'${dns_port}'"' $mosdns_config_file
 				pdnsd_enable_flag=3
 				ln_start_bin $(first_type mosdns) mosdns start -c $mosdns_config_file
 			fi
@@ -551,18 +551,19 @@ shunt_dns_command() {
 	2)
 		local shunt_mosdns_disable_ipv6="$(uci_get_by_type global shunt_mosdns_disable_ipv6)"
 		local shunt_mosdns_dnsserver="$(uci_get_by_type global shunt_mosdns_dnsserver)"
-		cp /etc/ssrplus/mosdns-config.yaml $TMP_PATH/mosdns-config-shunt.yaml
+		mosdns_shunt_config_file="$TMP_PATH/mosdns-config-shunt.json"
+		cp /etc/ssrplus/mosdns-config.json $mosdns_shunt_config_file
 		tmp=$(for i in $(echo $shunt_mosdns_dnsserver | sed "s/,/ /g"); do
-			yq_ssr '.plugins[1].args.upstreams += [{"addr":"'"${i}"'","socks5":"127.0.0.1:'"${tmp_port}"'","enable_pipeline":"true"}]' $TMP_PATH/mosdns-config-shunt.yaml
+			jq_ssr '.plugins[1].args.upstreams += [{"addr":"'"${i}"'","socks5":"127.0.0.1:'"${tmp_port}"'","enable_pipeline":"true"}]' $mosdns_shunt_config_file
 		done)
 
 		if [ "$shunt_mosdns_disable_ipv6" == "0" ]; then
-			yq_ssr '.plugins[4].args.entry="main_sequence_with_IPv6" | .plugins[5].args.entry="main_sequence_with_IPv6"' $TMP_PATH/mosdns-config-shunt.yaml
+			jq_ssr '.plugins[4].args.entry="main_sequence_with_IPv6" | .plugins[5].args.entry="main_sequence_with_IPv6"' $mosdns_shunt_config_file
 		else
-			yq_ssr '.plugins[4].args.entry="main_sequence_disable_IPv6" | .plugins[5].args.entry="main_sequence_disable_IPv6"' $TMP_PATH/mosdns-config-shunt.yaml
+			jq_ssr '.plugins[4].args.entry="main_sequence_disable_IPv6" | .plugins[5].args.entry="main_sequence_disable_IPv6"' $mosdns_shunt_config_file
 		fi
-		yq_ssr '.plugins[4].args.listen="0.0.0.0:'${tmp_shunt_dns_port}'" | .plugins[5].args.listen="0.0.0.0:'${tmp_shunt_dns_port}'"' $TMP_PATH/mosdns-config-shunt.yaml
-		ln_start_bin $(first_type mosdns) mosdns start -c $TMP_PATH/mosdns-config-shunt.yaml
+		jq_ssr '.plugins[4].args.listen="0.0.0.0:'${tmp_shunt_dns_port}'" | .plugins[5].args.listen="0.0.0.0:'${tmp_shunt_dns_port}'"' $mosdns_shunt_config_file
+		ln_start_bin $(first_type mosdns) mosdns start -c $mosdns_shunt_config_file
 		;;
 	esac
 }
