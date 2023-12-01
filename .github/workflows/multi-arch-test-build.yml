@@ -73,7 +73,6 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
           FEEDNAME: packages_ci
-          INDEX: 1
           V: s
 
       - name: Move created packages to project dir
