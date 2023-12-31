@@ -222,7 +222,7 @@ local Xray = {
 				tcpNoDelay = true
 			}
 		},
-		mux = (server.mux == "1" and server.transport ~= "grpc") and {
+		mux = (server.mux == "1") and {
 			-- mux
 			enabled = true,
 			concurrency = tonumber(server.concurrency),
