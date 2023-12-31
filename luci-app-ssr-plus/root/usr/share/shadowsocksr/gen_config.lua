@@ -290,7 +290,7 @@ local hysteria = {
 	transport = {
 		type = server.transport_protocol,
 		udp = { 
-			hopInterval = tonumber(server.hopinterval) and tonumber(server.hopinterval) .. "s" or nil
+			hopInterval = tonumber(server.hopinterval) and tonumber(server.hopinterval) .. "s" or "30s"
 		}
 	},
 --[[			
