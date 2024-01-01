@@ -125,7 +125,7 @@ local Xray = {
 		port = tonumber(local_port),
 		protocol = "dokodemo-door",
 		settings = {network = proto, followRedirect = true},
-		sniffing = {enabled = true, destOverride = {"http", "tls"}}
+		sniffing = {enabled = true, destOverride = {"http", "tls", "quic"}}
 	} or nil,
 	-- 开启 socks 代理
 	inboundDetour = (proto:find("tcp") and socks_port ~= "0") and {
@@ -156,7 +156,6 @@ local Xray = {
 				} or nil
 			} or nil,
 			realitySettings = (server.reality == '1') and {
-				show = false,
 				publicKey = server.reality_publickey,
 				shortId = server.reality_shortid,
 				spiderX = server.reality_spiderx,
@@ -175,6 +174,7 @@ local Xray = {
 				}
 			} or nil,
 			kcpSettings = (server.transport == "kcp") and {
+				-- kcp
 				mtu = tonumber(server.mtu),
 				tti = tonumber(server.tti),
 				uplinkCapacity = tonumber(server.uplink_capacity),
@@ -216,12 +216,19 @@ local Xray = {
 				health_check_timeout = tonumber(server.health_check_timeout) or nil,
 				permit_without_stream = (server.permit_without_stream == "1") and true or nil,
 				initial_windows_size = tonumber(server.initial_windows_size) or nil
+			} or nil,
+			sockopt = (server.mptcp == "1") and {
+				tcpcongestion = "bbr",
+				tcpMptcp = true,
+				tcpNoDelay = true
 			} or nil
 		},
-		mux = (server.mux == "1" and server.transport ~= "grpc") and {
+		mux = (server.mux == "1") and {
 			-- mux
 			enabled = true,
-			concurrency = tonumber(server.concurrency)
+			concurrency = tonumber(server.concurrency),
+			xudpConcurrency = tonumber(server.xudpConcurrency),
+			xudpProxyUDP443 = server.xudpProxyUDP443
 		} or nil
 	} or nil
 }
