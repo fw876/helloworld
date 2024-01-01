@@ -920,12 +920,35 @@ o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o:depends({type = "v2ray", v2ray_protocol = "http"})
 
-o = s:option(Value, "concurrency", translate("Concurrency"))
-o.datatype = "uinteger"
+o = s:option(Value, "concurrency", translate("concurrency"))
+o.datatype = "integer"
 o.rmempty = true
-o.default = "4"
+o.default = "-1"
 o:depends("mux", "1")
-o:depends("type", "naiveproxy")
+
+o = s:option(Value, "xudpConcurrency", translate("xudpConcurrency"))
+o.datatype = "integer"
+o.rmempty = true
+o.default = "16"
+o:depends("mux", "1")
+
+o = s:option(Value, "xudpProxyUDP443", translate("xudpProxyUDP443"))
+o.rmempty = true
+o.default = "reject"
+o:value("reject", translate("reject"))
+o:value("allow", translate("allow"))
+o:value("skip", translate("skip"))
+o:depends("mux", "1")
+
+-- [[ MPTCP ]]--
+o = s:option(Flag, "mptcp", translate("MPTCP"))
+o.rmempty = false
+o:depends({type = "v2ray", v2ray_protocol = "vless"})
+o:depends({type = "v2ray", v2ray_protocol = "vmess"})
+o:depends({type = "v2ray", v2ray_protocol = "trojan"})
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
+o:depends({type = "v2ray", v2ray_protocol = "socks"})
+o:depends({type = "v2ray", v2ray_protocol = "http"})
 
 -- [[ Cert ]]--
 o = s:option(Flag, "certificate", translate("Self-signed Certificate"))
