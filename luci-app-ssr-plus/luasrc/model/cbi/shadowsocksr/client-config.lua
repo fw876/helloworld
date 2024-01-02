@@ -218,7 +218,7 @@ o:depends("type", "ss")
 o:depends("type", "v2ray")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
-o:depends({type = "hysteria",port_hopping = false})
+o:depends("type", "hysteria")
 o:depends("type", "tuic")
 o:depends("type", "shadowtls")
 o:depends("type", "socks5")
@@ -341,7 +341,7 @@ o.default = "30"
 
 o = s:option(Value, "port_range", translate("Port Range"))
 o:depends({type = "hysteria", port_hopping = true})
-o.rmempty = false
+o.rmempty = true
 
 o = s:option(Flag, "lazy_mode", translate("Enable Lazy Mode"))
 o:depends("type", "hysteria")
