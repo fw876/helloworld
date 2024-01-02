@@ -125,7 +125,37 @@ local Xray = {
 		port = tonumber(local_port),
 		protocol = "dokodemo-door",
 		settings = {network = proto, followRedirect = true},
-		sniffing = {enabled = true, destOverride = {"http", "tls", "quic"}}
+		sniffing = {
+			enabled = true,
+			destOverride = {"http", "tls", "quic"},
+			domainsExcluded = {
+				"courier.push.apple.com",
+				"rbsxbxp-mim.vivox.com",
+				"rbsxbxp.www.vivox.com",
+				"rbsxbxp-ws.vivox.com",
+				"rbspsxp.www.vivox.com",
+				"rbspsxp-mim.vivox.com",
+				"rbspsxp-ws.vivox.com",
+				"rbswxp.www.vivox.com",
+				"rbswxp-mim.vivox.com",
+				"disp-rbspsp-5-1.vivox.com",
+				"disp-rbsxbp-5-1.vivox.com",
+				"proxy.rbsxbp.vivox.com",
+				"proxy.rbspsp.vivox.com",
+				"proxy.rbswp.vivox.com",
+				"rbswp.vivox.com",
+				"rbsxbp.vivox.com",
+				"rbspsp.vivox.com",
+				"rbspsp.www.vivox.com",
+				"rbswp.www.vivox.com",
+				"rbsxbp.www.vivox.com",
+				"rbsxbxp.vivox.com",
+				"rbspsxp.vivox.com",
+				"rbswxp.vivox.com",
+				"Mijia Cloud",
+				"dlg.io.mi.com"
+			}
+		}
 	} or nil,
 	-- 开启 socks 代理
 	inboundDetour = (proto:find("tcp") and socks_port ~= "0") and {
