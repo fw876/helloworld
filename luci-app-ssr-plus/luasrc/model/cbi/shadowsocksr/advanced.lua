@@ -1,5 +1,8 @@
 local uci = luci.model.uci.cursor()
 local server_table = {}
+local function is_finded(e)
+	return luci.sys.exec('type -t -p "%s"' % e) ~= "" and true or false
+end
 
 uci:foreach("shadowsocksr", "servers", function(s)
 	if s.alias then
