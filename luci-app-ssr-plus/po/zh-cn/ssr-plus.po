@@ -97,6 +97,9 @@ msgstr "UDP 最大并发连接数"
 msgid "xudpProxyUDP443"
 msgstr "对被代理的 UDP/443 流量处理方式"
 
+msgid "custom_tcpcongestion"
+msgstr "连接服务器节点的 TCP 拥塞控制算法"
+
 msgid "custom_sniffing"
 msgstr "流量嗅探"
 
