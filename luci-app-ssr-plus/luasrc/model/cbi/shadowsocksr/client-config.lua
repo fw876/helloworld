@@ -920,6 +920,7 @@ o.rmempty = true
 -- [[ Mux ]]--
 o = s:option(Flag, "mux", translate("Mux"))
 o.rmempty = false
+o.default = false
 o:depends({type = "v2ray", v2ray_protocol = "vless"})
 o:depends({type = "v2ray", v2ray_protocol = "vmess"})
 o:depends({type = "v2ray", v2ray_protocol = "trojan"})
@@ -931,13 +932,13 @@ o = s:option(Value, "concurrency", translate("concurrency"))
 o.datatype = "integer"
 o.rmempty = true
 o.default = "-1"
-o:depends("mux", "1")
+o:depends("mux", true)
 
 o = s:option(Value, "xudpConcurrency", translate("xudpConcurrency"))
 o.datatype = "integer"
 o.rmempty = true
 o.default = "16"
-o:depends("mux", "1")
+o:depends("mux", true)
 
 o = s:option(Value, "xudpProxyUDP443", translate("xudpProxyUDP443"))
 o.rmempty = true
@@ -945,17 +946,56 @@ o.default = "reject"
 o:value("reject", translate("reject"))
 o:value("allow", translate("allow"))
 o:value("skip", translate("skip"))
-o:depends("mux", "1")
+o:depends("mux", true)
 
 -- [[ MPTCP ]]--
 o = s:option(Flag, "mptcp", translate("MPTCP"))
 o.rmempty = false
+o.default = false
 o:depends({type = "v2ray", v2ray_protocol = "vless"})
 o:depends({type = "v2ray", v2ray_protocol = "vmess"})
 o:depends({type = "v2ray", v2ray_protocol = "trojan"})
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o:depends({type = "v2ray", v2ray_protocol = "http"})
+
+-- [[ custom_tcpcongestion ]]--
+o = s:option(Value, "custom_tcpcongestion", translate("custom_tcpcongestion"))
+o.rmempty = true
+o.default = ""
+o:value("", translate("comment_tcpcongestion_disable"))
+o:value("bbr", translate("bbr"))
+o:value("cubic", translate("cubic"))
+o:value("reno", translate("reno"))
+o:depends({type = "v2ray", v2ray_protocol = "vless"})
+o:depends({type = "v2ray", v2ray_protocol = "vmess"})
+o:depends({type = "v2ray", v2ray_protocol = "trojan"})
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
+o:depends({type = "v2ray", v2ray_protocol = "socks"})
+o:depends({type = "v2ray", v2ray_protocol = "http"})
+
+-- [[ custom_sniffing ]]--
+o = s:option(Flag, "custom_sniffing", translate("custom_sniffing"))
+o.rmempty = false
+o.default = true
+o:depends({type = "v2ray", v2ray_protocol = "vless"})
+o:depends({type = "v2ray", v2ray_protocol = "vmess"})
+o:depends({type = "v2ray", v2ray_protocol = "trojan"})
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
+o:depends({type = "v2ray", v2ray_protocol = "socks"})
+o:depends({type = "v2ray", v2ray_protocol = "http"})
+
+-- [[ custom_domainsExcluded ]]--
+o = s:option(Flag, "custom_domainsExcluded", translate("custom_domainsExcluded"))
+o.rmempty = false
+o.default = true
+o:depends("custom_sniffing", true)
+
+-- [[ custom_routeOnly ]]--
+o = s:option(Flag, "custom_routeOnly", translate("custom_routeOnly"))
+o.rmempty = false
+o.default = false
+o:depends("custom_sniffing", true)
 
 -- [[ Cert ]]--
 o = s:option(Flag, "certificate", translate("Self-signed Certificate"))
