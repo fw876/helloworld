@@ -121,7 +121,7 @@ local Xray = {
 		loglevel = "warning"
 	},
 	-- 传入连接
-	inbound = (local_port ~= "0") and {
+	inbounds = (local_port ~= "0") and {
 		-- listening
 		port = tonumber(local_port),
 		protocol = "dokodemo-door",
@@ -169,7 +169,7 @@ local Xray = {
 		}
 	} or nil,
 	-- 传出连接
-	outbound = {
+	outbounds = {
 		protocol = server.v2ray_protocol,
 		settings = outbound_settings,
 		-- 底层传输配置
