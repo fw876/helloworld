@@ -1,5 +1,8 @@
 local uci = luci.model.uci.cursor()
 local server_table = {}
+local function is_finded(e)
+	return luci.sys.exec('type -t -p "%s"' % e) ~= "" and true or false
+end
 
 uci:foreach("shadowsocksr", "servers", function(s)
 	if s.alias then
@@ -69,7 +72,9 @@ o:depends("netflix_enable", "1")
 
 o = s:option(ListValue, "shunt_dns_mode", translate("DNS Query Mode For Shunt Mode"))
 o:value("1", translate("Use DNS2SOCKS query and cache"))
+if is_finded("mosdns") then
 o:value("2", translate("Use MOSDNS query"))
+end
 o:depends("netflix_enable", "1")
 o.default = 1
 
