@@ -116,21 +116,57 @@ end
 local settings = outbound:new()
 settings:handleIndex(server.v2ray_protocol)
 local Xray = {
-	log = {
-		-- error = "/var/ssrplus.log",
-		loglevel = "warning"
+	-- 日志
+	log = (server.custom_log == "1") and {
+		loglevel = server.custom_loglevel, -- 日志级别
+		dnsLog = (server.custom_dnsLog == "1") and true or false, -- DNS 查询记录
+		access = server.custom_access, -- 访问记录
+		error = server.custom_error -- 错误记录
+	} or nil,
+	-- DNS
+	dns = {
+		hosts = {
+			["dns.alidns.com"] = "223.5.5.5",
+			["doh.pub"] = "119.29.29.29"
+		},
+		servers = (server.custom_dns_enable == "1") and { -- Xray 内置 DNS
+			server.custom_dns_local, -- 本地 DNS
+			{
+				address = server.custom_dns_remote, -- 远端 DNS
+				domains = {
+					server.custom_dns_remote_domains -- 远端 DNS 域名列表
+				},
+				skipFallback = true,
+				queryStrategy = "UseIP"
+			}
+		} or nil,
+		queryStrategy = "UseIP"
+	},
+	-- 路由
+	routing = {
+		domainStrategy = "AsIs",
+		rules = {
+			{
+				type = "field",
+				inboundTag = {
+					"dns-in"
+				},
+				outboundTag = "dns-out"
+			}
+		}
 	},
 	-- 传入连接
-	inbound = (local_port ~= "0") and {
+	inbounds = {
+	(local_port ~= "0") and {
 		-- listening
 		port = tonumber(local_port),
 		protocol = "dokodemo-door",
 		settings = {network = proto, followRedirect = true},
 		sniffing = {
-			enabled =  (server.custom_sniffing == "1") and true or false,
-			routeOnly = (server.custom_routeOnly == "1") and true or false,
+			enabled = (server.custom_sniffing == "1") and true or false, -- 流量嗅探
+			routeOnly = (server.custom_routeOnly == "1") and true or false, -- 嗅探得到的域名仅用于 Xray 内部路由
 			destOverride = {"http", "tls", "quic"},
-			domainsExcluded = (server.custom_domainsExcluded == "1") and {
+			domainsExcluded = (server.custom_domainsExcluded == "1") and { -- 流量嗅探域名排除列表
 				"courier.push.apple.com",
 				"rbsxbxp-mim.vivox.com",
 				"rbsxbxp.www.vivox.com",
@@ -159,6 +195,17 @@ local Xray = {
 			} or nil,
 		}
 	} or nil,
+	(server.custom_dns_enable == "1") and { -- Xray 内置 DNS
+		port = 5335,
+		protocol = "dokodemo-door",
+		settings = {
+			address = server.custom_dokodemo_door_dns_address, -- 查询非 A 和 AAAA 记录DNS
+			port = 53,
+			network = "udp"
+		},
+		tag = "dns-in"
+	} or nil,
+	},
 	-- 开启 socks 代理
 	inboundDetour = (proto:find("tcp") and socks_port ~= "0") and {
 		{
@@ -169,7 +216,9 @@ local Xray = {
 		}
 	} or nil,
 	-- 传出连接
-	outbound = {
+	outbounds = {
+	{
+		tag = "proxy",
 		protocol = server.v2ray_protocol,
 		settings = outbound_settings,
 		-- 底层传输配置
@@ -185,7 +234,7 @@ local Xray = {
 				certificates = server.certificate and {
 					usage = "verify",
 					certificateFile = server.certpath
-				} or nil
+				} or nil,
 			} or nil,
 			realitySettings = (server.reality == '1') and {
 				publicKey = server.reality_publickey,
@@ -250,19 +299,45 @@ local Xray = {
 				initial_windows_size = tonumber(server.initial_windows_size) or nil
 			} or nil,
 			sockopt = {
-				tcpMptcp = (server.mptcp == "1") and true or false,
-				tcpNoDelay = (server.mptcp == "1") and true or false,
-				tcpcongestion = server.custom_tcpcongestion
+				tcpMptcp = (server.mptcp == "1") and true or false, -- MPTCP
+				tcpNoDelay = (server.mptcp == "1") and true or false, -- MPTCP
+				tcpcongestion = server.custom_tcpcongestion -- 连接服务器节点的 TCP 拥塞控制算法
 			}
 		},
-		mux = (server.mux == "1") and {
-			-- mux
-			enabled = true,
-			concurrency = tonumber(server.concurrency),
-			xudpConcurrency = tonumber(server.xudpConcurrency),
-			xudpProxyUDP443 = server.xudpProxyUDP443
-		} or nil
-	} or nil
+		mux = {
+			enabled = (server.mux == "1") and true or false, -- Mux
+			concurrency = tonumber(server.concurrency), -- TCP 最大并发连接数
+			xudpConcurrency = tonumber(server.xudpConcurrency), -- UDP 最大并发连接数
+			xudpProxyUDP443 = server.xudpProxyUDP443 -- 对被代理的 UDP/443 流量处理方式
+		}
+	},
+	{
+		protocol = "freedom",
+		settings = {
+			domainStrategy = "ForceIPv6v4"
+		},
+		streamSettings = {
+			sockopt = {
+				tcpFastOpen = true
+			}
+		},
+		tag = "direct"
+	},
+	{
+		protocol = "blackhole",
+		tag = "block"
+	},
+	(server.custom_dns_enable == "1") and { -- Xray 内置 DNS
+		protocol = "dns",
+		settings = {
+			nonIPQuery = server.custom_nonIPQuery -- 非 A 和 AAAA 记录处理方式
+		},
+		proxySettings = (server.custom_nonIPQuery == "skip") and {
+			tag = server.custom_nonIPQuery_outbound_tag -- 非 A 和 AAAA 记录查询方式
+		} or nil,
+		tag = "dns-out"
+	} or nil,
+	}
 }
 local cipher = "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA:AES128-SHA:AES256-SHA:DES-CBC3-SHA"
 local cipher13 = "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_256_GCM_SHA384"
