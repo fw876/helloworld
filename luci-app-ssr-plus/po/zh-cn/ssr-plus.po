@@ -88,6 +88,7 @@ msgstr "TLS 主机名"
 msgid "allowInsecure"
 msgstr "允许不安全连接"
 
+
 msgid "concurrency"
 msgstr "TCP 最大并发连接数"
 
@@ -97,11 +98,13 @@ msgstr "UDP 最大并发连接数"
 msgid "xudpProxyUDP443"
 msgstr "对被代理的 UDP/443 流量处理方式"
 
+
 msgid "custom_tcpcongestion"
 msgstr "连接服务器节点的 TCP 拥塞控制算法"
 
 msgid "comment_tcpcongestion_disable"
 msgstr "使用系统默认值"
+
 
 msgid "custom_sniffing"
 msgstr "流量嗅探"
@@ -110,7 +113,49 @@ msgid "custom_domainsExcluded"
 msgstr "流量嗅探域名排除列表"
 
 msgid "custom_routeOnly"
-msgstr "嗅探得到的域名仅用于 Xray 内部路由"
+msgstr "嗅探得到的域名仅用于 Xray 路由"
+
+
+msgid "custom_dns_enable"
+msgstr "Xray DNS 功能"
+
+msgid "comment_dns_inbound_enable"
+msgstr "监听 5335 端口，需要上传 geosite.dat 到 /usr/share/xray，更新固件后要重新上传"
+
+msgid "custom_dns_local"
+msgstr "本地 DNS"
+
+msgid "custom_dns_remote"
+msgstr "远端 DNS"
+
+msgid "custom_dns_remote_domains"
+msgstr "远端 DNS 域名列表"
+
+msgid "custom_dokodemo_door_dns_address"
+msgstr "查询非 A 和 AAAA 记录 DNS"
+
+msgid "custom_nonIPQuery"
+msgstr "非 A 和 AAAA 记录处理方式"
+
+msgid "custom_nonIPQuery_outbound_tag"
+msgstr "非 A 和 AAAA 记录查询方式"
+
+
+msgid "custom_log"
+msgstr "Xray 日志功能"
+
+msgid "custom_loglevel"
+msgstr "日志级别"
+
+msgid "custom_dnsLog"
+msgstr "DNS 查询记录"
+
+msgid "custom_access"
+msgstr "访问记录"
+
+msgid "custom_error"
+msgstr "错误记录"
+
 
 msgid "If true, allowss insecure connection at TLS client, e.g., TLS server uses unverifiable certificates."
 msgstr "是否允许不安全连接。当选择时，将不会检查远端主机所提供的 TLS 证书的有效性。"
