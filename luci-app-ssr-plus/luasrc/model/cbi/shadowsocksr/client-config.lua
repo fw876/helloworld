@@ -1023,9 +1023,11 @@ o.rmempty = true
 o.default = "https+local://223.5.5.5/dns-query"
 o:value("https+local://223.5.5.5/dns-query", translate("https+local://223.5.5.5/dns-query"))
 o:value("https+local://119.29.29.29/dns-query", translate("https+local://119.29.29.29/dns-query"))
+o:value("https://1.1.1.1/dns-query", translate("https://1.1.1.1/dns-query"))
+o:value("https://8.8.8.8/dns-query", translate("https://8.8.8.8/dns-query"))
 o:depends("custom_dns_enable", true)
 
--- [[ custom_dns_remote 远端 DNS ]]--
+-- [[ custom_dns_remote 国外域名 DNS ]]--
 o = s:option(ListValue, "custom_dns_remote", translate("custom_dns_remote"))
 o.rmempty = true
 o.default = "https://1.1.1.1/dns-query"
@@ -1033,10 +1035,11 @@ o:value("https://1.1.1.1/dns-query", translate("https://1.1.1.1/dns-query"))
 o:value("https://8.8.8.8/dns-query", translate("https://8.8.8.8/dns-query"))
 o:depends("custom_dns_enable", true)
 
--- [[ custom_dns_remote_domains 远端 DNS 域名列表 ]]--
+-- [[ custom_dns_remote_domains 国外域名规则 ]]--
 o = s:option(ListValue, "custom_dns_remote_domains", translate("custom_dns_remote_domains"))
 o.rmempty = true
-o.default = "geosite:geolocation-!cn"
+o.default = "domain:example.com"
+o:value("domain:example.com", translate("disable"))
 o:value("geosite:geolocation-!cn", translate("geosite:geolocation-!cn"))
 o:depends("custom_dns_enable", true)
 
