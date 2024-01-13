@@ -103,7 +103,7 @@ msgid "custom_tcpcongestion"
 msgstr "连接服务器节点的 TCP 拥塞控制算法"
 
 msgid "comment_tcpcongestion_disable"
-msgstr "使用系统默认值"
+msgstr "系统默认值"
 
 
 msgid "custom_sniffing"
@@ -120,25 +120,25 @@ msgid "custom_dns_enable"
 msgstr "Xray DNS 功能"
 
 msgid "comment_dns_inbound_enable"
-msgstr "监听 5335 端口，需要上传 geosite.dat 到 /usr/share/xray，更新固件后要重新上传"
+msgstr "监听 5335 端口，国外域名规则需要上传 geosite.dat 到 /usr/share/xray，更新固件后要重新上传"
 
 msgid "custom_dns_local"
 msgstr "本地 DNS"
 
 msgid "custom_dns_remote"
-msgstr "远端 DNS"
+msgstr "国外域名 DNS"
 
 msgid "custom_dns_remote_domains"
-msgstr "远端 DNS 域名列表"
-
-msgid "custom_dokodemo_door_dns_address"
-msgstr "查询非 A 和 AAAA 记录 DNS"
+msgstr "国外域名规则"
 
 msgid "custom_nonIPQuery"
 msgstr "非 A 和 AAAA 记录处理方式"
 
 msgid "custom_nonIPQuery_outbound_tag"
 msgstr "非 A 和 AAAA 记录查询方式"
+
+msgid "custom_dokodemo_door_dns_address"
+msgstr "查询非 A 和 AAAA 记录 DNS"
 
 
 msgid "custom_log"
