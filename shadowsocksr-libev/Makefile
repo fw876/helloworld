@@ -60,6 +60,14 @@ CONFIGURE_ARGS += \
 TARGET_CFLAGS += -flto
 TARGET_LDFLAGS += -Wl,--gc-sections,--as-needed
 
+ifeq ($(GCC_MAJOR_VERSION),12)
+	TARGET_CFLAGS += -Wno-error=use-after-free
+endif
+
+ifeq ($(GCC_MAJOR_VERSION),13)
+	TARGET_CFLAGS += -Wno-error=use-after-free
+endif
+
 $(foreach component,$(SHADOWSOCKSR_COMPONENTS), \
   $(eval $(call BuildPackage,shadowsocksr-libev-ssr-$(component))) \
 )
