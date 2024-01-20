@@ -401,12 +401,12 @@ local hysteria = {
 		listen = "0.0.0.0:" .. tonumber(socks_port),
 		disable_udp = false
 	} or nil,
-	transport = {
+	transport = (server.port_hopping == "1") and {
 		type = server.transport_protocol,
 		udp = { 
-			hopInterval = tonumber(server.hopinterval) and tonumber(server.hopinterval) .. "s" or "30s"
+			hopInterval = tonumber(server.hopinterval) and tonumber(server.hopinterval) .. "s" or nil
 		}
-	},
+	} or nil,
 --[[			
 	tcpTProxy = (proto:find("tcp") and local_port ~= "0") and {
 	listen = "0.0.0.0:" .. tonumber(local_port)
