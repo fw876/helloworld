@@ -323,16 +323,16 @@ o = s:option(Value, "hy2_auth", translate("Users Authentication"))
 o:depends("type", "hysteria")
 o.rmempty = false
 
-o = s:option(ListValue, "transport_protocol", translate("Protocol"))
-o:depends("type", "hysteria")
-o:value("udp", translate("udp"))
-o.default = "udp"
-o.rmempty = true
-
 o = s:option(Flag, "port_hopping", translate("Enable Port Hopping"))
 o:depends("type", "hysteria")
 o.rmempty = true
 o.default = "0"
+
+o = s:option(ListValue, "transport_protocol", translate("Protocol"))
+o:depends({type = "hysteria", port_hopping = true})
+o:value("udp", translate("udp"))
+o.default = "udp"
+o.rmempty = true
 
 o = s:option(Value, "hopinterval", translate("Port Hopping Interval(Unit:Second)"))
 o:depends({type = "hysteria", port_hopping = true})
