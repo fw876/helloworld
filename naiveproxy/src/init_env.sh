@@ -40,7 +40,7 @@ export naive_flags="
 is_official_build=true
 exclude_unwind_tables=true
 enable_resource_allowlist_generation=false
-symbol_level=1
+symbol_level=0
 is_clang=true
 use_sysroot=false
 
@@ -63,6 +63,9 @@ enable_mdns=false
 enable_reporting=false
 include_transport_security_state_preload_list=false
 use_nss_certs=false
+
+enable_backup_ref_ptr_support=false
+enable_dangling_raw_ptr_checks=false
 
 target_os=\"openwrt\"
 target_cpu=\"${naive_arch}\"
@@ -87,7 +90,12 @@ case "${target_arch}" in
 	[ -n "${cpu_type}" ] && naive_flags+=" arm_cpu=\"${cpu_type}\""
 	;;
 "mipsel"|"mips64el")
-	naive_flags+=" use_thin_lto=false chrome_pgo_phase=0 mips_arch_variant=\"r2\""
+	naive_flags+=" use_thin_lto=false chrome_pgo_phase=0"
+	if [ -z "${cpu_type}" ]; then
+		naive_flags+=" mips_arch_variant=\"r1\""
+	else
+		naive_flags+=" mips_arch_variant=\"r2\""
+	fi
 	if [ "${target_arch}" == "mipsel" ]; then
 		if [ "${cpu_subtype}" == "24kf" ]; then
 			naive_flags+=" mips_float_abi=\"hard\""
