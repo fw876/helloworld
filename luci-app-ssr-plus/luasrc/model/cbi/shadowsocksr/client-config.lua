@@ -1187,7 +1187,7 @@ if is_finded("kcptun-client") then
 	o:depends("type", "ss")
 
 	o = s:option(Value, "kcp_port", translate("KcpTun Port"))
-	o.datatype = "port"
+	o.datatype = "portrange"
 	o.default = 4000
 	o:depends("type", "ssr")
 	o:depends("type", "ss")
