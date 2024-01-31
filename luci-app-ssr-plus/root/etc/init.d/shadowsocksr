@@ -380,13 +380,13 @@ gen_config_file() { #server1 type2 code3 local_port4 socks_port5 chain6 threads5
 		;;
 	shadowtls)
 		case "$3" in
-			1|2|4)
-        [ -z "$6" ] && lua /usr/share/shadowsocksr/gen_config.lua $1 $type $4 >$chain_config_file || lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 $5 $6 >$config_file
-        ;;
-			3)
-				lua /usr/share/shadowsocksr/gen_config.lua $1 $type $4 >$chain_config_file
-				lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 $5 $6 >$config_file
-				;;
+		1|2|4)
+			[ -z "$6" ] && lua /usr/share/shadowsocksr/gen_config.lua $1 $type $4 >$chain_config_file || lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 $5 $6 >$config_file
+			;;
+		3)
+			lua /usr/share/shadowsocksr/gen_config.lua $1 $type $4 >$chain_config_file
+			lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 $5 $6 >$config_file
+			;;
 		esac
 		;;
 	socks5)
@@ -452,14 +452,14 @@ start_udp() {
 		ln_start_bin $(first_type shadow-tls) shadow-tls config --config $chain_config_file
 		local chain_type=$(uci_get_by_name $UDP_RELAY_SERVER chain_type)
 		case ${chain_type} in
-			vmess)
-				ln_start_bin $(first_type xray v2ray) v2ray run -c $udp_config_file
-				echolog "UDP TPROXY Relay:shadow-tls chain-to $($(first_type xray) --version) Started!"
-				;;
-			sslocal)
-				ln_start_bin $(first_type sslocal) sslocal -c $udp_config_file
-				echolog "UDP TPROXY Relay:shadow-tls chain-to $($(first_type sslocal) --version) Started!"
-				;;
+		vmess)
+			ln_start_bin $(first_type xray v2ray) v2ray run -c $udp_config_file
+			echolog "UDP TPROXY Relay:shadow-tls chain-to $($(first_type xray) --version) Started!"
+			;;
+		sslocal)
+			ln_start_bin $(first_type sslocal) sslocal -c $udp_config_file
+			echolog "UDP TPROXY Relay:shadow-tls chain-to $($(first_type sslocal) --version) Started!"
+			;;
 		esac
 		;;
 	socks5)
@@ -588,14 +588,14 @@ start_shunt() {
 		shunt_dns_command
 		local chain_type=$(uci_get_by_name $SHUNT_SERVER chain_type)
 		case ${chain_type} in
-			vmess)
-				ln_start_bin $(first_type xray v2ray) v2ray run -c $shunt_config_file
-				echolog "Netflix Separated Shunt Server:shadow-tls chain-to$($(first_type xray) --version) Started!"
-				;;
-			 sslocal)
-				ln_start_bin $(first_type sslocal) sslocal -c $shunt_config_file
-				echolog "Netflix Separated Shunt Server:shadow-tls chain-to$($(first_type sslocal) --version) Started!"
-				;;
+		vmess)
+			ln_start_bin $(first_type xray v2ray) v2ray run -c $shunt_config_file
+			echolog "Netflix Separated Shunt Server:shadow-tls chain-to$($(first_type xray) --version) Started!"
+			;;
+		sslocal)
+			ln_start_bin $(first_type sslocal) sslocal -c $shunt_config_file
+			echolog "Netflix Separated Shunt Server:shadow-tls chain-to$($(first_type sslocal) --version) Started!"
+			;;
 		esac
 		;;
 	# socks5)
@@ -681,14 +681,14 @@ start_local() {
 			ln_start_bin $(first_type shadow-tls) shadow-tls config --config $chain_local_config_file
 			local chain_type=$(uci_get_by_name $LOCAL_SERVER chain_type)
 			case ${chain_type} in
-				vmess)
-					ln_start_bin $(first_type xray v2ray) v2ray run -c $local_config_file
-					echolog "Global Socks5 Proxy:shadow-tls chain-to$($(first_type xray) --version) Started!"
-					;;
-				sslocal)
-					ln_start_bin $(first_type sslocal) sslocal -c $local_config_file
-					echolog "Global Socks5 Proxy:shadow-tls chain-to$($(first_type sslocal) --version) Started!"
-					;;
+			vmess)
+				ln_start_bin $(first_type xray v2ray) v2ray run -c $local_config_file
+				echolog "Global Socks5 Proxy:shadow-tls chain-to$($(first_type xray) --version) Started!"
+				;;
+			sslocal)
+				ln_start_bin $(first_type sslocal) sslocal -c $local_config_file
+				echolog "Global Socks5 Proxy:shadow-tls chain-to$($(first_type sslocal) --version) Started!"
+				;;
 			esac
 		fi
 		;;
