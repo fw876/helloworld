@@ -323,33 +323,39 @@ o = s:option(Value, "hy2_auth", translate("Users Authentication"))
 o:depends("type", "hysteria")
 o.rmempty = false
 
-o = s:option(ListValue, "transport_protocol", translate("Protocol"))
-o:depends("type", "hysteria")
-o:value("udp", translate("udp"))
-o.default = "udp"
-o.rmempty = true
-
-o = s:option(Flag, "port_hopping", translate("Enable Port Hopping"))
+o = s:option(Flag, "flag_port_hopping", translate("Enable Port Hopping"))
 o:depends("type", "hysteria")
 o.rmempty = true
 o.default = "0"
 
-o = s:option(Value, "hopinterval", translate("Port Hopping Interval(Unit:Second)"))
-o:depends({type = "hysteria", port_hopping = true})
+o = s:option(Value, "port_range", translate("Port Range"))
+o:depends({type = "hysteria", flag_port_hopping = true})
+o.datatype = "portrange"
+o.rmempty = true
+
+o = s:option(Flag, "flag_transport", translate("Enable Transport Protocol Settings"))
+o:depends("type", "hysteria")
+o.rmempty = true
+o.default = "0"
+
+o = s:option(ListValue, "transport_protocol", translate("Transport Protocol"))
+o:depends({type = "hysteria", flag_transport = true})
+o:value("udp", translate("UDP"))
+o.default = "udp"
+o.rmempty = true
+
+o = s:option(Value, "hopinterval", translate("Hop Interval(Unit:Second)"))
+o:depends({type = "hysteria", flag_transport = true, flag_port_hopping = true})
 o.datatype = "uinteger"
 o.rmempty = true
 o.default = "30"
 
-o = s:option(Value, "port_range", translate("Port Range"))
-o:depends({type = "hysteria", port_hopping = true})
-o.rmempty = true
-
-o = s:option(Flag, "lazy_mode", translate("Enable Lazy Mode"))
+o = s:option(Flag, "flag_obfs", translate("Enable Obfuscation"))
 o:depends("type", "hysteria")
 o.rmempty = true
 o.default = "0"
 
-o = s:option(Flag, "flag_obfs", translate("Enable Obfuscation"))
+o = s:option(Flag, "lazy_mode", translate("Lazy Mode"))
 o:depends("type", "hysteria")
 o.rmempty = true
 o.default = "0"
@@ -368,6 +374,11 @@ o = s:option(Flag, "flag_quicparam", translate("Hysterir QUIC parameters"))
 o:depends("type", "hysteria")
 o.rmempty = true
 o.default = "0"
+
+o = s:option(Flag, "disablepathmtudiscovery", translate("Disable QUIC path MTU discovery."))
+o:depends({type = "hysteria",flag_quicparam = "1"})
+o.rmempty = true
+o.default = false
 
 --[[Hysteria2 QUIC parameters setting]]
 o = s:option(Value, "initstreamreceivewindow", translate("QUIC initStreamReceiveWindow"))
@@ -405,11 +416,6 @@ o:depends({type = "hysteria", flag_quicparam = "1"})
 o.rmempty = true
 o.datatype = "uinteger"
 o.default = "10"
-
-o = s:option(Flag, "disablepathmtudiscovery", translate("Disable Path MTU discovery"))
-o:depends({type = "hysteria", flag_quicparam = "1"})
-o.rmempty = true
-o.default = false
 
 
 --[[ Shadow-TLS Options ]]
@@ -902,9 +908,7 @@ o:depends("reality", true)
 o.rmempty = true
 
 o = s:option(DynamicList, "tls_alpn", translate("TLS ALPN"))
-o:depends("tls", true)
-o:depends("type", "tuic")
-o:depends("type", "hysteria")
+o:depends({type = "tuic", tls = true})
 o.rmempty = true
 
 -- [[ allowInsecure ]]--
