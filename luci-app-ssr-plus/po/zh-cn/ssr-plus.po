@@ -52,6 +52,12 @@ msgstr "端口"
 msgid "Local Port"
 msgstr "本地端口"
 
+msgid "Local SOCKS5 Port"
+msgstr "SOCKS5 本地端口"
+
+msgid "Local HTTP Port"
+msgstr "HTTP 本地端口"
+
 msgid "Connection Timeout"
 msgstr "连接超时"
 
@@ -873,8 +879,8 @@ msgstr "服务端类型"
 msgid "Local Servers"
 msgstr "本机服务端"
 
-msgid "Global SOCKS5 Proxy Server"
-msgstr "SOCKS5 代理服务端（全局）"
+msgid "Global SOCKS5 HTTP Proxy Server"
+msgstr "SOCKS5/HTTP 代理服务端（全局）"
 
 msgid "warning! Please do not reuse the port!"
 msgstr "警告！请不要重复使用端口！"

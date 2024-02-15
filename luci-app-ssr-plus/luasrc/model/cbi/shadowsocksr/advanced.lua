@@ -125,7 +125,7 @@ o.rawhtml = true
 o.template = "shadowsocksr/reset"
 
 -- [[ SOCKS5 Proxy ]]--
-s = m:section(TypedSection, "socks5_proxy", translate("Global SOCKS5 Proxy Server"))
+s = m:section(TypedSection, "local_proxy", translate("Global SOCKS5 HTTP Proxy Server"))
 s.anonymous = true
 
 o = s:option(ListValue, "server", translate("Server"))
@@ -137,9 +137,14 @@ end
 o.default = "nil"
 o.rmempty = false
 
-o = s:option(Value, "local_port", translate("Local Port"))
+o = s:option(Value, "socks5_port", translate("Local SOCKS5 Port"))
 o.datatype = "port"
 o.default = 1080
+o.rmempty = false
+
+o = s:option(Value, "http_port", translate("Local HTTP Port"))
+o.datatype = "port"
+o.default = 1081
 o.rmempty = false
 
 return m

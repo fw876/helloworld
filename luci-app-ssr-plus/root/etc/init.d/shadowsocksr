@@ -299,7 +299,7 @@ get_name() {
 	esac
 }
 
-gen_config_file() { #server1 type2 code3 local_port4 socks_port5 chain6 threads5
+gen_config_file() { #server1 type2 code3 local_port4 socks_port5 http_port chain6 threads5
 	case "$3" in
 	1)
 		config_file=$tcp_config_file
@@ -332,7 +332,7 @@ gen_config_file() { #server1 type2 code3 local_port4 socks_port5 chain6 threads5
 		fi
 		;;
 	v2ray)
-		lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 $5 >$config_file
+		lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 $5 $6 >$config_file
 		;;
 	trojan)
 		case "$3" in
@@ -374,18 +374,18 @@ gen_config_file() { #server1 type2 code3 local_port4 socks_port5 chain6 threads5
 			lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 >$config_file
 			;;
 		3)
-			[ -z "$6" ] && lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 >$shunt_dns_config_file || lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 >$config_file
+			[ -z "$7" ] && lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 >$shunt_dns_config_file || lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 >$config_file
 			;;
 		esac
 		;;
 	shadowtls)
 		case "$3" in
 		1|2|4)
-			[ -z "$6" ] && lua /usr/share/shadowsocksr/gen_config.lua $1 $type $4 >$chain_config_file || lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 $5 $6 >$config_file
+			[ -z "$7" ] && lua /usr/share/shadowsocksr/gen_config.lua $1 $type $4 >$chain_config_file || lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 $5 0 $7 >$config_file
 			;;
 		3)
 			lua /usr/share/shadowsocksr/gen_config.lua $1 $type $4 >$chain_config_file
-			lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 $5 $6 >$config_file
+			lua /usr/share/shadowsocksr/gen_config.lua $1 $mode $4 $5 0 $7 >$config_file
 			;;
 		esac
 		;;
@@ -448,7 +448,7 @@ start_udp() {
 		;;
 	shadowtls)
 		gen_config_file $UDP_RELAY_SERVER $type 2 ${tmp_udp_local_port}
-		gen_config_file $UDP_RELAY_SERVER $type 2 ${tmp_udp_local_port} 0 chain
+		gen_config_file $UDP_RELAY_SERVER $type 2 ${tmp_udp_local_port} 0 0 chain
 		ln_start_bin $(first_type shadow-tls) shadow-tls config --config $chain_config_file
 		local chain_type=$(uci_get_by_name $UDP_RELAY_SERVER chain_type)
 		case ${chain_type} in
@@ -568,7 +568,7 @@ start_shunt() {
 		;;
 	tuic)
 		local chain_shunt_port="30${tmp_shunt_port}"
-		gen_config_file $SHUNT_SERVER $type 3 $chain_shunt_port 0 chain #make a tuic socks:30303, make a ipt2socks redir:303
+		gen_config_file $SHUNT_SERVER $type 3 $chain_shunt_port 0 0 chain #make a tuic socks:30303, make a ipt2socks redir:303
 		ln_start_bin $(first_type tuic-client) tuic-client --config $shunt_config_file
 		ln_start_bin $(first_type ipt2socks) ipt2socks -R -b 0.0.0.0 -4 -s 127.0.0.1 -p $chain_shunt_port -l $tmp_shunt_port
 
@@ -582,7 +582,7 @@ start_shunt() {
 		;;
 	shadowtls)
 		[ -n "$tmp_local_port" ] && tmp_port=$tmp_local_port || tmp_port=$tmp_shunt_local_port
-		gen_config_file $SHUNT_SERVER $type 3 "10${tmp_shunt_port}" $tmp_port chain/$tmp_shunt_port #make a redir:303 and a socks:304
+		gen_config_file $SHUNT_SERVER $type 3 "10${tmp_shunt_port}" $tmp_port 0 chain/$tmp_shunt_port #make a redir:303 and a socks:304
 		#echo "debug \$tmp_port=$tmp_port, \$tmp_shunt_port=${tmp_shunt_port},  \$tmp_shunt_local_port=$tmp_shunt_local_port"
 		ln_start_bin $(first_type shadow-tls) shadow-tls config --config $chain_config_file
 		shunt_dns_command
@@ -632,7 +632,8 @@ start_shunt() {
 
 start_local() {
 	[ "$LOCAL_SERVER" = "nil" ] && return 1
-	local local_port=$(uci_get_by_type socks5_proxy local_port)
+	local local_port=$(uci_get_by_type local_proxy socks5_port)
+	local http_port=$(uci_get_by_type local_proxy http_port)
 	[ "$LOCAL_SERVER" == "$SHUNT_SERVER" ] && tmp_local_port=$local_port
 	local type=$(uci_get_by_name $LOCAL_SERVER type)
 	case "$type" in
@@ -644,7 +645,7 @@ start_local() {
 		;;
 	v2ray)
 		if [ "$_local" == "2" ]; then
-			gen_config_file $LOCAL_SERVER $type 4 0 $local_port
+			gen_config_file $LOCAL_SERVER $type 4 0 $local_port $http_port
 			ln_start_bin $(first_type xray v2ray) v2ray run -config $local_config_file
 		fi
 		echolog "Global_Socks5:$($(first_type "xray" "v2ray") version | head -1) Started!"
@@ -677,7 +678,7 @@ start_local() {
 		#respective config for global socks and main node
 		if [ "$_local" == "2" ]; then
 			gen_config_file $LOCAL_SERVER $type 4 "10${tmp_tcp_local_port}"
-			gen_config_file $LOCAL_SERVER $type 4 0 $local_port chain/"10${tmp_tcp_local_port}"
+			gen_config_file $LOCAL_SERVER $type 4 0 $local_port 0 chain/"10${tmp_tcp_local_port}"
 			ln_start_bin $(first_type shadow-tls) shadow-tls config --config $chain_local_config_file
 			local chain_type=$(uci_get_by_name $LOCAL_SERVER chain_type)
 			case ${chain_type} in
@@ -723,7 +724,8 @@ Start_Run() {
 		ARG_UDP=""
 	fi
 	if [ "$_local" == "1" ]; then
-		local socks_port=$(uci_get_by_type socks5_proxy local_port)
+		local socks_port=$(uci_get_by_type local_proxy socks5_port)
+		local http_port=$(uci_get_by_type local_proxy http_port)
 		tcp_config_file=$TMP_PATH/local-ssr-retcp.json
 		[ "$mode" == "tcp,udp" ] && tcp_config_file=$TMP_PATH/local-udp-ssr-retcp.json
 	fi
@@ -739,7 +741,7 @@ Start_Run() {
 		echolog "Main node:$(get_name $type) $threads Threads Started!"
 		;;
 	v2ray)
-		gen_config_file $GLOBAL_SERVER $type 1 $tcp_port $socks_port
+		gen_config_file $GLOBAL_SERVER $type 1 $tcp_port $socks_port $http_port
 		ln_start_bin $(first_type xray v2ray) v2ray run -config $tcp_config_file
 		echolog "Main node:$($(first_type xray v2ray) version | head -1) Started!"
 		;;
@@ -776,10 +778,10 @@ Start_Run() {
 	shadowtls)
 		if [ -z "$socks_port" ]; then
 			gen_config_file $GLOBAL_SERVER $type 1 "10${tmp_tcp_local_port}"
-			gen_config_file $GLOBAL_SERVER $type 1 "10${tmp_tcp_local_port}" 0 chain
+			gen_config_file $GLOBAL_SERVER $type 1 "10${tmp_tcp_local_port}" 0 0 chain
 		else
 			gen_config_file $GLOBAL_SERVER $type 1 "10${tmp_tcp_local_port}"
-			gen_config_file $GLOBAL_SERVER $type 1 "10${tmp_tcp_local_port}" $socks_port chain
+			gen_config_file $GLOBAL_SERVER $type 1 "10${tmp_tcp_local_port}" $socks_port 0 chain
 		fi
 		local chain_type=$(uci_get_by_name $GLOBAL_SERVER chain_type)
 		case ${chain_type} in
@@ -824,7 +826,7 @@ load_config() {
 	else
 		GLOBAL_SERVER=$switch_server
 	fi
-	LOCAL_SERVER=$(uci_get_by_type socks5_proxy server nil)
+	LOCAL_SERVER=$(uci_get_by_type local_proxy server nil)
 	if [ "$GLOBAL_SERVER" == "nil" ]; then
 		mode="tcp,udp"
 		_local="2"
@@ -1169,9 +1171,10 @@ reset() {
 		add_list shadowsocksr.@access_control[0].wan_fw_ips=91.108.56.0/22
 		add_list shadowsocksr.@access_control[0].wan_fw_ips=109.239.140.0/24
 		add_list shadowsocksr.@access_control[0].Interface='lan'
-		add shadowsocksr socks5_proxy
-		set shadowsocksr.@socks5_proxy[0].server='nil'
-		set shadowsocksr.@socks5_proxy[0].local_port='1080'
+		add shadowsocksr local_proxy
+		set shadowsocksr.@local_proxy[0].server='nil'
+		set shadowsocksr.@local_proxy[0].socks5_port='1080'
+		set shadowsocksr.@local_proxy[0].http_port='1081'
 		add shadowsocksr server_global
 		set shadowsocksr.@server_global[0].enable_server='0'
 		commit shadowsocksr
