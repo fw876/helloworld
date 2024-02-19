@@ -181,6 +181,9 @@ msgstr "注意： 如果服务器使用 userpass 验证，格式必须是 userna
 msgid "Enable Port Hopping"
 msgstr "启用端口跃迁"
 
+msgid "Enable Transport Protocol Settings"
+msgstr "启用传输协议设置"
+
 msgid "Port Range"
 msgstr "端口范围值"
 
