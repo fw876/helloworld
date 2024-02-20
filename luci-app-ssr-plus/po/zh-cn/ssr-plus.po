@@ -79,6 +79,9 @@ msgstr "流控（Flow）"
 msgid "Transport"
 msgstr "传输协议"
 
+msgid "Transport Protocol"
+msgstr "传输协议"
+
 msgid "Protocol"
 msgstr "传输协议"
 
