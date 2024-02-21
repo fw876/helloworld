@@ -355,7 +355,7 @@ o:depends("type", "hysteria")
 o.rmempty = true
 o.default = "0"
 
-o = s:option(Flag, "lazy_mode", translate("Lazy Mode"))
+o = s:option(Flag, "lazy_mode", translate("Enable Lazy Mode"))
 o:depends("type", "hysteria")
 o.rmempty = true
 o.default = "0"

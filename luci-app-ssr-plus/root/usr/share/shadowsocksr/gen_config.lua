@@ -435,7 +435,7 @@ local hysteria = {
 	auth = server.hy2_auth,
 	tls = (server.tls_host) and {
 		sni = server.tls_host,
-		alpn = server.tls_alpn or nil,
+		--alpn = server.tls_alpn or nil,
 		insecure = (server.insecure == "1") and true or false,
 		pinSHA256 = (server.insecure == "1") and server.pinsha256 or nil
 	} or {
