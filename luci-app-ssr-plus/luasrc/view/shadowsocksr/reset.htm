@@ -7,7 +7,7 @@
 			return false;
 		}
 		if (reset != "reset") {
-			s.innerHTML = "<font color='red'><%:The content entered is incorrect!%></font>";
+			s.innerHTML = "<font style=\'color:red\'><%:The content entered is incorrect!%></font>";
 			return false;
 		}
 		btn.disabled = true;
@@ -15,7 +15,7 @@
 		murl=dataname;
 		XHR.get('<%=luci.dispatcher.build_url("admin", "services", "shadowsocksr","reset")%>', { set:murl }, function(x,rv) {
 			btn.value    = '<%:Reset complete%>';
-			s.innerHTML = "<font color='green'><%:Reset complete%></font>";
+			s.innerHTML = "<font style=\'color:green\'><%:Reset complete%></font>";
 		});
 		return false;
 	}
