@@ -36,9 +36,9 @@
 					}
 					dom.innerHTML = `<font color="${col}">${(result.ping ? result.ping : "--") + " ms"}</font>`
 					if (result.socket) {
-						port.innerHTML = '<font color="#249400">ok</font>';
+						port.innerHTML = '<font style=\"color:#249400\">ok</font>';
 					} else {
-						port.innerHTML = '<font color="#ff0000">fail</font>';
+						port.innerHTML = '<font style=\"color:#ff0000\">fail</font>';
 					}
 					res();
 				});
