@@ -18,7 +18,7 @@
 				const wsPath = wsPaths[index];
 				const tls = tlss[index];
 				if (!dom) res()
-				port.innerHTML = '<font color="#0072c3">connect</font>';
+				port.innerHTML = '<font style=\"color:#0072c3\">connect</font>';
 				XHR.get('<%=luci.dispatcher.build_url("admin/services/shadowsocksr/ping")%>', {
 					index,
 					domain: dom.getAttribute("hint"),
@@ -34,11 +34,11 @@
 						if (result.ping < 200) col = '#ff7700';
 						if (result.ping < 100) col = '#249400';
 					}
-					dom.innerHTML = `<font color="${col}">${(result.ping ? result.ping : "--") + " ms"}</font>`
+					dom.innerHTML = `<font style=\"color:${col}\">${(result.ping ? result.ping : "--") + " ms"}</font>`
 					if (result.socket) {
-						port.innerHTML = '<font color="#249400">ok</font>';
+						port.innerHTML = '<font style=\"color:#249400\">ok</font>';
 					} else {
-						port.innerHTML = '<font color="#ff0000">fail</font>';
+						port.innerHTML = '<font style=\"color:#ff0000\">fail</font>';
 					}
 					res();
 				});
