@@ -69,9 +69,9 @@ function export_ssr_url(btn, urlname, sid) {
 	textarea.select();
 	try {
 		document.execCommand("copy"); // Security exception may be thrown by some browsers.
-		s.innerHTML = "<font color='green'><%:Copy SSR to clipboard successfully.%></font>";
+		s.innerHTML = "<font style=\'color:green\'><%:Copy SSR to clipboard successfully.%></font>";
 	} catch (ex) {
-		s.innerHTML = "<font color='red'><%:Unable to copy SSR to clipboard.%></font>";
+		s.innerHTML = "<font style=\'color:red\'><%:Unable to copy SSR to clipboard.%></font>";
 	} finally {
 		document.body.removeChild(textarea);
 	}
@@ -83,7 +83,7 @@ function import_ssr_url(btn, urlname, sid) {
 		if (!s) return false;
 		var ssrurl = prompt("<%:Paste sharing link here%>", "");
 		if (ssrurl == null || ssrurl == "") {
-			s.innerHTML = "<font color='red'><%:User cancelled.%></font>";
+			s.innerHTML = "<font style=\'color:red\'><%:User cancelled.%></font>";
 			return false;
 		}
 		s.innerHTML = "";
@@ -118,7 +118,7 @@ function import_ssr_url(btn, urlname, sid) {
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].checked = params.get("insecure") ? true : false;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = url.hash ? decodeURIComponent(url.hash.slice(1)) : "";
 
-			s.innerHTML = "<font color='green'><%:Import configuration information successfully.%></font>";
+			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "ss":
 			var url0, param = "";
@@ -164,7 +164,7 @@ function import_ssr_url(btn, urlname, sid) {
 				if (param != undefined) {
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = decodeURI(param);
 				}
-				s.innerHTML = "<font color='green'><%:Import configuration information successfully.%></font>";
+				s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			} else {
 				var sstr = b64decsafe(url0);
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = ssu[0];
@@ -179,7 +179,7 @@ function import_ssr_url(btn, urlname, sid) {
 				if (param != undefined) {
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = decodeURI(param);
 				}
-				s.innerHTML = "<font color='green'><%:Import configuration information successfully.%></font>";
+				s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			}
 			return false;
 		case "ssr":
@@ -212,7 +212,7 @@ function import_ssr_url(btn, urlname, sid) {
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.protocol_param')[0].value = dictvalue(pdict, 'protoparam');
 			var rem = pdict['remarks'];
 			if (typeof (rem) != 'undefined' && rem != '' && rem.length > 0) document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = b64decutf8safe(rem);
-			s.innerHTML = "<font color='green'><%:Import configuration information successfully.%></font>";
+			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "trojan":
 			try {
@@ -234,7 +234,7 @@ function import_ssr_url(btn, urlname, sid) {
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].dispatchEvent(event);
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = url.searchParams.get("sni");
 
-			s.innerHTML = "<font color='green'><%:Import configuration information successfully.%></font>";
+			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "vmess":
 			var sstr = b64DecodeUnicode(ssu[1]);
@@ -287,7 +287,7 @@ function import_ssr_url(btn, urlname, sid) {
 			}
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].checked = true;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].dispatchEvent(event);
-			s.innerHTML = "<font color='green'><%:Import configuration information successfully.%></font>";
+			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "vless":
 			try {
@@ -357,10 +357,10 @@ function import_ssr_url(btn, urlname, sid) {
 				}
 				break;
 			}
-			s.innerHTML = "<font color='green'><%:Import configuration information successfully.%></font>";
+			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		default:
-			s.innerHTML = "<font color='red'><%:Invalid format.%></font>";
+			s.innerHTML = "<font style=\'color:red\'><%:Invalid format.%></font>";
 			return false;
 		}
 	}
