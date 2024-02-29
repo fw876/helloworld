@@ -1,5 +1,7 @@
 ## Setup instruction
 
+Install clang first.
+
 ### Method 1 - Clone this repo directly
 
 1. Clone this repo:
@@ -73,12 +75,6 @@
 ### Note
 
 #### ⚠ For OpenWrt 21.02 or lower version
-You have to manually upgrade Golang toolchain to [1.19](https://github.com/openwrt/packages/tree/openwrt-22.03/lang/golang) or higher to compile Xray-core.
+You have to manually upgrade Golang toolchain to [1.21](https://github.com/openwrt/packages/tree/openwrt-23.05/lang/golang) or higher to compile Xray-core.
 
-e.g.:
 
-```bash
-./scripts/feeds update packages
-rm -rf feeds/packages/lang/golang
-svn co https://github.com/openwrt/packages/branches/openwrt-22.03/lang/golang feeds/packages/lang/golang
-```
