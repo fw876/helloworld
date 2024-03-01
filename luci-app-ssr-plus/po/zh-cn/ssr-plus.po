@@ -780,6 +780,12 @@ msgstr "所有端口（默认）"
 msgid "Only Common Ports"
 msgstr "仅常用端口（不走 P2P 流量到代理）"
 
+msgid "Custom Ports"
+msgstr "自定义端口"
+
+msgid "Enter Custom Ports"
+msgstr "输入自定义端口"
+
 msgid "Socket Connected"
 msgstr "连接测试"
 
