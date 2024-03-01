@@ -1013,9 +1013,17 @@ start_rules() {
 		all) echo "-z" ;;
 		esac
 	}
-	if [ "$(uci_get_by_type global dports 1)" == "2" ]; then
-		local proxyport="-m multiport --dports 22,53,587,465,995,993,143,80,443,853,9418"
+	if [ "$(uci_get_by_type global dports)" == "3" ]; then
+		local custom_ports=$(uci_get_by_name $GLOBAL_SERVER custom_ports)  #  custom_ports 存储了用户自定义的端口
+		if [ -n "$custom_ports" ]; then
+			local proxyport="-m multiport --dports $custom_ports"
+		fi
+	else
+		if [ "$(uci_get_by_type global dports 1)" == "2" ]; then
+			local proxyport="-m multiport --dports 22,53,587,465,995,993,143,80,443,853,9418"
+		fi
 	fi
+
 	get_arg_out() {
 		case "$(uci_get_by_type access_control router_proxy 1)" in
 		1) echo "-o" ;;
@@ -1141,6 +1149,7 @@ reset() {
 		set shadowsocksr.@global[0].threads='0'
 		set shadowsocksr.@global[0].run_mode='router'
 		set shadowsocksr.@global[0].dports='2'
+		set shadowsocksr.@global[0].custom_ports='80,443'
 		set shadowsocksr.@global[0].pdnsd_enable='1'
 		set shadowsocksr.@global[0].tunnel_forward='8.8.4.4:53'
 		set shadowsocksr.@global[0].monitor_enable='1'
