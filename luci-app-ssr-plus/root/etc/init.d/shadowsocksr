@@ -1014,13 +1014,16 @@ start_rules() {
 		esac
 	}
 	if [ "$(uci_get_by_type global dports)" == "3" ]; then
-    local custom_ports=$(uci_get_by_name $GLOBAL_SERVER custom_ports)  #custom_ports 存储了用户自定义的端口
-    if [ -n "$custom_ports" ]; then
-        local proxyport="-m multiport --dports $custom_ports"
-    fi
-	if [ "$(uci_get_by_type global dports 1)" == "2" ]; then
-		local proxyport="-m multiport --dports 22,53,587,465,995,993,143,80,443,853,9418"
+		local custom_ports=$(uci_get_by_name $GLOBAL_SERVER custom_ports)  #  custom_ports 存储了用户自定义的端口
+		if [ -n "$custom_ports" ]; then
+			local proxyport="-m multiport --dports $custom_ports"
+		fi
+	else
+		if [ "$(uci_get_by_type global dports 1)" == "2" ]; then
+			local proxyport="-m multiport --dports 22,53,587,465,995,993,143,80,443,853,9418"
+		fi
 	fi
+
 	get_arg_out() {
 		case "$(uci_get_by_type access_control router_proxy 1)" in
 		1) echo "-o" ;;
