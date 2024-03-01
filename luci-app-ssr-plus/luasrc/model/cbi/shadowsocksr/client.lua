@@ -87,6 +87,10 @@ o.default = gfw
 o = s:option(ListValue, "dports", translate("Proxy Ports"))
 o:value("1", translate("All Ports"))
 o:value("2", translate("Only Common Ports"))
+o:value("3", translate("Custom Ports"))
+cp = s:option(Value, "custom_ports", translate("Enter Custom Ports"))
+cp:depends("dports", "3")  -- 仅当用户选择“Custom Ports”时显示
+cp.placeholder = "e.g., 80,443,8080"
 o.default = 1
 
 o = s:option(ListValue, "pdnsd_enable", translate("Resolve Dns Mode"))
