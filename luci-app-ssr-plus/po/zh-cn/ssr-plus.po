@@ -264,6 +264,9 @@ msgstr "QUIC 流接收窗口"
 msgid "Lazy Start"
 msgstr "延迟启动"
 
+msgid "Disable QUIC path MTU discovery"
+msgstr "禁用 QUIC 启用 MTU 探测"
+
 msgid "Enable Tunnel(DNS)"
 msgstr "启用隧道（DNS）转发"
 
