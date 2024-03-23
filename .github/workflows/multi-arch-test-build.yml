@@ -1,7 +1,10 @@
-name: Test Build
+name: bulid  package
 
 on:
-  pull_request:
+ workflow_dispatch:
+  push:
+    tags:
+      - v.**
     paths-ignore:
       - '**.md'
 
