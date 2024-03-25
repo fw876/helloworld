@@ -7,8 +7,9 @@ local server_section = arg[1]
 local proto = arg[2]
 local local_port = arg[3] or "0"
 local socks_port = arg[4] or "0"
+local http_port = arg[5] or "0"
 
-local chain = arg[5] or "0"
+local chain = arg[6] or "0"
 local chain_local_port = string.split(chain, "/")[2] or "0"
 
 local server = ucursor:get_all("shadowsocksr", server_section)
@@ -206,14 +207,20 @@ local Xray = {
 		tag = "dns-in"
 	} or nil,
 	},
-	-- 开启 socks 代理
-	inboundDetour = (proto:find("tcp") and socks_port ~= "0") and {
-		{
+	-- 开启 socks/http 代理
+	inboundDetour = (proto:find("tcp")) and {
+		(socks_port ~= "0") and {
 			-- socks
 			protocol = "socks",
 			port = tonumber(socks_port),
 			settings = {auth = "noauth", udp = true}
-		}
+		} or nil,
+		(http_port ~= "0") and {
+			-- http
+			protocol = "http",
+			port = tonumber(http_port),
+			settings = {auth = "noauth", udp = true}
+		} or nil
 	} or nil,
 	-- 传出连接
 	outbounds = {
