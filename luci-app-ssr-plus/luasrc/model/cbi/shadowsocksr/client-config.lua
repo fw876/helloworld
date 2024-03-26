@@ -674,6 +674,18 @@ if is_finded("v2ray") then
 	o.rmempty = true
 end
 
+-- [[ httpupgrade部分 ]]--
+
+-- httpupgrade域名
+o = s:option(Value, "httpupgrade_host", translate("Httpupgrade Host"))
+o:depends({transport = "httpupgrade", tls = false})
+o.rmempty = true
+
+-- httpupgrade路径
+o = s:option(Value, "httpupgrade_path", translate("Httpupgrade Path"))
+o:depends("transport", "httpupgrade")
+o.rmempty = true
+
 -- [[ H2部分 ]]--
 
 -- H2域名
