@@ -276,6 +276,11 @@ local Xray = {
 				maxEarlyData = tonumber(server.ws_ed) or nil,
 				earlyDataHeaderName = server.ws_ed_header or nil
 			} or nil,
+			httpupgradeSettings = (server.transport == "httpupgrade") and {
+				-- httpupgrade
+				host = (server.httpupgrade_host or server.tls_host) or nil,
+                                path = server.httpupgrade_path or ""
+			} or nil,
 			httpSettings = (server.transport == "h2") and {
 				-- h2
 				path = server.h2_path or "",
