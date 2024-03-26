@@ -618,6 +618,7 @@ o = s:option(ListValue, "transport", translate("Transport"))
 o:value("tcp", "TCP")
 o:value("kcp", "mKCP")
 o:value("ws", "WebSocket")
+o:value("httpupgrade", "HTTPUpgrade")
 o:value("h2", "HTTP/2")
 o:value("quic", "QUIC")
 o:value("grpc", "gRPC")
@@ -673,6 +674,18 @@ if is_finded("v2ray") then
 	o:value("Sec-WebSocket-Protocol")
 	o.rmempty = true
 end
+
+-- [[ httpupgrade部分 ]]--
+
+-- httpupgrade域名
+o = s:option(Value, "httpupgrade_host", translate("Httpupgrade Host"))
+o:depends({transport = "httpupgrade", tls = false})
+o.rmempty = true
+
+-- httpupgrade路径
+o = s:option(Value, "httpupgrade_path", translate("Httpupgrade Path"))
+o:depends("transport", "httpupgrade")
+o.rmempty = true
 
 -- [[ H2部分 ]]--
 
