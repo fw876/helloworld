@@ -921,6 +921,12 @@ msgstr "最大前置数据"
 msgid "Early Data Header Name"
 msgstr "前置数据标头"
 
+msgid "Httpupgrade Host"
+msgstr "HTTPUpgrade 主机名"
+
+msgid "Httpupgrade Path"
+msgstr "HTTPUpgrade 路径"
+
 msgid "HTTP/2 Host"
 msgstr "HTTP/2 主机名"
 
