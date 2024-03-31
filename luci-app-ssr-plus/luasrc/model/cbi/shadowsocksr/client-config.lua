@@ -948,6 +948,7 @@ o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o:depends({type = "v2ray", v2ray_protocol = "http"})
 
+-- [[ TCP 最大并发连接数 ]]--
 o = s:option(ListValue, "concurrency", translate("concurrency"))
 o.rmempty = true
 o.default = "-1"
@@ -955,13 +956,15 @@ o:value("-1", translate("disable"))
 o:value("8", translate("8"))
 o:depends("mux", true)
 
+-- [[ UDP 最大并发连接数 ]]--
 o = s:option(ListValue, "xudpConcurrency", translate("xudpConcurrency"))
 o.rmempty = true
 o.default = "16"
-o:value("16", translate("16"))
 o:value("-1", translate("disable"))
+o:value("16", translate("16"))
 o:depends("mux", true)
 
+-- [[ 对被代理的 UDP/443 流量处理方式 ]]--
 o = s:option(ListValue, "xudpProxyUDP443", translate("xudpProxyUDP443"))
 o.rmempty = true
 o.default = "reject"
@@ -996,136 +999,6 @@ o:depends({type = "v2ray", v2ray_protocol = "trojan"})
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o:depends({type = "v2ray", v2ray_protocol = "http"})
-
-
--- [[ custom_sniffing 流量嗅探 ]]--
-o = s:option(Flag, "custom_sniffing", translate("custom_sniffing"))
-o.rmempty = false
-o.default = true
-o:depends({type = "v2ray", v2ray_protocol = "vless"})
-o:depends({type = "v2ray", v2ray_protocol = "vmess"})
-o:depends({type = "v2ray", v2ray_protocol = "trojan"})
-o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
-o:depends({type = "v2ray", v2ray_protocol = "socks"})
-o:depends({type = "v2ray", v2ray_protocol = "http"})
-
--- [[ custom_domainsExcluded 流量嗅探域名排除列表 ]]--
-o = s:option(Flag, "custom_domainsExcluded", translate("custom_domainsExcluded"))
-o.rmempty = false
-o.default = true
-o:depends("custom_sniffing", true)
-
--- [[ custom_routeOnly 嗅探得到的域名仅用于 Xray 路由 ]]--
-o = s:option(Flag, "custom_routeOnly", translate("custom_routeOnly"))
-o.rmempty = false
-o.default = false
-o:depends("custom_sniffing", true)
-
-
--- [[ custom_dns_enable Xray DNS 功能 ]]--
-o = s:option(Flag, "custom_dns_enable", translate("custom_dns_enable"))
-o.rmempty = false
-o.default = false
-o:depends({type = "v2ray", v2ray_protocol = "vless"})
-o:depends({type = "v2ray", v2ray_protocol = "vmess"})
-o:depends({type = "v2ray", v2ray_protocol = "trojan"})
-o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
-o:depends({type = "v2ray", v2ray_protocol = "socks"})
-o:depends({type = "v2ray", v2ray_protocol = "http"})
-o.description = translate("comment_dns_inbound_enable")
-
--- [[ custom_dns_local 本地 DNS ]]--
-o = s:option(ListValue, "custom_dns_local", translate("custom_dns_local"))
-o.rmempty = true
-o.default = "https+local://223.5.5.5/dns-query"
-o:value("https+local://223.5.5.5/dns-query", translate("https+local://223.5.5.5/dns-query"))
-o:value("https+local://119.29.29.29/dns-query", translate("https+local://119.29.29.29/dns-query"))
-o:depends("custom_dns_enable", true)
-
--- [[ custom_dns_remote 远端 DNS ]]--
-o = s:option(ListValue, "custom_dns_remote", translate("custom_dns_remote"))
-o.rmempty = true
-o.default = "https://1.1.1.1/dns-query"
-o:value("https://1.1.1.1/dns-query", translate("https://1.1.1.1/dns-query"))
-o:value("https://8.8.8.8/dns-query", translate("https://8.8.8.8/dns-query"))
-o:depends("custom_dns_enable", true)
-
--- [[ custom_dns_remote_domains 远端 DNS 域名列表 ]]--
-o = s:option(ListValue, "custom_dns_remote_domains", translate("custom_dns_remote_domains"))
-o.rmempty = true
-o.default = "geosite:geolocation-!cn"
-o:value("geosite:geolocation-!cn", translate("geosite:geolocation-!cn"))
-o:depends("custom_dns_enable", true)
-
--- [[ custom_nonIPQuery 非 A 和 AAAA 记录处理方式 ]]--
-o = s:option(ListValue, "custom_nonIPQuery", translate("custom_nonIPQuery"))
-o.rmempty = true
-o.default = "skip"
-o:value("skip", translate("skip"))
-o:value("drop", translate("drop"))
-o:depends("custom_dns_enable", true)
-
--- [[ custom_nonIPQuery_outbound_tag 非 A 和 AAAA 记录查询方式 ]]--
-o = s:option(ListValue, "custom_nonIPQuery_outbound_tag", translate("custom_nonIPQuery_outbound_tag"))
-o.rmempty = true
-o.default = "direct"
-o:value("direct", translate("direct"))
-o:value("proxy", translate("proxy"))
-o:depends({custom_nonIPQuery = "skip"})
-
--- [[ custom_dokodemo_door_dns_address 查询非 A 和 AAAA 记录 DNS ]]--
-o = s:option(ListValue, "custom_dokodemo_door_dns_address", translate("custom_dokodemo_door_dns_address"))
-o.rmempty = true
-o.default = "223.5.5.5"
-o:value("223.5.5.5", translate("223.5.5.5"))
-o:value("119.29.29.29", translate("119.29.29.29"))
-o:value("1.1.1.1", translate("1.1.1.1"))
-o:value("8.8.8.8", translate("8.8.8.8"))
-o:depends({custom_nonIPQuery = "skip"})
-
-
--- [[ custom_log Xray 日志功能 ]]--
-o = s:option(Flag, "custom_log", translate("custom_log"))
-o.rmempty = false
-o.default = false
-o:depends({type = "v2ray", v2ray_protocol = "vless"})
-o:depends({type = "v2ray", v2ray_protocol = "vmess"})
-o:depends({type = "v2ray", v2ray_protocol = "trojan"})
-o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
-o:depends({type = "v2ray", v2ray_protocol = "socks"})
-o:depends({type = "v2ray", v2ray_protocol = "http"})
-
--- [[ custom_loglevel 日志级别 ]]--
-o = s:option(ListValue, "custom_loglevel", translate("custom_loglevel"))
-o.rmempty = true
-o.default = "warning"
-o:value("error", translate("error"))
-o:value("warning", translate("warning"))
-o:value("info", translate("info"))
-o:value("debug", translate("debug"))
-o:depends("custom_log", true)
-
--- [[ custom_dnsLog DNS 查询记录 ]]--
-o = s:option(Flag, "custom_dnsLog", translate("custom_dnsLog"))
-o.rmempty = true
-o.default = true
-o:depends("custom_log", true)
-
--- [[ custom_access 访问记录 ]]--
-o = s:option(ListValue, "custom_access", translate("custom_access"))
-o.rmempty = true
-o.default = "/tmp/access.log"
-o:value("/tmp/access.log", translate("/tmp/access.log"))
-o:value("none", translate("none"))
-o:depends("custom_log", true)
-
--- [[ custom_error 错误记录 ]]--
-o = s:option(ListValue, "custom_error", translate("custom_error"))
-o.rmempty = true
-o.default = "/tmp/error.log"
-o:value("/tmp/error.log", translate("/tmp/error.log"))
-o:value("none", translate("none"))
-o:depends("custom_log", true)
 
 
 -- [[ Cert ]]--
