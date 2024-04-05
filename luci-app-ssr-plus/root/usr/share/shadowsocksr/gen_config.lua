@@ -72,9 +72,13 @@ function wireguard()
 			{
 				publicKey = server.peer_pubkey,
 				preSharedKey = server.preshared_key,
-				endpoint = server.server .. ":" .. server.server_port
+				endpoint = server.server .. ":" .. server.server_port,
+				keepAlive = tonumber(server.keepalive),
+				allowedIPs = (server.allowedips) or nil,
 			}
 		},
+		kernelMode = (server.kernelmode == "1") and true or false,
+		reserved = {server.reserved} or nil,
 		mtu = tonumber(server.mtu)
 	}
 end
@@ -172,7 +176,7 @@ local Xray = {
 		protocol = server.v2ray_protocol,
 		settings = outbound_settings,
 		-- 底层传输配置
-		streamSettings = {
+		streamSettings = (server.v2ray_protocol ~= "wireguard") and {
 			network = server.transport or "tcp",
 			security = (server.tls == '1') and "tls" or (server.reality == '1') and "reality" or nil,
 			tlsSettings = (server.tls == '1') and {
@@ -258,14 +262,14 @@ local Xray = {
 				tcpNoDelay = (server.mptcp == "1") and true or false, -- MPTCP
 				tcpcongestion = server.custom_tcpcongestion -- 连接服务器节点的 TCP 拥塞控制算法
 			}
-		},
-		mux = {
+		} or nil,
+		mux = (server.v2ray_protocol ~= "wireguard") and {
 			-- mux
 			enabled = (server.mux == "1") and true or false, -- Mux
 			concurrency = tonumber(server.concurrency), -- TCP 最大并发连接数
 			xudpConcurrency = tonumber(server.xudpConcurrency), -- UDP 最大并发连接数
 			xudpProxyUDP443 = server.xudpProxyUDP443 -- 对被代理的 UDP/443 流量处理方式
-		}
+		} or nil
 	}
 }
 local cipher = "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA:AES128-SHA:AES256-SHA:DES-CBC3-SHA"
@@ -322,7 +326,7 @@ local ss = {
 }
 local hysteria = {
 	server = (server.server_port and (server.port_range and (server.server .. ":" .. server.server_port .. "," .. server.port_range) or server.server .. ":" .. server.server_port) or (server.port_range and server.server .. ":" .. server.port_range or server.server .. ":443")),
-	bandwidth = {
+	bandwidth = (server.uplink_capacity or server.downlink_capacity) and {
 	up = tonumber(server.uplink_capacity) and tonumber(server.uplink_capacity) .. " mbps" or nil,
 	down = tonumber(server.downlink_capacity) and tonumber(server.downlink_capacity) .. " mbps" or nil 
 	},
@@ -336,12 +340,11 @@ local hysteria = {
                         hopInterval = (server.port_range and (tonumber(server.hopinterval) .. "s") or nil)
                 } or nil)
         } or nil,
-
 --[[			
 	tcpTProxy = (proto:find("tcp") and local_port ~= "0") and {
-	listen = "0.0.0.0:" .. tonumber(local_port)
-} or nil,
-]]
+					listen = "0.0.0.0:" .. tonumber(local_port)
+	} or nil,
+]]--
 	tcpRedirect = (proto:find("tcp") and local_port ~= "0") and {
 					listen = "0.0.0.0:" .. tonumber(local_port)
 	} or nil,
@@ -359,7 +362,7 @@ local hysteria = {
 		maxConnReceiveWindow = (server.maxconnreceivewindow and server.maxconnreceivewindow or nil),
 		maxIdleTimeout = (tonumber(server.maxidletimeout) and tonumber(server.maxidletimeout) .. "s" or nil),
 		keepAlivePeriod = (tonumber(server.keepaliveperiod) and tonumber(server.keepaliveperiod) .. "s" or nil),
-		disable_mtu_discovery = (server.disablepathmtudiscovery == "1") and true or false
+		disablePathMTUDiscovery = (server.disablepathmtudiscovery == "1") and true or false
 	} or nil,
 	auth = server.hy2_auth,
 	tls = (server.tls_host) and {
@@ -394,7 +397,7 @@ local chain_sslocal = {
 			mode = (proto:find("tcp,udp") and "tcp_and_udp") or proto .. "_only",
 			protocol = "redir",
 			tcp_redir = "redirect",
-		--tcp_redir = "tproxy",
+			--tcp_redir = "tproxy",
 			udp_redir = "tproxy"
 		},
 		socks_port ~= "0" and {
