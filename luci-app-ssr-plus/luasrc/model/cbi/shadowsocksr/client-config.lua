@@ -831,8 +831,19 @@ o:depends("transport", "kcp")
 o.rmempty = true
 
 -- [[ WireGuard 部分 ]]--
+o = s:option(Flag, "kernelmode", translate("Enabled Kernel virtual NIC TUN(optional)"))
+o.description = translate("Virtual NIC TUN of Linux kernel can be used only when system supports and have root permission. If used, IPv6 routing table 1023 is occupied.")
+o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
+o.default = "0"
+o.rmempty = true
+
 o = s:option(DynamicList, "local_addresses", translate("Local addresses"))
 o.datatype = "cidr"
+o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
+o.rmempty = true
+
+o = s:option(DynamicList, "reserved", translate("Reserved bytes(optional)"))
+o.description = translate("Wireguard reserved bytes.")
 o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
 o.rmempty = true
 
@@ -848,6 +859,19 @@ o.rmempty = true
 o = s:option(Value, "preshared_key", translate("Pre-shared key"))
 o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
 o.password = true
+o.rmempty = true
+
+o = s:option(Value, "keepalive", translate("Heartbeat interval(second)"))
+o.description = translate("Default value 0 indicatesno heartbeat.")
+o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
+o.default = "0"
+o.rmempty = true
+
+o = s:option(DynamicList, "allowedips", translate("allowedIPs(optional)"))
+o.description = translate("Wireguard allows only traffic from specific source IP.")
+o.datatype = "cidr"
+o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
+o.default = "0.0.0.0/0"
 o.rmempty = true
 
 -- [[ TLS ]]--
