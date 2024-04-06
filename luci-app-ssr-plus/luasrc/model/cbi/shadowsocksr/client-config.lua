@@ -525,7 +525,9 @@ o.default = "3"
 o.rmempty = true
 
 o = s:option(Value, "timeout", translate("Timeout for establishing a connection to server(second)"))
+o.description = translate("Default value 0 indicatesno heartbeat.")
 o:depends("type", "tuic")
+o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
 o.datatype = "uinteger"
 o.default = "8"
 o.rmempty = true
@@ -859,12 +861,6 @@ o.rmempty = true
 o = s:option(Value, "preshared_key", translate("Pre-shared key"))
 o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
 o.password = true
-o.rmempty = true
-
-o = s:option(Value, "keepalive", translate("Heartbeat interval(second)"))
-o.description = translate("Default value 0 indicatesno heartbeat.")
-o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
-o.default = "0"
 o.rmempty = true
 
 o = s:option(DynamicList, "allowedips", translate("allowedIPs(optional)"))
