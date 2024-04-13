@@ -547,13 +547,13 @@ o.rmempty = true
 o = s:option(Value, "send_window", translate("TUIC send window"))
 o:depends("type", "tuic")
 o.datatype = "uinteger"
-o.default = 20971520
+o.default = 16777216
 o.rmempty = true
 
 o = s:option(Value, "receive_window", translate("TUIC receive window"))
 o:depends("type", "tuic")
 o.datatype = "uinteger"
-o.default = 10485760
+o.default = 8388608
 o.rmempty = true
 
 o = s:option(Flag, "disable_sni", translate("Disable SNI"))
@@ -568,8 +568,9 @@ o.rmempty = true
 
 -- Tuic settings for the local inbound socks5 server
 o = s:option(Flag, "tuic_dual_stack", translate("Dual-stack Listening Socket"))
+o.description = translate("Default setting, If this option is not set, the socket behavior is platform dependent.")
 o:depends("type", "tuic")
-o.default = "0"
+o.default = "1"
 o.rmempty = true
 
 o = s:option(Value, "tuic_max_package_size", translate("Maximum packet size the socks5 server can receive from external"))
@@ -941,7 +942,9 @@ o:depends("reality", true)
 o.rmempty = true
 
 o = s:option(DynamicList, "tls_alpn", translate("TLS ALPN"))
-o:depends({type = "tuic", tls = true})
+o:value("h3")
+o:value("spdy/3.1")
+o:depends("type", "tuic")
 o.rmempty = true
 
 -- [[ allowInsecure ]]--
