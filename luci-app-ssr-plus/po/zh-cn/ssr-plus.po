@@ -1050,6 +1050,9 @@ msgstr "接收窗口（无需确认即可接收的最大字节数：默认8Mb）
 msgid "Dual-stack Listening Socket"
 msgstr "双栈Socket监听"
 
+msgid "If this option is not set, the socket behavior is platform dependent."
+msgstr "如果未设置此选项，则套接字行为依赖于平台。"
+
 msgid "Maximum packet size the socks5 server can receive from external"
 msgstr "socks5服务器可以从外部接收的最大数据包大小（单位：字节）"
 
