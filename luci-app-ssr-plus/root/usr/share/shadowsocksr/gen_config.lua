@@ -73,7 +73,7 @@ function wireguard()
 				publicKey = server.peer_pubkey,
 				preSharedKey = server.preshared_key,
 				endpoint = server.server .. ":" .. server.server_port,
-				keepAlive = tonumber(server.heartbeat),
+				keepAlive = tonumber(server.keepaliveperiod),
 				allowedIPs = (server.allowedips) or nil,
 			}
 		},
