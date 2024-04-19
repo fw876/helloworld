@@ -168,5 +168,9 @@ if is_finded("chinadns-ng") then
 	end
 end
 
-return m
+m.apply_on_parse = true
+m.on_after_apply = function(self,map)
+	luci.sys.call("/etc/init.d/shadowsocksr restart >/dev/null 2>&1 &")
+end
 
+return m
