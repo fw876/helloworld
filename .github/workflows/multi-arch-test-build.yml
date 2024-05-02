@@ -13,26 +13,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: arm_cortex-a9_vfpv3-d16
-            target: mvebu-cortexa9
-
-          - arch: mips_24kc
-            target: ath79-generic
-
-          - arch: mipsel_24kc
-            target: mt7621
-
-          - arch: aarch64_cortex-a53
-            target: mvebu-cortexa53
-
-          - arch: arm_cortex-a15_neon-vfpv4
-            target: armvirt-32
-
-          - arch: i386_pentium-mmx
-            target: x86-geode
-
-          - arch: x86_64
-            target: x86-64
+          - arch: x86_generic
+            target: x86-generic
 
     steps:
       - uses: actions/checkout@v3
