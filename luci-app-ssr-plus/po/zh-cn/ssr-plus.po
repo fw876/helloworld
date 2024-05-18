@@ -155,22 +155,22 @@ msgid "Obfuscation Password"
 msgstr "混淆密码"
 
 msgid "Hysterir QUIC parameters"
-msgstr "QUIC参数"
+msgstr "QUIC 参数"
 
 msgid "QUIC initStreamReceiveWindow"
-msgstr "QUIC初始流接收窗口大小。"
+msgstr "QUIC 初始流接收窗口大小。"
 
 msgid "QUIC maxStreamReceiveWindow"
-msgstr "QUIC最大的流接收窗口大小"
+msgstr "QUIC 最大的流接收窗口大小"
 
 msgid "QUIC initConnReceiveWindow"
-msgstr "QUIC初始的连接接收窗口大小"
+msgstr "QUIC 初始的连接接收窗口大小"
 
 msgid "QUIC maxConnReceiveWindow"
-msgstr "QUIC最大的连接接收窗口大小"
+msgstr "QUIC 最大的连接接收窗口大小"
 
 msgid "QUIC maxIdleTimeout(Unit:second)"
-msgstr "QUIC最长空闲超时时间（单位：秒）"
+msgstr "QUIC 最长空闲超时时间（单位：秒）"
 
 msgid "The keep-alive period.(Unit:second)"
 msgstr "心跳包发送间隔（单位：秒）"
@@ -195,7 +195,7 @@ msgid "Shadow-TLS ChainPoxy type"
 msgstr "代理链类型"
 
 msgid "Shadowsocks-rust Version"
-msgstr "shadowsocks rust版本"
+msgstr "shadowsocks rust 版本"
 
 msgid "Vmess Protocol"
 msgstr "VMESS协议"
@@ -1003,19 +1003,19 @@ msgid "Enable Netflix Mode"
 msgstr "启用 Netflix 分流模式"
 
 msgid "TUIC User UUID"
-msgstr "TUIC用户uuid"
+msgstr "TUIC 用户 uuid"
 
 msgid "TUIC Server IP Address"
-msgstr "TUIC 服务器IP地址"
+msgstr "TUIC 服务器 IP 地址"
 
 msgid "TUIC User Password"
-msgstr "TUIC用户密钥"
+msgstr "TUIC 用户密钥"
 
 msgid "UDP relay mode"
-msgstr "UDP中继模式"
+msgstr "UDP 中继模式"
 
 msgid "native UDP characteristics"
-msgstr "原生UDP特性"
+msgstr "原生 UDP 特性"
 
 msgid "lossless UDP relay using QUIC streams"
 msgstr "使用 QUIC 流的无损 UDP 中继"
@@ -1030,13 +1030,13 @@ msgid "Timeout for establishing a connection to server(second)"
 msgstr "连接超时时间（单位：秒）"
 
 msgid "Garbage collection interval(second)"
-msgstr "UDP数据包片残片清理间隔（单位：秒）"
+msgstr "UDP 数据包片残片清理间隔（单位：秒）"
 
 msgid "Garbage collection lifetime(second)"
-msgstr "UDP数据包残片在服务器的保留时间（单位：秒）"
+msgstr "UDP 数据包残片在服务器的保留时间（单位：秒）"
 
 msgid "Disable SNI"
-msgstr "关闭SNI服务器名称指示"
+msgstr "关闭 SNI 服务器名称指示"
 
 msgid "Enable 0-RTT QUIC handshake"
 msgstr "客户端启用 0-RTT QUIC 连接握手"
@@ -1048,13 +1048,13 @@ msgid "TUIC receive window"
 msgstr "接收窗口（无需确认即可接收的最大字节数：默认8Mb）"
 
 msgid "Dual-stack Listening Socket"
-msgstr "双栈Socket监听"
+msgstr "双栈 Socket 监听"
 
 msgid "If this option is not set, the socket behavior is platform dependent."
-msgstr "如果未设置此选项，则套接字行为依赖于平台。"
+msgstr "如果未设置此选项，则 Socket 行为依赖于平台。"
 
 msgid "Maximum packet size the socks5 server can receive from external"
-msgstr "socks5服务器可以从外部接收的最大数据包大小（单位：字节）"
+msgstr "socks5 服务器可以从外部接收的最大数据包大小（单位：字节）"
 
 msgid "Disable ChinaDNS-NG"
-msgstr "直通模式（禁用ChinaDNS-NG）"
+msgstr "直通模式（禁用 ChinaDNS-NG）"
