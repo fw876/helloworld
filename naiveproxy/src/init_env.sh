@@ -55,6 +55,7 @@ use_gio=false
 use_gtk=false
 use_platform_icu_alternatives=true
 use_glib=false
+enable_js_protobuf=false
 
 disable_file_support=true
 enable_websockets=false
