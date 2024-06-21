@@ -81,18 +81,18 @@ jobs:
             echo "success=false" >> $GITHUB_OUTPUT
           fi
 
-    - name: Create Pull Request
-      if: steps.update.outputs.success == 'true' && !cancelled()
-      uses: peter-evans/create-pull-request@v3
-      with:
-        title: "${{matrix.packages}}: update to ${{steps.update.outputs.version}}"
-        body: "${{matrix.packages}}: update to ${{steps.update.outputs.version}}"
-        commit-message: "${{matrix.packages}}: update to ${{steps.update.outputs.version}}"
-        committer: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-        author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-        branch: "patches-${{matrix.pakcages}}-${{steps.update.outputs.version}}"
-        delete-branch: true
-        signoff: false
-        draft: false
-        base: main
-        labels: automated-pr
+      - name: Create Pull Request
+        if: steps.update.outputs.success == 'true' && !cancelled()
+        uses: peter-evans/create-pull-request@v3
+        with:
+          title: "${{matrix.packages}}: update to ${{steps.update.outputs.version}}"
+          body: "${{matrix.packages}}: update to ${{steps.update.outputs.version}}"
+          commit-message: "${{matrix.packages}}: update to ${{steps.update.outputs.version}}"
+          committer: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          branch: "patches-${{matrix.pakcages}}-${{steps.update.outputs.version}}"
+          delete-branch: true
+          signoff: false
+          draft: false
+          base: main
+          labels: automated-pr
