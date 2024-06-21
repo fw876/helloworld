@@ -35,12 +35,12 @@ jobs:
   job_update:
     needs: job_init
     runs-on: ubuntu-latest
-    name: Auto-update-${{matrix.pakcages}}
+    name: Auto-update-${{matrix.packages}}
     strategy:
       max-parallel: 5
       fail-fast: false
       matrix:
-        pakcages: [brook, chinadns-ng, dns2tcp, hysteria, ipt2socks, microsocks, mosdns, naiveproxy, neturl, shadowsocks-rust, sing-box, tcping, trojan-go, trojan, v2ray-core, v2ray-plugin, v2rayA, xray-core, xray-plugin]
+        packages: [brook, dns2tcp, hysteria, ipt2socks, microsocks, mosdns, naiveproxy, neturl, shadowsocks-rust, sing-box, tcping, trojan-go, trojan, v2ray-core, v2ray-plugin, v2rayA, xray-core, xray-plugin]
 
     steps:
       - name: Checkout
@@ -52,10 +52,10 @@ jobs:
         run: |
           sudo -E timedatectl set-timezone "$TIMEZONE"
 
-      - name: Update ${{matrix.pakcages}}
+      - name: Update ${{matrix.packages}}
         id: update
         run: |
-          PKG_FILE="./${{matrix.pakcages}}/Makefile"
+          PKG_FILE="./${{matrix.packages}}/Makefile"
           if [ -f "$PKG_FILE" ]; then
             PKG_REPO=$(grep -h -oP 'PKG_SOURCE_URL:=https://.*github.com/\K[^/]+/[^/]+(?=/.*)' $PKG_FILE | head -n 1)
             PKG_VER=$(curl -sL "https://api.github.com/repos/$PKG_REPO/releases" | jq -r "map(select(.prerelease|${{env.PRE_VER}})) | first | .tag_name")
@@ -69,15 +69,15 @@ jobs:
               sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$NEW_VER/g" $PKG_FILE
               sed -i "s/PKG_HASH:=.*/PKG_HASH:=$NEW_HASH/g" $PKG_FILE
 
-              echo "${{matrix.pakcages}} version has been updated!"
+              echo "${{matrix.packages}} version has been updated!"
               echo "success=true" >> $GITHUB_OUTPUT
               echo "version=$NEW_VER" >> $GITHUB_OUTPUT
             else
-              echo "${{matrix.pakcages}} version is already the latest!"
+              echo "${{matrix.packages}} version is already the latest!"
               echo "success=false" >> $GITHUB_OUTPUT
             fi
           else
-            echo "${{matrix.pakcages}} not found!"
+            echo "${{matrix.packages}} not found!"
             echo "success=false" >> $GITHUB_OUTPUT
           fi
 
@@ -90,7 +90,7 @@ jobs:
           commit-message: "${{matrix.packages}}: update to ${{steps.update.outputs.version}}"
           committer: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
           author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-          branch: "patches-${{matrix.pakcages}}-${{steps.update.outputs.version}}"
+          branch: "patches-${{matrix.packages}}-${{steps.update.outputs.version}}"
           delete-branch: true
           signoff: false
           draft: false
