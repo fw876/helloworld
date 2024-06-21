@@ -55,7 +55,7 @@ jobs:
       - name: Update ${{matrix.pakcages}}
         id: update
         run: |
-          PKG_FILE=$(find ./*/${{matrix.pakcages}}/ -type f -name "Makefile" 2>/dev/null)
+          PKG_FILE="./${{matrix.pakcages}}/Makefile"
           if [ -f "$PKG_FILE" ]; then
             PKG_REPO=$(grep -h -oP 'PKG_SOURCE_URL:=https://.*github.com/\K[^/]+/[^/]+(?=/.*)' $PKG_FILE | head -n 1)
             PKG_VER=$(curl -sL "https://api.github.com/repos/$PKG_REPO/releases" | jq -r "map(select(.prerelease|${{env.PRE_VER}})) | first | .tag_name")
