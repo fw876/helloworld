@@ -1,4 +1,4 @@
-name: "Auto-Update-Packages"
+name: "Auto Update Packages"
 on:
   schedule:
     - cron: "0 */4 * * *"
@@ -83,7 +83,7 @@ jobs:
 
       - name: Create Pull Request
         if: steps.update.outputs.success == 'true' && !cancelled()
-        uses: peter-evans/create-pull-request@v3
+        uses: peter-evans/create-pull-request@main
         with:
           title: "${{matrix.packages}}: update to ${{steps.update.outputs.version}}"
           body: "${{matrix.packages}}: update to ${{steps.update.outputs.version}}"
@@ -94,5 +94,5 @@ jobs:
           delete-branch: true
           signoff: false
           draft: false
-          base: main
+          base: master
           labels: automated-pr
