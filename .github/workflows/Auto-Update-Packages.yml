@@ -1,0 +1,98 @@
+name: "Auto Update Packages"
+on:
+  schedule:
+    - cron: "0 0 */2 * *"
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      PRE_VER:
+        description: '选用测试版'
+        default: 'not'
+        required: false
+        type: boolean
+
+env:
+  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+  PRE_VER: ${{inputs.PRE_VER || 'not'}}
+  TIMEZONE: Asia/Shanghai
+
+jobs:
+  job_init:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Initialization Environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E timedatectl set-timezone "$TIMEZONE"
+
+      - name: Delete Old Workflows
+        uses: Mattraks/delete-workflow-runs@main
+        with:
+          retain_days: 0
+          keep_minimum_runs: 1
+
+  job_update:
+    needs: job_init
+    runs-on: ubuntu-latest
+    name: Auto-update-${{matrix.packages}}
+    strategy:
+      max-parallel: 5
+      fail-fast: false
+      matrix:
+        packages: [brook, dns2tcp, hysteria, ipt2socks, microsocks, mosdns, naiveproxy, neturl, shadowsocks-rust, sing-box, tcping, trojan-go, trojan, v2ray-core, v2ray-plugin, v2rayA, xray-core, xray-plugin]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+
+      - name: Initialization Environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E timedatectl set-timezone "$TIMEZONE"
+
+      - name: Update ${{matrix.packages}}
+        id: update
+        run: |
+          PKG_FILE="./${{matrix.packages}}/Makefile"
+          if [ -f "$PKG_FILE" ]; then
+            PKG_REPO=$(grep -h -oP 'PKG_SOURCE_URL:=https://.*github.com/\K[^/]+/[^/]+(?=/.*)' $PKG_FILE | head -n 1)
+            PKG_VER=$(curl -sL "https://api.github.com/repos/$PKG_REPO/releases" | jq -r "map(select(.prerelease|${{env.PRE_VER}})) | first | .tag_name")
+            OLD_VER=$(grep -Po "PKG_VERSION:=\K.*" $PKG_FILE)
+            NEW_VER=$(echo $PKG_VER | sed "s/.*v//g; s/_/./g")
+            NEW_HASH=$(curl -sL "https://codeload.github.com/$PKG_REPO/tar.gz/$PKG_VER" | sha256sum | cut -b -64)
+
+            echo "$OLD_VER $PKG_VER $NEW_VER $NEW_HASH"
+
+            if [[ $NEW_VER =~ ^[0-9].* ]] && dpkg --compare-versions "$OLD_VER" lt "$NEW_VER"; then
+              sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$NEW_VER/g" $PKG_FILE
+              sed -i "s/PKG_HASH:=.*/PKG_HASH:=$NEW_HASH/g" $PKG_FILE
+
+              echo "${{matrix.packages}} version has been updated!"
+              echo "success=true" >> $GITHUB_OUTPUT
+              echo "version=$NEW_VER" >> $GITHUB_OUTPUT
+            else
+              echo "${{matrix.packages}} version is already the latest!"
+              echo "success=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "${{matrix.packages}} not found!"
+            echo "success=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.update.outputs.success == 'true' && !cancelled()
+        uses: peter-evans/create-pull-request@main
+        with:
+          title: "${{matrix.packages}}: update to ${{steps.update.outputs.version}}"
+          body: "${{matrix.packages}}: update to ${{steps.update.outputs.version}}"
+          commit-message: "${{matrix.packages}}: update to ${{steps.update.outputs.version}}"
+          committer: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          branch: "patches-${{matrix.packages}}-${{steps.update.outputs.version}}"
+          delete-branch: true
+          signoff: false
+          draft: false
+          base: master
+          labels: automated-pr
