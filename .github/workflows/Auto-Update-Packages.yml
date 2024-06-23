@@ -1,7 +1,7 @@
 name: "Auto Update Packages"
 on:
   schedule:
-    - cron: "0 */4 * * *"
+    - cron: "0 0 */2 * *"
   repository_dispatch:
   workflow_dispatch:
     inputs:
@@ -65,7 +65,7 @@ jobs:
 
             echo "$OLD_VER $PKG_VER $NEW_VER $NEW_HASH"
 
-            if dpkg --compare-versions "$OLD_VER" lt "$NEW_VER"; then
+            if [[ $NEW_VER =~ ^[0-9].* ]] && dpkg --compare-versions "$OLD_VER" lt "$NEW_VER"; then
               sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$NEW_VER/g" $PKG_FILE
               sed -i "s/PKG_HASH:=.*/PKG_HASH:=$NEW_HASH/g" $PKG_FILE
 
