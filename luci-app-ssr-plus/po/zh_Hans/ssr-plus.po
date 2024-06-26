@@ -876,6 +876,12 @@ msgstr "HTTPUpgrade 主机名"
 msgid "Httpupgrade Path"
 msgstr "HTTPUpgrade 路径"
 
+msgid "Splithttp Host"
+msgstr "SplitHTTP 主机名"
+
+msgid "Splithttp Path"
+msgstr "SplitHTTP 路径"
+
 msgid "HTTP/2 Host"
 msgstr "HTTP/2 主机名"
 
