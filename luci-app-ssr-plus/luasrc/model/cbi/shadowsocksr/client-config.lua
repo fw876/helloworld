@@ -622,6 +622,7 @@ o:value("tcp", "TCP")
 o:value("kcp", "mKCP")
 o:value("ws", "WebSocket")
 o:value("httpupgrade", "HTTPUpgrade")
+o:value("splithttp", "SplitHTTP")
 o:value("h2", "HTTP/2")
 o:value("quic", "QUIC")
 o:value("grpc", "gRPC")
@@ -688,6 +689,18 @@ o.rmempty = true
 -- httpupgrade路径
 o = s:option(Value, "httpupgrade_path", translate("Httpupgrade Path"))
 o:depends("transport", "httpupgrade")
+o.rmempty = true
+
+-- [[ splithttp部分 ]]--
+
+-- splithttp域名
+o = s:option(Value, "splithttp_host", translate("Splithttp Host"))
+o:depends({transport = "splithttp", tls = false})
+o.rmempty = true
+
+-- splithttp路径
+o = s:option(Value, "splithttp_path", translate("Splithttp Path"))
+o:depends("transport", "splithttp")
 o.rmempty = true
 
 -- [[ H2部分 ]]--
