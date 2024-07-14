@@ -35,7 +35,7 @@ check_proxy() {
 			break
 		else
 			# echolog "Check Google Proxy Fail, count=$i"
-			/usr/bin/ssr-check www.baidu.com 80 $switch_time 1
+			/usr/bin/ssr-check www.facebook.com 80 $switch_time 1
 			if [ "$?" == "0" ]; then
 				result=1
 			else

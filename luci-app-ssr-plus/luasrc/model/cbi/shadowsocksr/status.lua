@@ -155,7 +155,7 @@ s = m:field(DummyValue, "google", translate("Google Connectivity"))
 s.value = translate("No Check")
 s.template = "shadowsocksr/check"
 
-s = m:field(DummyValue, "baidu", translate("Baidu Connectivity"))
+s = m:field(DummyValue, "facebook", translate("Facebook Connectivity"))
 s.value = translate("No Check")
 s.template = "shadowsocksr/check"
 

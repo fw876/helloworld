@@ -131,7 +131,7 @@ local Xray = {
 		protocol = "dokodemo-door",
 		settings = {network = proto, followRedirect = true},
 		sniffing = {
-			enabled = true,
+			enabled = false,
 			destOverride = {"http", "tls", "quic"},
 			domainsExcluded = {
 				"courier.push.apple.com",
@@ -437,7 +437,7 @@ local chain_vmess = {
 			sockopt = {tproxy = "redirect"}
 		},
 		sniffing = {
-			enable = true,
+			enable = false,
 			destOverride = {"http","tls"}
 		}
 	},
