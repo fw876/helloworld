@@ -24,7 +24,6 @@ ENABLE_SERVER=nil
 DEFAULT_SERVER=$(uci_get_by_type global global_server)
 CURRENT_SERVER=$DEFAULT_SERVER
 
-#判断代理是否正常
 check_proxy() {
 	local result=0
 	local try_count=$(uci_get_by_type global switch_try_count 3)
