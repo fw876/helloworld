@@ -1,4 +1,4 @@
-name: Test Build
+name: Test Build A53
 
 on:
   pull_request:
