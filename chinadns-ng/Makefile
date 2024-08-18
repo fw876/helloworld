@@ -38,13 +38,8 @@ else ifeq ($(ARCH),i386)
     PKG_HASH:=15983518255abc1849b13352763112442388519109625a9fcd92f50e05831b1c
   endif
 else ifeq ($(ARCH),mips)
-  ifeq ($(CONFIG_HAS_FPU),)
-    PKG_ARCH:=$(PKG_NAME)+wolfssl@mips-linux-musl@mips32+soft_float@fast+lto
-    PKG_HASH:=1b804d4c450d10cb6f91ac0656121bf9fd3e499f15ea569770b8d5523d5290c2
-  else
-    PKG_ARCH:=$(PKG_NAME)+wolfssl@mips-linux-musl@mips32@fast+lto
-    PKG_HASH:=27e47f61de09af4b0775f9e0efa5b74271f0f4e00d9643d2580a60b2ab9f9f37
-  endif
+  PKG_ARCH:=$(PKG_NAME)+wolfssl@mips-linux-musl@mips32+soft_float@fast+lto
+  PKG_HASH:=1b804d4c450d10cb6f91ac0656121bf9fd3e499f15ea569770b8d5523d5290c2
 else ifeq ($(ARCH),mipsel)
   ifeq ($(CONFIG_HAS_FPU),)
     PKG_ARCH:=$(PKG_NAME)+wolfssl@mipsel-linux-musl@mips32+soft_float@fast+lto
