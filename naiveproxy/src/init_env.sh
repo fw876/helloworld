@@ -86,13 +86,18 @@ case "${target_arch}" in
 	else
 		naive_flags+=" arm_float_abi=\"soft\" arm_use_neon=false"
 	fi
+
+	# LLVM does not accept muslgnueabi as the target triple environment
+	if [ -d "$toolchain_dir/lib/gcc/arm-openwrt-linux-muslgnueabi" ] && [ ! -d "$toolchain_dir/lib/gcc/arm-openwrt-linux-musleabi" ]; then
+		ln -sf "$toolchain_dir/lib/gcc/arm-openwrt-linux-muslgnueabi" "$toolchain_dir/lib/gcc/arm-openwrt-linux-musleabi"
+	fi
 	;;
 "arm64")
 	[ -n "${cpu_type}" ] && naive_flags+=" arm_cpu=\"${cpu_type}\""
 	;;
 "mipsel"|"mips64el")
 	naive_flags+=" use_thin_lto=false chrome_pgo_phase=0"
-	if [ -z "${cpu_type}" ]; then
+	if [ -z "${cpu_type}" ] || [ "${cpu_type}" == "mips32" ]; then
 		naive_flags+=" mips_arch_variant=\"r1\""
 	else
 		naive_flags+=" mips_arch_variant=\"r2\""
@@ -104,5 +109,8 @@ case "${target_arch}" in
 			naive_flags+=" mips_float_abi=\"soft\""
 		fi
 	fi
+	;;
+"x86_64")
+	naive_flags+=" use_cfi_icall=false"
 	;;
 esac
