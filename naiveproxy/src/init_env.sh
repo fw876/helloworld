@@ -64,6 +64,7 @@ enable_mdns=false
 enable_reporting=false
 include_transport_security_state_preload_list=false
 use_nss_certs=false
+enable_device_bound_sessions=false
 
 enable_backup_ref_ptr_support=false
 enable_dangling_raw_ptr_checks=false
