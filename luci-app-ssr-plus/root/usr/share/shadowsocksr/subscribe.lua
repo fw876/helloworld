@@ -182,6 +182,14 @@ local function processData(szType, content)
 			result.ws_host = info.host
 			result.ws_path = info.path
 		end
+		if info.net == 'httpupgrade' then
+			result.httpupgrade_host = info.host
+			result.httpupgrade_path = info.path
+		end
+		if info.net == 'splithttp' then
+			result.splithttp_host = info.host
+			result.splithttp_path = info.path
+		end
 		if info.net == 'h2' then
 			result.h2_host = info.host
 			result.h2_path = info.path
@@ -354,9 +362,10 @@ local function processData(szType, content)
 		result.vmess_id = url.user
 		result.vless_encryption = params.encryption or "none"
 		result.transport = params.type or "tcp"
-		result.tls = (params.security == "tls" or params.security == "xtls") and "1" or "0"
+		result.tls = (params.security == "tls") and "1" or "0"
 		result.tls_host = params.sni
-		result.tls_flow = (params.security == "tls" or params.security == "reality") and params.flow or nil
+		result.xtls = (params.security == "xtls") and "1" or nil
+		result.tls_flow = (result.tls == "1" or result.xtls == "1" or result.reality == "1") and params.flow or nil
 		result.fingerprint = params.fp
 		result.reality = (params.security == "reality") and "1" or "0"
 		result.reality_publickey = params.pbk and UrlDecode(params.pbk) or nil
@@ -365,6 +374,12 @@ local function processData(szType, content)
 		if result.transport == "ws" then
 			result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
 			result.ws_path = params.path and UrlDecode(params.path) or "/"
+		elseif result.transport == "httpupgrade" then
+			result.httpupgrade_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+			result.httpupgrade_path = params.path and UrlDecode(params.path) or "/"
+		elseif result.transport == "splithttp" then
+			result.splithttp_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+			result.splithttp_path = params.path and UrlDecode(params.path) or "/"
 		-- make it compatible with bullshit, "h2" transport is non-existent at all
 		elseif result.transport == "http" or result.transport == "h2" then
 			result.transport = "h2"
