@@ -26,7 +26,7 @@ function vmess_vless()
 						alterId = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and tonumber(server.alter_id) or nil,
 						security = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and server.security or nil,
 						encryption = (server.v2ray_protocol == "vless") and server.vless_encryption or nil,
-						flow = ((server.tls == '1') or (server.reality == '1')) and server.tls_flow or nil
+						flow = ((server.xtls == '1') or (server.tls == '1') or (server.reality == '1')) and server.tls_flow or nil
 					}
 				}
 			}
@@ -178,8 +178,8 @@ local Xray = {
 		-- 底层传输配置
 		streamSettings = (server.v2ray_protocol ~= "wireguard") and {
 			network = server.transport or "tcp",
-			security = (server.tls == '1') and "tls" or (server.reality == '1') and "reality" or nil,
-			tlsSettings = (server.tls == '1') and {
+			security = (server.xtls == '1') and "xtls" or (server.tls == '1') and "tls" or (server.reality == '1') and "reality" or nil,
+			tlsSettings = (server.tls == '1') and (server.tls_host or server.fingerprint) and {
 				-- tls
 				alpn = server.tls_alpn,
 				fingerprint = server.fingerprint,
@@ -189,6 +189,12 @@ local Xray = {
 					usage = "verify",
 					certificateFile = server.certpath
 				} or nil,
+			} or nil,
+			xtlsSettings = (server.xtls == '1') and server.tls_host and {
+				-- xtls
+				allowInsecure = (server.insecure == "1") and true or nil,
+				serverName = server.tls_host,
+				minVersion = "1.3"
 			} or nil,
 			realitySettings = (server.reality == '1') and {
 				publicKey = server.reality_publickey,
