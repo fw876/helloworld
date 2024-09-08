@@ -951,6 +951,7 @@ end
 o = s:option(Value, "tls_host", translate("TLS Host"))
 o.datatype = "hostname"
 o:depends("tls", true)
+o:depends("xtls", true)
 o:depends("reality", true)
 o.rmempty = true
 
