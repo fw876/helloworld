@@ -269,6 +269,14 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.ws_host')[0].value = ssm.host;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.ws_path')[0].value = ssm.path;
 			}
+			if (ssm.net == "httpupgrade") {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.httpupgrade_host')[0].value = ssm.host;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.httpupgrade_path')[0].value = ssm.path;
+			}
+			if (ssm.net == "splithttp") {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.splithttp_host')[0].value = ssm.host;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.splithttp_path')[0].value = ssm.path;
+			}
 			if (ssm.net == "h2") {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.h2_host')[0].value = ssm.host;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.h2_path')[0].value = ssm.path;
@@ -309,25 +317,37 @@ function import_ssr_url(btn, urlname, sid) {
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].value = params.get("type") == "http" ? "h2" : params.get("type") || "tcp";
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].dispatchEvent(event);
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.vless_encryption')[0].value = params.get("encryption") || "none";
-			if ([ "tls", "reality" ].includes(params.get("security"))) {
+			if ([ "tls", "xtls", "reality" ].includes(params.get("security"))) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.' + params.get("security"))[0].checked = true;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.' + params.get("security"))[0].dispatchEvent(event);
-
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.fingerprint')[0].value = params.get("fp") || "";
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_flow')[0].value = params.get("flow") || "";
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = params.get("sni") || "";
 
 				if (params.get("security") === "reality") {
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.reality_publickey')[0].value = params.get("pbk") ? decodeURIComponent(params.get("pbk")) : "";
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.reality_shortid')[0].value = params.get("sid") || "";
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.reality_spiderx')[0].value = params.get("spx") ? decodeURIComponent(params.get("spx")) : "";
 				}
+				if (params.get("security") === "xtls") {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_flow')[0].value = params.get("flow") || "";
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_flow')[0].dispatchEvent(event);
+				}
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.fingerprint')[0].value = params.get("fp") || "";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = params.get("sni") || "";
 			}
 			switch (params.get("type")) {
 			case "ws":
 				if (params.get("security") !== "tls")
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.ws_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.ws_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "/";
+				break;
+			case "httpupgrade":
+				if (params.get("security") !== "tls")
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.httpupgrade_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.httpupgrade_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "/";
+				break;
+			case "splithttp":
+				if (params.get("security") !== "tls")
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.splithttp_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.splithttp_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "/";
 				break;
 			case "kcp":
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.kcp_guise')[0].value = params.get("headerType") || "none";
