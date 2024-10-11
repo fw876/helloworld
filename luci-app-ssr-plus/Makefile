@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-ssr-plus
 PKG_VERSION:=188
-PKG_RELEASE:=6
+PKG_RELEASE:=7
 
 PKG_CONFIG_DEPENDS:= \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_NONE_V2RAY \
@@ -133,7 +133,7 @@ endchoice
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG
 	bool "Include ChinaDNS-NG"
-	default y
+	default n
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_MosDNS
 	bool "Include MosDNS"
