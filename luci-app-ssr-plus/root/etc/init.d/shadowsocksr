@@ -246,6 +246,12 @@ start_dns() {
 			fi
 		fi
 	fi
+	
+	if [ "$(uci_get_by_type global apple_optimization 1)" == "1" ]; then
+		echolog "Apple 域名中国大陆 CDN 的 优化规则正在加载。"
+		cp -f /etc/ssrplus/applechina.conf $TMP_DNSMASQ_PATH/
+		echolog "Apple 域名中国大陆 CDN 的 优化规则加载完毕。"
+	fi
 }
 
 gen_service_file() { #1-server.type 2-cfgname 3-file_path

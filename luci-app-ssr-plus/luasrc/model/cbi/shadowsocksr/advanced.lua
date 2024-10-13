@@ -109,6 +109,10 @@ o:depends("shunt_dns_mode", "2")
 o.rmempty = false
 o.default = "0"
 
+o = s:option(Flag, "apple_optimization", translate("Apple domains optimization"), translate("For Apple domains equipped with Chinese mainland CDN, always responsive to Chinese CDN IP addresses"))
+o.rmempty = false
+o.default = "1"
+
 o = s:option(Flag, "adblock", translate("Enable adblock"))
 o.rmempty = false
 
