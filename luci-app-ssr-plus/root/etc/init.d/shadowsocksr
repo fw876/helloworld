@@ -745,14 +745,19 @@ Start_Run() {
 		echolog "Main node:$(get_name $type) $threads Threads Started!"
 		;;
 	v2ray)
+		local version=$($(first_type xray v2ray) version | head -1 | awk '{print $2}')
+		local xray_protocol=$(uci_get_by_name $GLOBAL_SERVER v2ray_protocol)
 		gen_config_file $GLOBAL_SERVER $type 1 $tcp_port $socks_port
 		ln_start_bin $(first_type xray v2ray) v2ray run -config $tcp_config_file
+		if [ "$xray_protocol" = "vless" ] && [ "$(echo -e "$version\n1.18.24" | sort -V)" ]; then
+			ARG_UDP=""
+		fi
 		echolog "Main node:$($(first_type xray v2ray) version | head -1) Started!"
 		;;
 	trojan)
 		gen_config_file $GLOBAL_SERVER $type 1 $tcp_port
 		for i in $(seq 1 $threads); do
-			ln_start_bin $(first_type $type) $type --config $tcp_config_file
+		ln_start_bin $(first_type $type) $type --config $tcp_config_file
 		done
 		echolog "Main node:$($(first_type $type) --version 2>&1 | head -1) , $threads Threads Started!"
 		;;
