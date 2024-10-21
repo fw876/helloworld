@@ -125,61 +125,63 @@ local Xray = {
 		loglevel = "warning"
 	},
 	-- 传入连接
-	inbound = (local_port ~= "0") and {
-		-- listening
-		port = tonumber(local_port),
-		protocol = "dokodemo-door",
-		settings = {network = proto, followRedirect = true},
-		sniffing = {
-			enabled = true,
-			destOverride = {"http", "tls", "quic"},
-			domainsExcluded = {
-				"courier.push.apple.com",
-				"rbsxbxp-mim.vivox.com",
-				"rbsxbxp.www.vivox.com",
-				"rbsxbxp-ws.vivox.com",
-				"rbspsxp.www.vivox.com",
-				"rbspsxp-mim.vivox.com",
-				"rbspsxp-ws.vivox.com",
-				"rbswxp.www.vivox.com",
-				"rbswxp-mim.vivox.com",
-				"disp-rbspsp-5-1.vivox.com",
-				"disp-rbsxbp-5-1.vivox.com",
-				"proxy.rbsxbp.vivox.com",
-				"proxy.rbspsp.vivox.com",
-				"proxy.rbswp.vivox.com",
-				"rbswp.vivox.com",
-				"rbsxbp.vivox.com",
-				"rbspsp.vivox.com",
-				"rbspsp.www.vivox.com",
-				"rbswp.www.vivox.com",
-				"rbsxbp.www.vivox.com",
-				"rbsxbxp.vivox.com",
-				"rbspsxp.vivox.com",
-				"rbswxp.vivox.com",
-				"Mijia Cloud",
-				"dlg.io.mi.com"
-			}
-		}
-	} or nil,
+	inbounds = (local_port ~= "0") and {
 	-- 开启 socks 代理
-	inboundDetour = (proto:find("tcp") and socks_port ~= "0") and {
 		{
 			-- socks
 			protocol = "socks",
-			port = tonumber(socks_port),
+			port = (proto:find("tcp") and socks_port ~= "0") and tonumber(socks_port),
 			settings = {auth = "noauth", udp = true}
-		}
-	} or nil,
+		} or nil,
+		{
+			-- listening
+			port = tonumber(local_port),
+			protocol = "dokodemo-door",
+			settings = {network = proto, followRedirect = true},
+			metadataOnly = false,
+			sniffing = {
+				enabled = true,
+				destOverride = {"http", "tls", "quic"},
+				domainsExcluded = {
+					"courier.push.apple.com",
+					"rbsxbxp-mim.vivox.com",
+					"rbsxbxp.www.vivox.com",
+					"rbsxbxp-ws.vivox.com",
+					"rbspsxp.www.vivox.com",
+					"rbspsxp-mim.vivox.com",
+					"rbspsxp-ws.vivox.com",
+					"rbswxp.www.vivox.com",
+					"rbswxp-mim.vivox.com",
+					"disp-rbspsp-5-1.vivox.com",
+					"disp-rbsxbp-5-1.vivox.com",
+					"proxy.rbsxbp.vivox.com",
+					"proxy.rbspsp.vivox.com",
+					"proxy.rbswp.vivox.com",
+					"rbswp.vivox.com",
+					"rbsxbp.vivox.com",
+					"rbspsp.vivox.com",
+					"rbspsp.www.vivox.com",
+					"rbswp.www.vivox.com",
+					"rbsxbp.www.vivox.com",
+					"rbsxbxp.vivox.com",
+					"rbspsxp.vivox.com",
+					"rbswxp.vivox.com",
+					"Mijia Cloud",
+					"dlg.io.mi.com"
+				}
+			}
+		} or nil,
+	},
 	-- 传出连接
-	outbound = {
+	outbounds = {
+		{
 		protocol = server.v2ray_protocol,
 		settings = outbound_settings,
 		-- 底层传输配置
 		streamSettings = (server.v2ray_protocol ~= "wireguard") and {
 			network = server.transport or "tcp",
 			security = (server.xtls == '1') and "xtls" or (server.tls == '1') and "tls" or (server.reality == '1') and "reality" or nil,
-			tlsSettings = (server.tls == '1') and (server.tls_host or server.fingerprint) and {
+			tlsSettings = (server.tls == '1') and {
 				-- tls
 				alpn = server.tls_alpn,
 				fingerprint = server.fingerprint,
@@ -244,7 +246,7 @@ local Xray = {
 			splithttpSettings = (server.transport == "splithttp") and {
 				-- splithttp
 				host = (server.splithttp_host or server.tls_host) or nil,
-                                path = server.splithttp_path or ""
+                                path = server.splithttp_path or "/"
 			} or nil,
 			httpSettings = (server.transport == "h2") and {
 				-- h2
@@ -269,6 +271,7 @@ local Xray = {
 				initial_windows_size = tonumber(server.initial_windows_size) or nil
 			} or nil,
 			sockopt = {
+				mark = 255,
 				tcpMptcp = (server.mptcp == "1") and true or false, -- MPTCP
 				tcpNoDelay = (server.mptcp == "1") and true or false, -- MPTCP
 				tcpcongestion = server.custom_tcpcongestion -- 连接服务器节点的 TCP 拥塞控制算法
@@ -280,7 +283,8 @@ local Xray = {
 			concurrency = tonumber(server.concurrency), -- TCP 最大并发连接数
 			xudpConcurrency = tonumber(server.xudpConcurrency), -- UDP 最大并发连接数
 			xudpProxyUDP443 = server.xudpProxyUDP443 -- 对被代理的 UDP/443 流量处理方式
-		} or nil
+		} or nil,
+		}
 	}
 }
 local cipher = "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA:AES128-SHA:AES256-SHA:DES-CBC3-SHA"
@@ -351,7 +355,7 @@ local hysteria = {
                         hopInterval = (server.port_range and (tonumber(server.hopinterval) .. "s") or nil)
                 } or nil)
         } or nil,
---[[			
+--[[
 	tcpTProxy = (proto:find("tcp") and local_port ~= "0") and {
 					listen = "0.0.0.0:" .. tonumber(local_port)
 	} or nil,
@@ -379,10 +383,12 @@ local hysteria = {
 	tls = (server.tls_host) and {
 		sni = server.tls_host,
 		--alpn = server.tls_alpn or nil,
+		--sni = server.tls_host or (server.tls_host and server.tls_alpn) or nil,
 		insecure = (server.insecure == "1") and true or false,
 		pinSHA256 = (server.insecure == "1") and server.pinsha256 or nil
 	} or {
 		sni = server.server,
+		--sni = server.tls_host or (server.tls_host and server.tls_alpn) or nil,
 		insecure = (server.insecure == "1") and true or false
 	},
 	fast_open = (server.fast_open == "1") and true or false,
@@ -488,7 +494,9 @@ local tuic = {
 		},
 		["local"] = {
 			server = tonumber(socks_port) and "[::]:" .. (socks_port == "0" and local_port or tonumber(socks_port)),
-			dual_stack = (server.tuic_dual_stack == "1") and true  or nil,
+			--username = server.tuic_socks_username,
+			--password = server.tuic_socks_password,
+			dual_stack = (server.tuic_dual_stack == "1") and true or nil,
 			max_packet_size = tonumber(server.tuic_max_package_size)
 		}
 }
