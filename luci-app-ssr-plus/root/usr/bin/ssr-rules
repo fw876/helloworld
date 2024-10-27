@@ -103,6 +103,7 @@ ipset_r() {
 		$IPT -A SS_SPEC_WAN_AC -m set --match-set china dst -j RETURN
 		$IPT -A SS_SPEC_WAN_AC -m set --match-set gfwlist dst -j SS_SPEC_WAN_FW
 		$IPT -A SS_SPEC_WAN_AC -m set --match-set gmlan src -m set ! --match-set china dst -j SS_SPEC_WAN_FW
+		$IPT -A SS_SPEC_WAN_AC -j SS_SPEC_WAN_FW
 		;;
 	oversea)
 		ipset -N oversea hash:net 2>/dev/null

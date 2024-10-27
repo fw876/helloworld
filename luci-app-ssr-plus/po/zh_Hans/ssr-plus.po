@@ -209,7 +209,6 @@ msgstr "QUIC 连接接收窗口"
 msgid "QUIC stream receive window"
 msgstr "QUIC 流接收窗口"
 
-
 msgid "Lazy Start"
 msgstr "延迟启动"
 
@@ -842,6 +841,63 @@ msgstr "本机服务端"
 
 msgid "Global SOCKS5 Proxy Server"
 msgstr "SOCKS5 代理服务端（全局）"
+
+msgid "Xray Fragment Settings"
+msgstr "Xray 分片设置"
+
+msgid "Fragment"
+msgstr "分片"
+
+msgid "TCP fragments, which can deceive the censorship system in some cases, such as bypassing SNI blacklists."
+msgstr "TCP 分片，在某些情况下可以欺骗审查系统，比如绕过 SNI 黑名单。"
+
+msgid "Fragment Packets"
+msgstr "分片方式"
+
+msgid "\"1-3\" is for segmentation at TCP layer, applying to the beginning 1 to 3 data writes by the client. \"tlshello\" is for TLS client hello packet fragmentation."
+msgstr "\"1-3\" 是 TCP 的流切片，应用于客户端第 1 至第 3 次写数据。\"tlshello\" 是 TLS 握手包切片。"
+
+msgid "Fragment Length"
+msgstr "分片包长"
+
+msgid "Fragmented packet length (byte)"
+msgstr "分片包长 (byte)"
+
+msgid "Fragment Interval"
+msgstr "分片间隔"
+
+msgid "Fragmentation interval (ms)"
+msgstr "分片间隔（ms）"
+
+msgid "Noise"
+msgstr "噪声"
+
+msgid "UDP noise, Under some circumstances it can bypass some UDP based protocol restrictions."
+msgstr "UDP 噪声，在某些情况下可以绕过一些针对 UDP 协议的限制。"
+
+msgid "To send noise packets, select \"Noise\" in Xray Settings."
+msgstr "在 Xray 设置中勾选 “噪声” 以发送噪声包。"
+
+msgid "For specific usage, see: "
+msgstr "具体使用方法参见："
+
+msgid "Click to the page"
+msgstr "点击前往"
+
+msgid "Xray Noise Packets"
+msgstr "Xray 噪声数据包"
+
+msgid "Type"
+msgstr "类型"
+
+msgid "Domain Strategy"
+msgstr "域名解析策略"
+
+msgid "Packet"
+msgstr "数据包"
+
+msgid "Delay (ms)"
+msgstr "延迟（ms）"
 
 msgid "warning! Please do not reuse the port!"
 msgstr "警告！请不要重复使用端口！"

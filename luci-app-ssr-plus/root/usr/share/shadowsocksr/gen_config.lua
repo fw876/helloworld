@@ -12,6 +12,8 @@ local chain = arg[5] or "0"
 local chain_local_port = string.split(chain, "/")[2] or "0"
 
 local server = ucursor:get_all("shadowsocksr", server_section)
+local xray_fragment = ucursor:get_all("shadowsocksr", "@global_xray_fragment[0]") or {}
+local xray_noise = ucursor:get_all("shadowsocksr", "@xray_noise_packets[0]") or {}
 local outbound_settings = nil
 
 function vmess_vless()
@@ -128,6 +130,8 @@ local Xray = {
 	-- 初始化 inbounds 表
 	inbounds = {},
 
+	-- 初始化 outbounds 表
+	outbounds = {},
 }
 	-- 传入连接
 	-- 添加 dokodemo-door 配置，如果 local_port 不为 0
@@ -284,7 +288,8 @@ end
 				sockopt = {
 					tcpMptcp = (server.mptcp == "1") and true or false, -- MPTCP
 					tcpNoDelay = (server.mptcp == "1") and true or false, -- MPTCP
-					tcpcongestion = server.custom_tcpcongestion -- 连接服务器节点的 TCP 拥塞控制算法
+					tcpcongestion = server.custom_tcpcongestion, -- 连接服务器节点的 TCP 拥塞控制算法
+					dialerProxy = (xray_fragment.fragment == "1" or xray_fragment.noise == "1") and "dialerproxy" or nil
 				}
 			} or nil,
 			mux = (server.v2ray_protocol ~= "wireguard") and {
@@ -296,6 +301,34 @@ end
 			} or nil
 		}
 	}
+
+-- 添加带有 fragment 设置的 dialerproxy 配置
+if xray_fragment.fragment ~= "0" or (xray_fragment.noise ~= "0" and xray_noise.enabled ~= "0") then
+	table.insert(Xray.outbounds, {
+		protocol = "freedom",
+		tag = "dialerproxy",
+		settings = {
+			domainStrategy = (xray_fragment.noise == "1" and xray_noise.enabled == "1") and xray_noise.domainStrategy,
+			fragment = (xray_fragment.fragment == "1") and {
+				packets = (xray_fragment.fragment_packets ~= "") and xray_fragment.fragment_packets or nil,
+				length = (xray_fragment.fragment_length ~= "") and xray_fragment.fragment_length or nil,
+				interval = (xray_fragment.fragment_interval ~= "") and xray_fragment.fragment_interval or nil
+			} or nil,
+			noises = (xray_fragment.noise == "1" and xray_noise.enabled == "1") and {
+				{
+					type = xray_noise.type,
+					packet = xray_noise.packet,
+					delay = xray_noise.delay:find("-") and xray_noise.delay or tonumber(xray_noise.delay)
+				}
+			} or nil
+		},
+		streamSettings = {
+			sockopt = {
+			tcpNoDelay = true
+			}
+		}
+	})
+end
 
 local cipher = "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA:AES128-SHA:AES256-SHA:DES-CBC3-SHA"
 local cipher13 = "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_256_GCM_SHA384"
