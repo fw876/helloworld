@@ -1191,6 +1191,9 @@ reset() {
 		set shadowsocksr.@socks5_proxy[0].local_port='1080'
 		add shadowsocksr server_global
 		set shadowsocksr.@server_global[0].enable_server='0'
+		add shadowsocksr global_xray_fragment
+		set shadowsocksr.@global_xray_fragment[0].fragment='0'
+		set shadowsocksr.@global_xray_fragment[0].noise='0'
 		commit shadowsocksr
 	EOF
 	unset_lock
