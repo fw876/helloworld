@@ -17,7 +17,14 @@ LOCK_FILE=/var/lock/ssrplus.lock
 LOG_FILE=/var/log/ssrplus.log
 TMP_PATH=/var/etc/ssrplus
 TMP_BIN_PATH=$TMP_PATH/bin
-TMP_DNSMASQ_PATH=/tmp/dnsmasq.d/dnsmasq-ssrplus.d
+# Get the default DNSMasq config ID from the UCI configuration
+DEFAULT_DNSMASQ_CFGID=$(uci show dhcp.@dnsmasq[0] | awk -F '.' '{print $2}' | awk -F '=' '{print $1}' | head -1)
+# Locate the dnsmasq.conf file that contains the conf-dir option
+DNSMASQ_CONF_PATH=$(grep -l "^conf-dir=" "/tmp/etc/dnsmasq.conf.${DEFAULT_DNSMASQ_CFGID}")
+# Extract the directory path from the conf-dir line
+DNSMASQ_CONF_DIR=$(grep '^conf-dir=' "$DNSMASQ_CONF_PATH" | cut -d'=' -f2 | head -n 1)
+# Check if a conf-dir value was found and set variables accordingly
+TMP_DNSMASQ_PATH=${DNSMASQ_CONF_DIR%*/}/dnsmasq-ssrplus.d
 
 chain_config_file=		   #generate shadowtls chain proxy config file
 tcp_config_file=
@@ -1062,8 +1069,8 @@ start_rules() {
 start() {
 	set_lock
 	echolog "----------start------------"
-	mkdir -p /var/run /var/lock /var/log /tmp/dnsmasq.d $TMP_BIN_PATH $TMP_DNSMASQ_PATH
-	echo "conf-dir=${TMP_DNSMASQ_PATH}" >"/tmp/dnsmasq.d/dnsmasq-ssrplus.conf"
+	mkdir -p /var/run /var/lock /var/log $DNSMASQ_CONF_DIR $TMP_BIN_PATH $TMP_DNSMASQ_PATH
+	echo "conf-dir=${TMP_DNSMASQ_PATH}" >"$DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf"
 	if load_config; then
 		Start_Run
 		start_rules
@@ -1096,7 +1103,7 @@ start() {
 
 boot() {
 	echolog "boot！"
-	mkdir -p /var/run /var/lock /var/log /tmp/dnsmasq.d $TMP_BIN_PATH $TMP_DNSMASQ_PATH
+	mkdir -p /var/run /var/lock /var/log $DNSMASQ_CONF_DIR $TMP_BIN_PATH $TMP_DNSMASQ_PATH
 	start
 }
 
@@ -1134,8 +1141,8 @@ stop() {
 		uci -q del "dhcp.@dnsmasq[0]._unused_ssrp_changed"
 		uci -q commit "dhcp"
 	fi
-	if [ -f "/tmp/dnsmasq.d/dnsmasq-ssrplus.conf" ]; then
-		rm -rf /tmp/dnsmasq.d/dnsmasq-ssrplus.conf $TMP_DNSMASQ_PATH $TMP_PATH/*-ssr-*.json $TMP_PATH/ssr-server*.json
+	if [ -f "$DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf" ]; then
+		rm -rf $DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf $TMP_DNSMASQ_PATH $TMP_PATH/*-ssr-*.json $TMP_PATH/ssr-server*.json
 		/etc/init.d/dnsmasq restart >/dev/null 2>&1
 	fi
 	del_cron
