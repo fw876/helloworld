@@ -125,8 +125,11 @@ o:depends("adblock", "1")
 o.description = translate("Support AdGuardHome and DNSMASQ format list")
 
 o = s:option(Button, "reset", translate("Reset to defaults"))
-o.rawhtml = true
-o.template = "shadowsocksr/reset"
+o.inputstyle = "reload"
+o.write = function()
+	luci.sys.call("/etc/init.d/shadowsocksr reset")
+	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr", "servers"))
+end
 
 -- [[ SOCKS5 Proxy ]]--
 s = m:section(TypedSection, "socks5_proxy", translate("Global SOCKS5 Proxy Server"))
