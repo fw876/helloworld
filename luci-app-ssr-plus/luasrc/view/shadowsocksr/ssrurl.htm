@@ -314,7 +314,10 @@ function import_ssr_url(btn, urlname, sid) {
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = url.hostname;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = url.port || "80";
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.vmess_id')[0].value = url.username;
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].value = params.get("type") == "http" ? "h2" : params.get("type") || "tcp";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].value = 
+				params.get("type") == "http" ? "h2" : 
+				(params.get("type") == "raw" ? "raw" : 
+				(params.get("type") || "tcp"));
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].dispatchEvent(event);
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.vless_encryption')[0].value = params.get("encryption") || "none";
 			if ([ "tls", "xtls", "reality" ].includes(params.get("security"))) {
@@ -371,6 +374,13 @@ function import_ssr_url(btn, urlname, sid) {
 			case "tcp":
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tcp_guise')[0].value = params.get("headerType") || "none";
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tcp_guise')[0].dispatchEvent(event);
+				if (params.get("headerType") === "http") {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "";
+				}
+			case "raw":
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.raw_guise')[0].value = params.get("headerType") || "none";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.raw_guise')[0].dispatchEvent(event);
 				if (params.get("headerType") === "http") {
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "";
