@@ -55,22 +55,23 @@ local function check_excluded_domain(value)
 end
 -- gfwlist转码至dnsmasq格式
 local function generate_gfwlist(type)
-	local domains = {}
-	local out = io.open("/tmp/ssr-update." .. type, "w")
-	for line in io.lines("/tmp/ssr-update.tmp") do
-		if not (string.find(line, comment_pattern) or string.find(line, ip_pattern) or check_excluded_domain(line)) then
-			local start, finish, match = string.find(line, domain_pattern)
-			if (start) then
-				domains[match] = true
-			end
-		end
-	end
-	for k, v in pairs(domains) do
-		out:write(string.format("server=/%s/%s#%s\n", k, mydnsip, mydnsport))
-		out:write(string.format("ipset=/%s/%s\n", k, ipsetname))
-	end
-	out:close()
-	os.remove("/tmp/ssr-update.tmp")
+    local domains, domains_map = {}, {}
+    local out = io.open("/tmp/ssr-update." .. type, "w")
+    for line in io.lines("/tmp/ssr-update.tmp") do
+        if not (string.find(line, comment_pattern) or string.find(line, ip_pattern) or check_excluded_domain(line)) then
+            local start, finish, match = string.find(line, domain_pattern)
+            if start and not domains_map[match] then
+                domains_map[match] = true
+                table.insert(domains, match)
+            end
+        end
+    end
+    for _, domain in ipairs(domains) do
+        out:write(string.format("server=/%s/%s#%s\n", domain, mydnsip, mydnsport))
+        out:write(string.format("ipset=/%s/%s\n", domain, ipsetname))
+    end
+    out:close()
+    os.remove("/tmp/ssr-update.tmp")
 end
 
 -- adblock转码至dnsmasq格式
