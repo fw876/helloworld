@@ -9,8 +9,7 @@ require "luci.model.uci"
 local icount = 0
 local args = arg[1]
 local uci = luci.model.uci.cursor()
-local TMP_DNSMASQ_PATH = "${DNSMASQ_CONF_DIR%*/}/dnsmasq-ssrplus.d"
-luci.sys.call("mkdir -p " .. TMP_DNSMASQ_PATH)
+local TMP_DNSMASQ_PATH = luci.sys.exec("find /tmp/dnsmasq.*/dnsmasq-ssrplus.d -print 2>/dev/null | head -n 1"):gsub("%s+", "")
 local TMP_PATH = "/var/etc/ssrplus"
 -- match comments/title/whitelist/ip address/excluded_domain
 local comment_pattern = "^[!\\[@]+"

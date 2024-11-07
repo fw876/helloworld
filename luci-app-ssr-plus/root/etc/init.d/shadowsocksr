@@ -17,13 +17,13 @@ LOCK_FILE=/var/lock/ssrplus.lock
 LOG_FILE=/var/log/ssrplus.log
 TMP_PATH=/var/etc/ssrplus
 TMP_BIN_PATH=$TMP_PATH/bin
-# Get the default DNSMasq config ID from the UCI configuration
+# 获取默认的 DNSMasq 配置 ID
 DEFAULT_DNSMASQ_CFGID=$(uci show dhcp.@dnsmasq[0] | awk -F '.' '{print $2}' | awk -F '=' '{print $1}' | head -1)
-# Locate the dnsmasq.conf file that contains the conf-dir option
+# 查找包含 conf-dir 选项的 dnsmasq.conf 文件路径
 DNSMASQ_CONF_PATH=$(grep -l "^conf-dir=" "/tmp/etc/dnsmasq.conf.${DEFAULT_DNSMASQ_CFGID}")
-# Extract the directory path from the conf-dir line
+# 从 conf-dir 行中提取目录路径
 DNSMASQ_CONF_DIR=$(grep '^conf-dir=' "$DNSMASQ_CONF_PATH" | cut -d'=' -f2 | head -n 1)
-# Check if a conf-dir value was found and set variables accordingly
+# 设置 TMP_DNSMASQ_PATH，并去除路径末尾的斜杠
 TMP_DNSMASQ_PATH=${DNSMASQ_CONF_DIR%*/}/dnsmasq-ssrplus.d
 
 chain_config_file=		   #generate shadowtls chain proxy config file
