@@ -19,12 +19,34 @@ o = s:option(Flag, "auto_update", translate("Auto Update"))
 o.rmempty = false
 o.description = translate("Auto Update Server subscription, GFW list and CHN route")
 
-o = s:option(ListValue, "auto_update_time", translate("Update time (every day)"))
+o = s:option(ListValue, "auto_update_week_time", translate("Update Time (Every Week)"))
+o:value('*', translate("Every Day"))
+o:value("1", translate("Every Monday"))
+o:value("2", translate("Every Tuesday"))
+o:value("3", translate("Every Wednesday"))
+o:value("4", translate("Every Thursday"))
+o:value("5", translate("Every Friday"))
+o:value("6", translate("Every Saturday"))
+o:value("0", translate("Every Sunday"))
+o.default = "*"
+o.rmempty = false
+o:depends("auto_update", "1")
+
+o = s:option(ListValue, "auto_update_day_time", translate("Update time (every day)"))
 for t = 0, 23 do
 	o:value(t, t .. ":00")
 end
 o.default = 2
 o.rmempty = false
+o:depends("auto_update", "1")
+
+o = s:option(ListValue, "auto_update_min_time", translate("Update Interval (min)"))
+for i = 0, 59 do
+    o:value(i, i .. ":00")
+end
+o.default = 30
+o.rmempty = false
+o:depends("auto_update", "1")
 
 o = s:option(DynamicList, "subscribe_url", translate("Subscribe URL"))
 o.rmempty = true
