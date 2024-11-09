@@ -432,7 +432,7 @@ msgid "No new data!"
 msgstr "你已经是最新数据，无需更新！"
 
 msgid "Total Records:"
-msgstr "新的总纪录数："
+msgstr "新的总记录数："
 
 msgid "Check Server Port"
 msgstr "【服务器端口】检查"
