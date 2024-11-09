@@ -406,6 +406,12 @@ local function processData(szType, content)
 				result.tcp_host = params.host and UrlDecode(params.host) or nil
 				result.tcp_path = params.path and UrlDecode(params.path) or nil
 			end
+		elseif result.transport == "raw" then
+			result.raw_guise = params.headerType or "none"
+			if result.raw_guise == "http" then
+				result.tcp_host = params.host and UrlDecode(params.host) or nil
+				result.tcp_path = params.path and UrlDecode(params.path) or nil
+			end
 		end
 	end
 	if not result.alias then
