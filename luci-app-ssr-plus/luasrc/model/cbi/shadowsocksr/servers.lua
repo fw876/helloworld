@@ -16,7 +16,6 @@ s = m:section(TypedSection, "server_subscribe")
 s.anonymous = true
 
 o = s:option(Flag, "auto_update", translate("Auto Update"))
-o.rmempty = false
 o.description = translate("Auto Update Server subscription, GFW list and CHN route")
 
 o = s:option(ListValue, "auto_update_week_time", translate("Update Time (Every Week)"))
