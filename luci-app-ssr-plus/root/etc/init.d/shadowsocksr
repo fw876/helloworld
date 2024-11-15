@@ -61,12 +61,12 @@ PS="/bin/busybox ps"
 
 uci_get_by_name() {
 	local ret=$(uci get $NAME.$1.$2 2>/dev/null)
-	echo "${ret:=$3}"
+	echo ${ret:=$3}
 }
 
 uci_get_by_type() {
 	local ret=$(uci get $NAME.@$1[0].$2 2>/dev/null)
-	echo "${ret:=$3}"
+	echo ${ret:=$3}
 }
 
 uci_set_by_name() {
@@ -81,7 +81,7 @@ uci_set_by_type() {
 
 uci_get_by_cfgid() {
 	local ret=$(uci show $NAME.@$1[0].$2 | awk -F '.' '{print $2}' 2>/dev/null)
-	echo "${ret:=$3}"
+	echo ${ret:=$3}
 }
 
 get_host_ip() {
@@ -120,7 +120,7 @@ echolog() {
 add_cron() {
 	touch $CRON_FILE
 	sed -i '/ssrplus.log/d' $CRON_FILE
-	[ $(uci_get_by_type server_subscribe auto_update 0) -eq 1 ] && echo "$(uci_get_by_type server_subscribe auto_update_min_time) $(uci_get_by_type server_subscribe auto_update_day_time) * * $(uci_get_by_type server_subscribe auto_update_week_time) /usr/share/shadowsocksr/ssrplusupdate.sh >$LOG_FILE" >>$CRON_FILE
+	[ $(uci_get_by_type server_subscribe auto_update 0) -eq 1 ] && echo "0 $(uci_get_by_type server_subscribe auto_update_time) * * * /usr/share/shadowsocksr/ssrplusupdate.sh >$LOG_FILE" >>$CRON_FILE
 	crontab $CRON_FILE
 }
 

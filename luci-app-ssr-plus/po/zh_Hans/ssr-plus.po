@@ -596,36 +596,6 @@ msgstr "格式为 IP:PORT（默认：禁用）"
 msgid "Update time (every day)"
 msgstr "更新时间（每天）"
 
-msgid "Update Time (Every Week)"
-msgstr "更新时间（每周）"
-
-msgid "Update Interval (min)"
-msgstr "更新间隔 (分钟)"
-
-msgid "Every Day"
-msgstr "每天"
-
-msgid "Every Monday"
-msgstr "每周一"
-
-msgid "Every Tuesday"
-msgstr "每周二"
-
-msgid "Every Wednesday"
-msgstr "每周三"
-
-msgid "Every Thursday"
-msgstr "每周四"
-
-msgid "Every Friday"
-msgstr "每周五"
-
-msgid "Every Saturday"
-msgstr "每周六"
-
-msgid "Every Sunday"
-msgstr "每周日"
-
 msgid "Auto Update Server subscription, GFW list and CHN route"
 msgstr "自动更新服务器订阅、GFW 列表和中国大陆 IP 段"
 
