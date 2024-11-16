@@ -8,9 +8,8 @@ PKG_NAME:=neturl
 PKG_VERSION:=1.1-1
 PKG_RELEASE:=3
 
-FIXED_VERSION:=$(subst -,.,$(PKG_VERSION))
-PKG_SOURCE:=$(PKG_NAME)-$(subst .,,$(FIXED_VERSION)).tar.gz
-PKG_SOURCE_URL:=https://github.com/golgote/neturl/releases/download/neturl-$(subst .,,$(FIXED_VERSION))/
+PKG_SOURCE:=$(PKG_NAME)-$(subst -,.,$(PKG_VERSION)).tar.gz
+PKG_SOURCE_URL:=https://github.com/golgote/neturl/releases/download/$(PKG_VERSION)/$(PKG_SOURCE)?
 PKG_HASH:=25f3a94ba9f435ef1395555de2bf17d6f934d789fa515ed965405919e42be27b
 
 PKG_MAINTAINER:=Tianling Shen <cnsztl@immortalwrt.org>
