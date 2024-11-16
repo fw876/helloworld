@@ -9,7 +9,10 @@ require "luci.model.uci"
 local icount = 0
 local args = arg[1]
 local uci = luci.model.uci.cursor()
-local TMP_DNSMASQ_PATH = luci.sys.exec("find /tmp/dnsmasq.*/dnsmasq-ssrplus.d -type d -print 2>/dev/null"):gsub("%s+", "")
+-- Execute the Lua script and capture its output
+local TMP_DNSMASQ_CONF_OUTPUT = io.popen("lua /usr/share/shadowsocksr/dnsmasqconfdir.lua"):read("*a")
+-- Extract only the TMP_DNSMASQ_PATH value using a pattern
+local TMP_DNSMASQ_PATH = TMP_DNSMASQ_CONF_OUTPUT:match("TMP_DNSMASQ_PATH=['\"]([^\"]+)['\"]")
 local TMP_PATH = "/var/etc/ssrplus"
 -- match comments/title/whitelist/ip address/excluded_domain
 local comment_pattern = "^[!\\[@]+"
