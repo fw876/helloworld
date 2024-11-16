@@ -15,7 +15,11 @@ local TMP_PATH = "/var/etc/ssrplus"
 local comment_pattern = "^[!\\[@]+"
 local ip_pattern = "^%d+%.%d+%.%d+%.%d+"
 local domain_pattern = "([%w%-%_]+%.[%w%.%-%_]+)[%/%*]*"
-local excluded_domain = {"apple.com", "sina.cn", "sina.com.cn", "baidu.com", "byr.cn", "jlike.com", "weibo.com", "zhongsou.com", "youdao.com", "sogou.com", "so.com", "soso.com", "aliyun.com", "taobao.com", "jd.com", "qq.com"}
+local excluded_domain = {
+    "apple.com", "sina.cn", "sina.com.cn", "baidu.com", "byr.cn", "jlike.com", 
+    "weibo.com", "zhongsou.com", "youdao.com", "sogou.com", "so.com", "soso.com", 
+    "aliyun.com", "taobao.com", "jd.com", "qq.com"
+}
 -- gfwlist parameter
 local mydnsip = '127.0.0.1'
 local mydnsport = '5335'
