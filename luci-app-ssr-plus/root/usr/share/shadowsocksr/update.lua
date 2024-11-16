@@ -9,13 +9,20 @@ require "luci.model.uci"
 local icount = 0
 local args = arg[1]
 local uci = luci.model.uci.cursor()
-local TMP_DNSMASQ_PATH = luci.sys.exec("find /tmp/dnsmasq.*/dnsmasq-ssrplus.d -type d -print 2>/dev/null"):gsub("%s+", "")
+-- Execute the Lua script and capture its output
+local TMP_DNSMASQ_CONF_OUTPUT = io.popen("lua /usr/share/shadowsocksr/dnsmasqconfdir.lua"):read("*a")
+-- Extract only the TMP_DNSMASQ_PATH value using a pattern
+local TMP_DNSMASQ_PATH = TMP_DNSMASQ_CONF_OUTPUT:match("TMP_DNSMASQ_PATH=['\"]([^\"]+)['\"]")
 local TMP_PATH = "/var/etc/ssrplus"
 -- match comments/title/whitelist/ip address/excluded_domain
 local comment_pattern = "^[!\\[@]+"
 local ip_pattern = "^%d+%.%d+%.%d+%.%d+"
 local domain_pattern = "([%w%-%_]+%.[%w%.%-%_]+)[%/%*]*"
-local excluded_domain = {"apple.com", "sina.cn", "sina.com.cn", "baidu.com", "byr.cn", "jlike.com", "weibo.com", "zhongsou.com", "youdao.com", "sogou.com", "so.com", "soso.com", "aliyun.com", "taobao.com", "jd.com", "qq.com"}
+local excluded_domain = {
+    "apple.com", "sina.cn", "sina.com.cn", "baidu.com", "byr.cn", "jlike.com", 
+    "weibo.com", "zhongsou.com", "youdao.com", "sogou.com", "so.com", "soso.com", 
+    "aliyun.com", "taobao.com", "jd.com", "qq.com"
+}
 -- gfwlist parameter
 local mydnsip = '127.0.0.1'
 local mydnsport = '5335'
