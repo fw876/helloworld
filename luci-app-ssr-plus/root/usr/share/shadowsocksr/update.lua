@@ -9,13 +9,27 @@ require "luci.model.uci"
 local icount = 0
 local args = arg[1]
 local uci = luci.model.uci.cursor()
-local TMP_DNSMASQ_PATH = luci.sys.exec("find /tmp/dnsmasq.*/dnsmasq-ssrplus.d -type d -print 2>/dev/null"):gsub("%s+", "")
+
+-- 以下设置更新数据库至 DNSMASQ 路径
+-- 获取 DEFAULT_DNSMASQ_CFGID
+local DEFAULT_DNSMASQ_CFGID = uci:get_first("dhcp", "dnsmasq", ".name")
+-- 查找包含 conf-dir 选项的 dnsmasq.conf 文件路径
+local DNSMASQ_CONF_PATH = string.format("grep -l '^conf-dir=' /tmp/etc/dnsmasq.conf.%s*", DEFAULT_DNSMASQ_CFGID):gsub("%s+", "") -- 去除空白字符
+-- 获取 DNSMASQ_CONF_DIR
+local DNSMASQ_CONF_DIR = string.format("grep '^conf-dir=' %s | cut -d'=' -f2 | head -n 1", DNSMASQ_CONF_PATH):gsub("%s+", "") -- 去除空白字符
+-- 设置 TMP_DNSMASQ_PATH 路径
+local TMP_DNSMASQ_PATH = DNSMASQ_CONF_DIR .. "/dnsmasq-ssrplus.d"
+
 local TMP_PATH = "/var/etc/ssrplus"
 -- match comments/title/whitelist/ip address/excluded_domain
 local comment_pattern = "^[!\\[@]+"
 local ip_pattern = "^%d+%.%d+%.%d+%.%d+"
 local domain_pattern = "([%w%-%_]+%.[%w%.%-%_]+)[%/%*]*"
-local excluded_domain = {"apple.com", "sina.cn", "sina.com.cn", "baidu.com", "byr.cn", "jlike.com", "weibo.com", "zhongsou.com", "youdao.com", "sogou.com", "so.com", "soso.com", "aliyun.com", "taobao.com", "jd.com", "qq.com"}
+local excluded_domain = {
+    "apple.com", "sina.cn", "sina.com.cn", "baidu.com", "byr.cn", "jlike.com", 
+    "weibo.com", "zhongsou.com", "youdao.com", "sogou.com", "so.com", "soso.com", 
+    "aliyun.com", "taobao.com", "jd.com", "qq.com"
+}
 -- gfwlist parameter
 local mydnsip = '127.0.0.1'
 local mydnsport = '5335'
