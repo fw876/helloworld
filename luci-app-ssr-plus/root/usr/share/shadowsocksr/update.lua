@@ -10,15 +10,40 @@ local icount = 0
 local args = arg[1]
 local uci = luci.model.uci.cursor()
 
--- 以下设置更新数据库至 DNSMASQ 路径
--- 获取 DEFAULT_DNSMASQ_CFGID
+-- 以下设置更新数据库至 DNSMASQ 配置路径
+-- 获取 DNSMasq 配置 ID
 local DEFAULT_DNSMASQ_CFGID = uci:get_first("dhcp", "dnsmasq", ".name")
+
+if not DEFAULT_DNSMASQ_CFGID then
+    error("未找到默认的 DNSMasq 配置 ID")
+end
+
 -- 查找包含 conf-dir 选项的 dnsmasq.conf 文件路径
-local DNSMASQ_CONF_PATH = string.format("grep -l '^conf-dir=' /tmp/etc/dnsmasq.conf.%s*", DEFAULT_DNSMASQ_CFGID):gsub("%s+", "") -- 去除空白字符
--- 获取 DNSMASQ_CONF_DIR
-local DNSMASQ_CONF_DIR = string.format("grep '^conf-dir=' %s | cut -d'=' -f2 | head -n 1", DNSMASQ_CONF_PATH):gsub("%s+", "") -- 去除空白字符
--- 设置 TMP_DNSMASQ_PATH 路径
-local TMP_DNSMASQ_PATH = DNSMASQ_CONF_DIR .. "/dnsmasq-ssrplus.d"
+local DNSMASQ_CONF_PATH_CMD = string.format("grep -l '^conf-dir=' /tmp/etc/dnsmasq.conf.%s*", DEFAULT_DNSMASQ_CFGID)
+local DNSMASQ_CONF_PATH = io.popen(DNSMASQ_CONF_PATH_CMD):read("*l")
+
+if not DNSMASQ_CONF_PATH or DNSMASQ_CONF_PATH:match("^%s*$") then
+    error("无法找到包含 conf-dir 选项的 dnsmasq.conf 文件路径")
+end
+
+DNSMASQ_CONF_PATH = DNSMASQ_CONF_PATH:gsub("%s+", "") -- 去除空白字符
+
+-- 获取 DNSMASQ 配置路径
+local DNSMASQ_CONF_DIR_CMD = string.format("grep '^conf-dir=' %s | cut -d'=' -f2 | head -n 1", DNSMASQ_CONF_PATH)
+local DNSMASQ_CONF_DIR = io.popen(DNSMASQ_CONF_DIR_CMD):read("*l")
+
+if not DNSMASQ_CONF_DIR or DNSMASQ_CONF_DIR:match("^%s*$") then
+    error("无法提取 conf-dir 配置，请检查 dnsmasq.conf 文件内容")
+end
+
+DNSMASQ_CONF_DIR = DNSMASQ_CONF_DIR:gsub("%s+", "") -- 去除空白字符
+
+-- 设置 dnsmasq-ssrplus.d 目录路径，并去除路径末尾的斜杠
+local TMP_DNSMASQ_PATH = DNSMASQ_CONF_DIR:match("^(.-)/?$") .. "/dnsmasq-ssrplus.d"
+
+if not TMP_DNSMASQ_PATH or TMP_DNSMASQ_PATH:match("^%s*$") then
+    error("无法找到包含 dnsmasq 选项的 dnsmasq-ssrplus.d 目录路径")
+end
 
 local TMP_PATH = "/var/etc/ssrplus"
 -- match comments/title/whitelist/ip address/excluded_domain
