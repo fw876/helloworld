@@ -83,18 +83,6 @@ define Package/chinadns-ng
   DEPENDS:=@(aarch64||arm||i386||mips||mipsel||mips64||mips64el||x86_64)
 endef
 
-define Package/chinadns-ng/description
-ChinaDNS Next Generation, refactoring with epoll and ipset.
-endef
-
-define Package/chinadns-ng/conffiles
-/etc/config/chinadns-ng
-/etc/chinadns-ng/chnroute.txt
-/etc/chinadns-ng/chnroute6.txt
-/etc/chinadns-ng/gfwlist.txt
-/etc/chinadns-ng/chinalist.txt
-endef
-
 define Build/Compile
 endef
 
