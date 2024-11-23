@@ -259,11 +259,12 @@ function import_ssr_url(btn, urlname, sid) {
 			if (ssm.net == "tcp") {
 				if (ssm.type && ssm.type != "http") {
 					ssm.type = "none"
+				} else {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_host')[0].value = ssm.host;
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_path')[0].value = ssm.path;
 				}
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tcp_guise')[0].value = ssm.type;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tcp_guise')[0].dispatchEvent(event);
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_host')[0].value = ssm.host;
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_path')[0].value = ssm.path;
 			}
 			if (ssm.net == "ws") {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.ws_host')[0].value = ssm.host;
