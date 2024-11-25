@@ -944,7 +944,7 @@ if is_finded("xray") then
 	o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "raw", reality = true})
 
 	-- [[ uTLS ]]--
-	o = s:option(Value, "fingerprint", translate("Finger Print"))
+	o = s:option(ListValue, "fingerprint", translate("Finger Print"))
 	o.default = "chrome"
 	o:value("chrome", translate("chrome"))
 	o:value("firefox", translate("firefox"))
