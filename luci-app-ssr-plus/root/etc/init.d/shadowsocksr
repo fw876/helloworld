@@ -258,6 +258,14 @@ start_dns() {
 	fi
 	
 	if [ "$(uci_get_by_type global apple_optimization 1)" == "1" ]; then
+		local new_appledns="$(uci_get_by_type global apple_dns)"
+		if [ -n "$new_appledns" ]; then		
+			sed -i 's/[[:space:]]//g' /etc/ssrplus/applechina.conf #去除所有空白字符
+			local old_appledns=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' /etc/ssrplus/applechina.conf | sort -u)
+			if [ -n "$old_appledns" ] && [ "$old_appledns" != "$new_appledns" ]; then
+				sed -i "s,$(printf '%s' "$old_appledns"),$(printf '%s' "$new_appledns"),g" /etc/ssrplus/applechina.conf
+			fi
+		fi
 		echolog "Apple 域名中国大陆 CDN 的 优化规则正在加载。"
 		cp -f /etc/ssrplus/applechina.conf $TMP_DNSMASQ_PATH/
 		echolog "Apple 域名中国大陆 CDN 的 优化规则加载完毕。"
