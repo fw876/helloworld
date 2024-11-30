@@ -28,6 +28,16 @@ touch /etc/ssrplus/gfw_list.conf
 touch /etc/ssrplus/oversea_list.conf
 touch /etc/ssrplus/ad.conf
 touch /etc/config/shadowsocksr
+
+if [ -s "/etc/config/shadowsocksr" ]; then
+    if ! uci -q get shadowsocksr.@global_xray_fragment[0] > /dev/null; then
+        uci -q add shadowsocksr global_xray_fragment
+        uci -q set shadowsocksr.@global_xray_fragment[0].fragment='0'
+        uci -q set shadowsocksr.@global_xray_fragment[0].noise='0'
+        uci -q commit shadowsocksr
+    fi
+fi
+
 [ -s "/etc/config/shadowsocksr" ] || /etc/init.d/shadowsocksr reset
 
 sed -i "s/option type 'vmess'/option type 'v2ray'\n\toption v2ray_protocol 'vmess'/g" /etc/config/shadowsocksr
