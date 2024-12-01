@@ -30,12 +30,23 @@ touch /etc/ssrplus/ad.conf
 touch /etc/config/shadowsocksr
 
 if [ -s "/etc/config/shadowsocksr" ]; then
+    if uci -q get shadowsocksr.@server_subscribe[0].auto_update_time > /dev/null; then
+        uci -q delete shadowsocksr.@server_subscribe[0].auto_update_time
+    fi
+
+    if ! uci -q get shadowsocksr.@server_subscribe[0].auto_update_week_time > /dev/null; then
+        uci -q set shadowsocksr.@server_subscribe[0].auto_update_week_time='*'
+        uci -q set shadowsocksr.@server_subscribe[0].auto_update_day_time='2'
+        uci -q set shadowsocksr.@server_subscribe[0].auto_update_min_time='0'
+    fi
+
     if ! uci -q get shadowsocksr.@global_xray_fragment[0] > /dev/null; then
         uci -q add shadowsocksr global_xray_fragment
         uci -q set shadowsocksr.@global_xray_fragment[0].fragment='0'
         uci -q set shadowsocksr.@global_xray_fragment[0].noise='0'
-        uci -q commit shadowsocksr
     fi
+
+    uci -q commit shadowsocksr
 fi
 
 [ -s "/etc/config/shadowsocksr" ] || /etc/init.d/shadowsocksr reset
