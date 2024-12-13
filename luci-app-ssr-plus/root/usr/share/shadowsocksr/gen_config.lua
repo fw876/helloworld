@@ -28,7 +28,7 @@ function vmess_vless()
 						alterId = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and tonumber(server.alter_id) or nil,
 						security = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and server.security or nil,
 						encryption = (server.v2ray_protocol == "vless") and server.vless_encryption or nil,
-						flow = ((server.xtls == '1') or (server.tls == '1') or (server.reality == '1')) and server.tls_flow or nil
+						flow = (((server.xtls == '1') or (server.tls == '1') or (server.reality == '1')) and server.tls_flow ~= "none") and server.tls_flow or nil
 					}
 				}
 			}
@@ -220,26 +220,26 @@ end
 					fingerprint = server.fingerprint,
 					serverName = server.tls_host
 				} or nil,
-				tcpSettings = (server.transport == "tcp" and server.tcp_guise == "http") and {
+				tcpSettings = (server.transport == "tcp") and {
 					-- tcp
 					header = {
-						type = server.tcp_guise,
-						request = {
+						type = server.tcp_guise or "none",
+						request = (server.tcp_guise == "http") and {
 							-- request
 							path = {server.http_path} or {"/"},
 							headers = {Host = {server.http_host} or {}}
-						}
+						} or nil
 					}
 				} or nil,
-				rawSettings = (server.transport == "raw" and server.raw_guise == "http") and {
+				rawSettings = (server.transport == "raw") and {
 					-- raw
 					header = {
-						type = server.raw_guise,
-						request = {
+						type = server.raw_guise or "none",
+						request = (server.raw_guise == "http") and {
 							-- request
 							path = {server.http_path} or {"/"},
 							headers = {Host = {server.http_host} or {}}
-						}
+						} or nil
 					}
 				} or nil,
 				kcpSettings = (server.transport == "kcp") and {

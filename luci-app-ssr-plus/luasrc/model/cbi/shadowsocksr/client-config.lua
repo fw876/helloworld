@@ -935,7 +935,12 @@ if is_finded("xray") then
 	-- [[ XTLS ]]--
 	o = s:option(ListValue, "tls_flow", translate("Flow"))
 	for _, v in ipairs(tls_flows) do
-		o:value(v, translate(v))
+		if v == "none" then
+		   o.default = "none"
+		   o:value("none", translate("none"))
+		else
+		    o:value(v, translate(v))
+		end
 	end
 	o.rmempty = true
 	o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "tcp", tls = true})
