@@ -310,7 +310,11 @@ function import_ssr_url(btn, urlname, sid) {
 			function setElementValue(name, value) {
 				const element = document.getElementsByName(name)[0];
 				if (element) {
-					element.value = value;
+					if (element.type === "checkbox" || element.type === "radio") {
+						element.checked = value === true;
+					} else {
+						element.value = value;
+					}
 				}
 			}
 			function dispatchEventIfExists(name, event) {
@@ -335,11 +339,8 @@ function import_ssr_url(btn, urlname, sid) {
 			dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.transport', event);
 			setElementValue('cbid.shadowsocksr.' + sid + '.vless_encryption', params.get("encryption") || "none");
 			if ([ "tls", "xtls", "reality" ].includes(params.get("security"))) {
-				const securityElement = document.getElementsByName('cbid.shadowsocksr.' + sid + '.' + params.get("security"))[0];
-				if (securityElement) {
-					securityElement.checked = true;
-					securityElement.dispatchEvent(event);
-				}
+				setElementValue('cbid.shadowsocksr.' + sid + '.' + params.get("security"), true);
+				dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.' + params.get("security"), event);
 
 				if (params.get("security") === "reality") {
 					setElementValue('cbid.shadowsocksr.' + sid + '.reality_publickey', params.get("pbk") ? decodeURIComponent(params.get("pbk")) : "");
