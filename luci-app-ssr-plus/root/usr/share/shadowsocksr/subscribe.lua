@@ -400,15 +400,9 @@ local function processData(szType, content)
 		elseif result.transport == "grpc" then
 			result.serviceName = params.serviceName
 			result.grpc_mode = params.mode or "gun"
-		elseif result.transport == "tcp" then
+		elseif result.transport == "tcp" or result.transport == "raw" then
 			result.tcp_guise = params.headerType or "none"
 			if result.tcp_guise == "http" then
-				result.tcp_host = params.host and UrlDecode(params.host) or nil
-				result.tcp_path = params.path and UrlDecode(params.path) or nil
-			end
-		elseif result.transport == "raw" then
-			result.raw_guise = params.headerType or "none"
-			if result.raw_guise == "http" then
 				result.tcp_host = params.host and UrlDecode(params.host) or nil
 				result.tcp_path = params.path and UrlDecode(params.path) or nil
 			end

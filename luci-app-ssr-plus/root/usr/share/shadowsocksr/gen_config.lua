@@ -220,22 +220,11 @@ end
 					fingerprint = server.fingerprint,
 					serverName = server.tls_host
 				} or nil,
-				tcpSettings = (server.transport == "tcp") and {
+				rawSettings = (server.transport == "raw" or server.transport == "tcp") and {
 					-- tcp
 					header = {
 						type = server.tcp_guise or "none",
 						request = (server.tcp_guise == "http") and {
-							-- request
-							path = {server.http_path} or {"/"},
-							headers = {Host = {server.http_host} or {}}
-						} or nil
-					}
-				} or nil,
-				rawSettings = (server.transport == "raw") and {
-					-- raw
-					header = {
-						type = server.raw_guise or "none",
-						request = (server.raw_guise == "http") and {
 							-- request
 							path = {server.http_path} or {"/"},
 							headers = {Host = {server.http_host} or {}}

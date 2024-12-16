@@ -333,7 +333,7 @@ function import_ssr_url(btn, urlname, sid) {
 			setElementValue('cbid.shadowsocksr.' + sid + '.vmess_id', url.username);
 			setElementValue('cbid.shadowsocksr.' + sid + '.transport', 
 				params.get("type") === "http" ? "h2" : 
-				(params.get("type") === "raw" ? "raw" : 
+				(["tcp", "raw"].includes(params.get("type")) ? "raw" :  
 				(params.get("type") || "tcp"))
 			);
 			dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.transport', event);
@@ -392,16 +392,9 @@ function import_ssr_url(btn, urlname, sid) {
 				setElementValue('cbid.shadowsocksr.' + sid + '.grpc_mode', params.get("mode") || "gun");
 				break;
 			case "tcp":
+			case "raw":
 				setElementValue('cbid.shadowsocksr.' + sid + '.tcp_guise', params.get("headerType") || "none");
 				dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.tcp_guise', event);
-				if (params.get("headerType") === "http") {
-					setElementValue('cbid.shadowsocksr.' + sid + '.http_host', params.get("host") ? decodeURIComponent(params.get("host")) : "");
-					setElementValue('cbid.shadowsocksr.' + sid + '.http_path', params.get("path") ? decodeURIComponent(params.get("path")) : "");
-				}
-				break;
-			case "raw":
-				setElementValue('cbid.shadowsocksr.' + sid + '.raw_guise', params.get("headerType") || "none");
-				dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.raw_guise', event);
 				if (params.get("headerType") === "http") {
 					setElementValue('cbid.shadowsocksr.' + sid + '.http_host', params.get("host") ? decodeURIComponent(params.get("host")) : "");
 					setElementValue('cbid.shadowsocksr.' + sid + '.http_path', params.get("path") ? decodeURIComponent(params.get("path")) : "");
