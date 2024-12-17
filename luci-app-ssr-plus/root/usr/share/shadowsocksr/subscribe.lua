@@ -172,6 +172,9 @@ local function processData(szType, content)
 		result.v2ray_protocol = 'vmess'
 		result.server = info.add
 		result.server_port = info.port
+		if info.net == "tcp" then
+			info.net = "raw"
+		end
 		result.transport = info.net
 		result.alter_id = info.aid
 		result.vmess_id = info.id
@@ -194,7 +197,7 @@ local function processData(szType, content)
 			result.h2_host = info.host
 			result.h2_path = info.path
 		end
-		if info.net == 'tcp' then
+		if info.net == 'raw' or info.net == 'tcp' then
 			if info.type and info.type ~= "http" then
 				info.type = "none"
 			end

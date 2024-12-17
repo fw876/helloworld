@@ -254,11 +254,12 @@ function import_ssr_url(btn, urlname, sid) {
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = ssm.port;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.alter_id')[0].value = ssm.aid;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.vmess_id')[0].value = ssm.id;
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].value = ssm.net;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].value = 
+				(ssm.net === "raw" || ssm.net === "tcp") ? "raw" : ssm.net;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].dispatchEvent(event);
-			if (ssm.net == "tcp") {
+			if (ssm.net === "raw" || ssm.net === "tcp") {
 				if (ssm.type && ssm.type != "http") {
-					ssm.type = "none"
+					ssm.type = "none";
 				} else {
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_host')[0].value = ssm.host;
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_path')[0].value = ssm.path;
@@ -294,8 +295,10 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].dispatchEvent(event);
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = ssm.sni || ssm.host;
 			}
+			if (ssm.mux !== undefined) {
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].checked = true;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].dispatchEvent(event);
+			}
 			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "vless":
