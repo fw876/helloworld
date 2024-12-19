@@ -245,10 +245,7 @@ end
 				} or nil,
 				wsSettings = (server.transport == "ws") and (server.ws_path or server.ws_host or server.tls_host) and {
 					-- ws
-					headers = (server.ws_host or server.tls_host) and {
-						-- headers
-						Host = server.ws_host or server.tls_host
-					} or nil,
+					Host = server.ws_host or server.tls_host or nil,
 					path = server.ws_path,
 					maxEarlyData = tonumber(server.ws_ed) or nil,
 					earlyDataHeaderName = server.ws_ed_header or nil
