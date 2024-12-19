@@ -1,5 +1,6 @@
 require "luci.ip"
 require "nixio.fs"
+require "luci.sys"
 local m, s, o
 
 m = Map("shadowsocksr")
@@ -138,6 +139,13 @@ o.write = function(self, section, value)
 end
 o.remove = function(self, section, value)
 	nixio.fs.writefile(netflixconf, "")
+end
+
+if luci.sys.call('[ -f "/www/luci-static/resources/uci.js" ]') == 0 then
+	m.apply_on_parse = true
+	function m.on_apply(self)
+		luci.sys.call("/etc/init.d/shadowsocksr reload > /dev/null 2>&1 &")
+	end
 end
 
 return m
