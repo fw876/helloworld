@@ -1,0 +1,43 @@
+log:
+    level: info
+plugins:
+    - tag: lazy_cache
+      type: cache
+      args:
+        size: 8000
+        lazy_cache_ttl: 86400
+
+    - tag: forward_google
+      type: forward
+      args:
+        concurrent: 2
+        upstreams:
+
+    - tag: main_sequence_disable_IPv6
+      type: sequence
+      args:
+        - exec: $lazy_cache
+        - exec: prefer_ipv4
+        - exec: $forward_google
+        - matches: 
+          - qtype 28 65
+          exec: reject 0
+
+    - tag: main_sequence_with_IPv6
+      type: sequence
+      args:
+        - exec: $lazy_cache
+        - exec: $forward_google
+
+    - tag: udp_server
+      type: udp_server
+      args:
+        entry: DNS_MODE
+        listen: 0.0.0.0:DNS_PORT
+      
+    - tag: tcp_server
+      type: tcp_server
+      args:
+        entry: DNS_MODE
+        listen: 0.0.0.0:DNS_PORT
+

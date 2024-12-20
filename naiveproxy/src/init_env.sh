@@ -41,31 +41,38 @@ is_official_build=true
 exclude_unwind_tables=true
 enable_resource_allowlist_generation=false
 symbol_level=0
+
 is_clang=true
 use_sysroot=false
 
-use_allocator=\"none\"
-use_allocator_shim=false
-use_partition_alloc=false
-
 fatal_linker_warnings=false
 treat_warnings_as_errors=false
+
+is_cronet_build=true
+chrome_pgo_phase=2
 
 enable_base_tracing=false
 use_udev=false
 use_aura=false
 use_ozone=false
-use_x11=false
 use_gio=false
+use_gtk=false
 use_platform_icu_alternatives=true
 use_glib=false
 
 disable_file_support=true
 enable_websockets=false
 use_kerberos=false
+disable_file_support=true
+disable_zstd_filter=false
 enable_mdns=false
 enable_reporting=false
 include_transport_security_state_preload_list=false
+enable_device_bound_sessions=false
+use_nss_certs=false
+
+enable_backup_ref_ptr_support=false
+enable_dangling_raw_ptr_checks=false
 
 target_os=\"openwrt\"
 target_cpu=\"${naive_arch}\"
@@ -85,12 +92,31 @@ case "${target_arch}" in
 	else
 		naive_flags+=" arm_float_abi=\"soft\" arm_use_neon=false"
 	fi
+
+	# LLVM does not accept muslgnueabi as the target triple environment
+	if [ -d "$toolchain_dir/lib/gcc/arm-openwrt-linux-muslgnueabi" ] && [ ! -d "$toolchain_dir/lib/gcc/arm-openwrt-linux-musleabi" ]; then
+		ln -sf "$toolchain_dir/lib/gcc/arm-openwrt-linux-muslgnueabi" "$toolchain_dir/lib/gcc/arm-openwrt-linux-musleabi"
+	fi
 	;;
 "arm64")
 	[ -n "${cpu_type}" ] && naive_flags+=" arm_cpu=\"${cpu_type}\""
 	;;
 "mipsel"|"mips64el")
-	naive_flags+=" use_gold=false use_thin_lto=false use_lld=false chrome_pgo_phase=0 mips_arch_variant=\"r2\""
-	[ "${target_arch}" == "mipsel" ] && naive_flags+=" mips_float_abi=\"soft\" mips_tune=\"${cpu_type}\""
+	naive_flags+=" use_thin_lto=false chrome_pgo_phase=0"
+	if [ -z "${cpu_type}" ] || [ "${cpu_type}" == "mips32" ]; then
+		naive_flags+=" mips_arch_variant=\"r1\""
+	else
+		naive_flags+=" mips_arch_variant=\"r2\""
+	fi
+	if [ "${target_arch}" == "mipsel" ]; then
+		if [ "${cpu_subtype}" == "24kf" ]; then
+			naive_flags+=" mips_float_abi=\"hard\""
+		else
+			naive_flags+=" mips_float_abi=\"soft\""
+		fi
+	fi
+	;;
+"x86_64")
+	naive_flags+=" use_cfi_icall=false"
 	;;
 esac

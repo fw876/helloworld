@@ -1,16 +1,21 @@
 #!/bin/sh
+
 uci -q batch <<-EOF >/dev/null
-delete ucitrack.@shadowsocksr[-1]
-add ucitrack shadowsocksr
-set ucitrack.@shadowsocksr[-1].init=shadowsocksr
-commit ucitrack
-delete firewall.shadowsocksr
-set firewall.shadowsocksr=include
-set firewall.shadowsocksr.type=script
-set firewall.shadowsocksr.path=/var/etc/shadowsocksr.include
-set firewall.shadowsocksr.reload=1
-commit firewall
+	[ -e "/etc/config/ucitrack" ] && {
+	delete ucitrack.@shadowsocksr[-1]
+	add ucitrack shadowsocksr
+	set ucitrack.@shadowsocksr[-1].init=shadowsocksr
+	commit ucitrack
+	}
+
+	delete firewall.shadowsocksr
+	set firewall.shadowsocksr=include
+	set firewall.shadowsocksr.type=script
+	set firewall.shadowsocksr.path=/var/etc/shadowsocksr.include
+	set firewall.shadowsocksr.reload=1
+	commit firewall
 EOF
+
 rm -rf /etc/config/shadowsocksr-opkg /etc/ssrplus/*opkg
 touch /etc/ssrplus/china_ssr.txt
 touch /etc/ssrplus/deny.list
@@ -23,15 +28,41 @@ touch /etc/ssrplus/gfw_list.conf
 touch /etc/ssrplus/oversea_list.conf
 touch /etc/ssrplus/ad.conf
 touch /etc/config/shadowsocksr
-if [ ! -s "/etc/config/shadowsocksr" ]; then
-/etc/init.d/shadowsocksr reset
+
+if [ -s "/etc/config/shadowsocksr" ]; then
+    if uci -q get shadowsocksr.@server_subscribe[0].auto_update_time > /dev/null; then
+        uci -q delete shadowsocksr.@server_subscribe[0].auto_update_time
+    fi
+
+    if ! uci -q get shadowsocksr.@server_subscribe[0].auto_update_week_time > /dev/null; then
+        uci -q set shadowsocksr.@server_subscribe[0].auto_update_week_time='*'
+        uci -q set shadowsocksr.@server_subscribe[0].auto_update_day_time='2'
+        uci -q set shadowsocksr.@server_subscribe[0].auto_update_min_time='0'
+    fi
+
+    if ! uci -q get shadowsocksr.@global_xray_fragment[0] > /dev/null; then
+        uci -q add shadowsocksr global_xray_fragment
+        uci -q set shadowsocksr.@global_xray_fragment[0].fragment='0'
+        uci -q set shadowsocksr.@global_xray_fragment[0].noise='0'
+    fi
+
+    uci -q commit shadowsocksr
 fi
-sed -i "s/option type 'vmess'"/"option type 'v2ray'\n\toption v2ray_protocol 'vmess'/g" /etc/config/shadowsocksr
-sed -i "s/option type 'vless'"/"option type 'v2ray'\n\toption v2ray_protocol 'vless'/g" /etc/config/shadowsocksr
+
+[ -s "/etc/config/shadowsocksr" ] || /etc/init.d/shadowsocksr reset
+
+sed -i "s/option type 'vmess'/option type 'v2ray'\n\toption v2ray_protocol 'vmess'/g" /etc/config/shadowsocksr
+sed -i "s/option type 'vless'/option type 'v2ray'\n\toption v2ray_protocol 'vless'/g" /etc/config/shadowsocksr
+sed -i "s/option encrypt_method_v2ray_ss/option encrypt_method_ss/g" /etc/config/shadowsocksr
+sed -i "s/option xtls/option tls/g" /etc/config/shadowsocksr
+sed -i "/option vless_flow/d" /etc/config/shadowsocksr
+sed -i "/option fingerprint 'disable'/d" /etc/config/shadowsocksr
+
 if [ -s "/etc/uwsgi/vassals/luci-webui.ini" ];then
 	limit=$(cat /etc/uwsgi/vassals/luci-webui.ini  | grep -Eo "limit-as.*"|grep -Eo "[0-9]+")
 	[ $limit -lt 5000 ] && sed -i '/limit-as/c\limit-as = 5000' /etc/uwsgi/vassals/luci-webui.ini && \
 	/etc/init.d/uwsgi restart
 fi
+
 rm -rf /tmp/luci-modulecache /tmp/luci-indexcache
 exit 0
