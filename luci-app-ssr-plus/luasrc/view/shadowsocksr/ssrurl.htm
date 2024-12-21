@@ -217,6 +217,7 @@ function import_ssr_url(btn, urlname, sid) {
 		case "trojan":
 			try {
 				var url = new URL("http://" + ssu[1]);
+				var params = url.searchParams;
 			} catch(e) {
 				alert(e);
 				return false;
