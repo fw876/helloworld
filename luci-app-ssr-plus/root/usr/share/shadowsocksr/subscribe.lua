@@ -319,6 +319,7 @@ local function processData(szType, content)
 			result.server = nil
 		end
 	elseif szType == "trojan" then
+		local params = {}
 		local idx_sp = 0
 		local alias = ""
 		if content:find("#") then
@@ -327,20 +328,27 @@ local function processData(szType, content)
 		end
 		local info = content:sub(1, idx_sp - 1)
 		local hostInfo = split(info, "@")
-		local host = split(hostInfo[2], ":")
 		local userinfo = hostInfo[1]
 		local password = userinfo
+		
+		-- 分离服务器地址和端口
+		local host = split(hostInfo[2], ":")
+		local server = host[1]
+		local port = host[2]
+
 		result.alias = UrlDecode(alias)
 		result.type = v2_tj
 		result.v2ray_protocol = "trojan"
-		result.server = host[1]
+		result.server = server
+		result.password = password
+
 		-- 按照官方的建议 默认验证ssl证书
 		result.insecure = "0"
 		result.tls = "1"
-		if host[2]:find("?") then
-			local query = split(host[2], "?")
+
+		if port:find("?") then
+			local query = split(port, "?")
 			result.server_port = query[1]
-			local params = {}
 			for _, v in pairs(split(query[2], '&')) do
 				local t = split(v, '=')
 				params[t[1]] = t[2]
@@ -349,10 +357,62 @@ local function processData(szType, content)
 				-- 未指定peer（sni）默认使用remote addr
 				result.tls_host = params.sni
 			end
+
+			if params.allowInsecure then
+				-- 处理 insecure 参数
+				result.insecure = params.allowInsecure
+			end
 		else
-			result.server_port = host[2]
+			result.server_port = port
 		end
-		result.password = password
+
+		if v2_tj ~= "trojan" then
+			if params.fp then
+				-- 处理 fingerprint 参数
+				result.fingerprint = params.fp
+			end
+			-- 处理传输协议
+			result.transport = params.type or "tcp" -- 默认传输协议为 tcp
+			if result.transport == "tcp" then
+				result.transport = "raw"
+			end
+			if result.transport == "ws" then
+				result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+				result.ws_path = params.path and UrlDecode(params.path) or "/"
+			elseif result.transport == "httpupgrade" then
+				result.httpupgrade_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+				result.httpupgrade_path = params.path and UrlDecode(params.path) or "/"
+			elseif result.transport == "splithttp" then
+				result.splithttp_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+				result.splithttp_path = params.path and UrlDecode(params.path) or "/"
+			elseif result.transport == "http" or result.transport == "h2" then
+				result.transport = "h2"
+				result.h2_host = params.host and UrlDecode(params.host) or nil
+				result.h2_path = params.path and UrlDecode(params.path) or nil
+			elseif result.transport == "kcp" then
+				result.kcp_guise = params.headerType or "none"
+				result.seed = params.seed
+				result.mtu = 1350
+				result.tti = 50
+				result.uplink_capacity = 5
+				result.downlink_capacity = 20
+				result.read_buffer_size = 2
+				result.write_buffer_size = 2
+			elseif result.transport == "quic" then
+				result.quic_guise = params.headerType or "none"
+				result.quic_security = params.quicSecurity or "none"
+				result.quic_key = params.key
+			elseif result.transport == "grpc" then
+				result.serviceName = params.serviceName
+				result.grpc_mode = params.mode or "gun"
+			elseif result.transport == "tcp" or result.transport == "raw" then
+				result.tcp_guise = params.headerType and params.headerType ~= "" and params.headerType or "none"
+				if result.tcp_guise == "http" then
+					result.tcp_host = params.host and UrlDecode(params.host) or nil
+					result.tcp_path = params.path and UrlDecode(params.path) or nil
+				end
+			end
+		end
 	elseif szType == "vless" then
 		local url = URL.parse("http://" .. content)
 		local params = url.query
