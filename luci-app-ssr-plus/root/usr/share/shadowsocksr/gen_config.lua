@@ -283,8 +283,9 @@ end
 					initial_windows_size = tonumber(server.initial_windows_size) or nil
 				} or nil,
 				sockopt = {
-					tcpMptcp = (server.mptcp == "1") and true or false, -- MPTCP
-					tcpNoDelay = (server.mptcp == "1") and true or false, -- MPTCP
+					mark = 250,
+					tcpMptcp = (server.mptcp == "1") and true or nil, -- MPTCP
+					tcpNoDelay = (server.mptcp == "1") and true or nil, -- MPTCP
 					tcpcongestion = server.custom_tcpcongestion, -- 连接服务器节点的 TCP 拥塞控制算法
 					dialerProxy = (xray_fragment.fragment == "1" or xray_fragment.noise == "1") and "dialerproxy" or nil
 				}
@@ -321,8 +322,10 @@ if xray_fragment.fragment ~= "0" or (xray_fragment.noise ~= "0" and xray_noise.e
 		},
 		streamSettings = {
 			sockopt = {
-			tcpMptcp = (server.mptcp == "1") and true or false, -- MPTCP
-			tcpNoDelay = (server.mptcp == "1") and true or false -- MPTCP
+			mark = 250,
+			tcpMptcp = (server.mptcp == "1") and true or nil, -- MPTCP
+			tcpNoDelay = (server.mptcp == "1") and true or nil, -- MPTCP
+			tcpcongestion = server.custom_tcpcongestion -- 连接服务器节点的 TCP 拥塞控制算法
 			}
 		}
 	})
