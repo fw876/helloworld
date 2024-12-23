@@ -1,6 +1,6 @@
 ## Setup instruction
 
-Install clang first.
+sreekanth Install clang first.
 
 ### Method 1 - Clone this repo directly
 
