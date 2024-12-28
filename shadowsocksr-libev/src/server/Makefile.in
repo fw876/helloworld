@@ -128,7 +128,7 @@ ss_check_DEPENDENCIES = $(am__DEPENDENCIES_2)
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
 am__v_lt_0 = --silent
-am__v_lt_1 = 
+am__v_lt_1 =
 ss_check_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(ss_check_CFLAGS) \
 	$(CFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
@@ -153,11 +153,11 @@ am__v_P_1 = :
 AM_V_GEN = $(am__v_GEN_@AM_V@)
 am__v_GEN_ = $(am__v_GEN_@AM_DEFAULT_V@)
 am__v_GEN_0 = @echo "  GEN     " $@;
-am__v_GEN_1 = 
+am__v_GEN_1 =
 AM_V_at = $(am__v_at_@AM_V@)
 am__v_at_ = $(am__v_at_@AM_DEFAULT_V@)
 am__v_at_0 = @
-am__v_at_1 = 
+am__v_at_1 =
 DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/auto/depcomp
 am__depfiles_maybe = depfiles
@@ -171,7 +171,7 @@ LTCOMPILE = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 AM_V_CC = $(am__v_CC_@AM_V@)
 am__v_CC_ = $(am__v_CC_@AM_DEFAULT_V@)
 am__v_CC_0 = @echo "  CC      " $@;
-am__v_CC_1 = 
+am__v_CC_1 =
 CCLD = $(CC)
 LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
@@ -179,7 +179,7 @@ LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 AM_V_CCLD = $(am__v_CCLD_@AM_V@)
 am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
-am__v_CCLD_1 = 
+am__v_CCLD_1 =
 SOURCES = $(ss_check_SOURCES) $(ss_server_SOURCES)
 DIST_SOURCES = $(ss_check_SOURCES) $(ss_server_SOURCES)
 am__can_run_installinfo = \
@@ -351,7 +351,7 @@ sni_src = http.c \
           tls.c \
           rule.c
 
-ss_check_SOURCES = check.c 
+ss_check_SOURCES = check.c
 ss_server_SOURCES = utils.c \
                     netutils.c \
                     jconf.c \
@@ -366,7 +366,7 @@ ss_server_SOURCES = utils.c \
 
 ss_check_LDADD = $(SS_COMMON_LIBS)
 ss_server_LDADD = $(SS_COMMON_LIBS) $(am__append_4) $(am__append_5)
-ss_check_CFLAGS = $(AM_CFLAGS) 
+ss_check_CFLAGS = $(AM_CFLAGS)
 ss_server_CFLAGS = $(AM_CFLAGS) -DMODULE_REMOTE
 all: all-am
 
@@ -451,11 +451,11 @@ clean-binPROGRAMS:
 	echo " rm -f" $$list; \
 	rm -f $$list
 
-ss-check$(EXEEXT): $(ss_check_OBJECTS) $(ss_check_DEPENDENCIES) $(EXTRA_ss_check_DEPENDENCIES) 
+ss-check$(EXEEXT): $(ss_check_OBJECTS) $(ss_check_DEPENDENCIES) $(EXTRA_ss_check_DEPENDENCIES)
 	@rm -f ss-check$(EXEEXT)
 	$(AM_V_CCLD)$(ss_check_LINK) $(ss_check_OBJECTS) $(ss_check_LDADD) $(LIBS)
 
-ss-server$(EXEEXT): $(ss_server_OBJECTS) $(ss_server_DEPENDENCIES) $(EXTRA_ss_server_DEPENDENCIES) 
+ss-server$(EXEEXT): $(ss_server_OBJECTS) $(ss_server_DEPENDENCIES) $(EXTRA_ss_server_DEPENDENCIES)
 	@rm -f ss-server$(EXEEXT)
 	$(AM_V_CCLD)$(ss_server_LINK) $(ss_server_OBJECTS) $(ss_server_LDADD) $(LIBS)
 
