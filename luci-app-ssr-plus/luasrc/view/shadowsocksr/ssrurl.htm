@@ -217,8 +217,9 @@ function import_ssr_url(btn, urlname, sid) {
 		case "trojan":
 			try {
 				var url = new URL("http://" + ssu[1]);
+				var params = url.searchParams;
 			} catch(e) {
-				alert(e)
+				alert(e);
 				return false;
 			}
 
@@ -232,7 +233,65 @@ function import_ssr_url(btn, urlname, sid) {
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.password')[0].value = decodeURIComponent(url.username);
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].checked = true;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].dispatchEvent(event);
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = url.searchParams.get("sni");
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.fingerprint')[0].value = params.get("fp") || "";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = params.get("sni");
+			if (params.get("allowInsecure") === "1") {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].checked = true; // 设置 insecure 为 true
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].dispatchEvent(event); // 触发事件
+			}
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].value = 
+				params.get("type") == "http" ? "h2" : 
+				(["tcp", "raw"].includes(params.get("type")) ? "raw" : 
+				(params.get("type") || "raw"));
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].dispatchEvent(event);
+			switch (params.get("type")) {
+			case "ws":
+				if (params.get("security") !== "tls") {
+					setElementValue('cbid.shadowsocksr.' + sid + '.ws_host', params.get("host") ? decodeURIComponent(params.get("host")) : "");
+				}
+				setElementValue('cbid.shadowsocksr.' + sid + '.ws_path', params.get("path") ? decodeURIComponent(params.get("path")) : "/");
+				break;
+			case "httpupgrade":
+				if (params.get("security") !== "tls") {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.httpupgrade_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
+				}
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.httpupgrade_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "/";
+				break;
+			case "splithttp":
+				if (params.get("security") !== "tls") {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.splithttp_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
+				}
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.splithttp_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "/";
+				break;
+			case "kcp":
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.kcp_guise')[0].value = params.get("headerType") || "none";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.seed')[0].value = params.get("seed") || "";
+				break;
+			case "http":
+			/* this is non-standard, bullshit */
+			case "h2":
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.h2_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.h2_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "";
+				break;
+			case "quic":
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.quic_guise')[0].value = params.get("headerType") || "none";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.quic_security')[0].value = params.get("quicSecurity") || "none";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.quic_key')[0].value = params.get("key") || "";
+				break;
+			case "grpc":
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.serviceName')[0].value = params.get("serviceName") || "";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.grpc_mode')[0].value = params.get("mode") || "gun";
+				break;
+			case "raw":
+			case "tcp":
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tcp_guise')[0].value = params.get("headerType") || "none";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tcp_guise')[0].dispatchEvent(event);
+				if (params.get("headerType") === "http") {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "";
+				}
+				break;
+			}
 
 			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
@@ -306,7 +365,7 @@ function import_ssr_url(btn, urlname, sid) {
 				var url = new URL("http://" + ssu[1]);
 				var params = url.searchParams;
 			} catch(e) {
-				alert(e)
+				alert(e);
 				return false;
 			}
 			// Check if the elements exist before trying to modify them
@@ -336,7 +395,7 @@ function import_ssr_url(btn, urlname, sid) {
 			setElementValue('cbid.shadowsocksr.' + sid + '.vmess_id', url.username);
 			setElementValue('cbid.shadowsocksr.' + sid + '.transport', 
 				params.get("type") === "http" ? "h2" : 
-				(["tcp", "raw"].includes(params.get("type")) ? "raw" :  
+				(["tcp", "raw"].includes(params.get("type")) ? "raw" : 
 				(params.get("type") || "tcp"))
 			);
 			dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.transport', event);
