@@ -377,6 +377,12 @@ msgstr "强制走代理"
 msgid "UDP Relay"
 msgstr "UDP 中继"
 
+msgid "Restart ShadowSocksR Plus+"
+msgstr "重启 ShadowSocksR Plus+"
+
+msgid "Restart Service"
+msgstr "重启服务"
+
 msgid "Google Connectivity"
 msgstr "【谷歌】连通性检查"
 
