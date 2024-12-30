@@ -1,0 +1,20 @@
+From 445a484de9c9bf801572d970f45ad0e11a18e35d Mon Sep 17 00:00:00 2001
+From: MoetaYuko <loli@yuko.moe>
+Date: Sun, 31 Mar 2024 19:06:59 +0800
+Subject: [PATCH] shadowsocksr-libev: fix use-after-free due to a typo (#193)
+
+---
+ shadowsocksr-libev/src/server/server.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/server/server.c
++++ b/server/server.c
+@@ -1943,7 +1943,7 @@ main(int argc, char **argv)
+             memcpy(text, protocol, strlen(protocol) - 11);
+             int length = strlen(protocol) - 11;
+             free(protocol);
+-            obfs = (char*)malloc(length);
++            protocol = (char*)malloc(length);
+             memset(protocol, 0x00, length);
+             memcpy(protocol, text, length);
+             LOGI("protocol compatible enable, %s", protocol);

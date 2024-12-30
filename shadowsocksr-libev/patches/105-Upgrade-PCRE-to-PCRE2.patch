@@ -14,8 +14,6 @@ Signed-off-by: sbwml <984419930@qq.com>
  delete mode 100644 m4/pcre.m4
  create mode 100644 m4/pcre2.m4
 
-diff --git a/configure.ac b/configure.ac
-index f9c51ab..0513db0 100755
 --- a/configure.ac
 +++ b/configure.ac
 @@ -20,10 +20,10 @@ AC_DISABLE_STATIC
@@ -33,9 +31,6 @@ index f9c51ab..0513db0 100755
  fi
  
  dnl Checks for using shared libraries from system
-diff --git a/m4/pcre.m4 b/m4/pcre.m4
-deleted file mode 100644
-index 4d965bc..0000000
 --- a/m4/pcre.m4
 +++ /dev/null
 @@ -1,152 +0,0 @@
@@ -191,9 +186,6 @@ index 4d965bc..0000000
 -AC_SUBST(pcreh)
 -AC_SUBST(pcre_pcreh)
 -])
-diff --git a/m4/pcre2.m4 b/m4/pcre2.m4
-new file mode 100644
-index 0000000..fcec4b7
 --- /dev/null
 +++ b/m4/pcre2.m4
 @@ -0,0 +1,181 @@
@@ -378,8 +370,6 @@ index 0000000..fcec4b7
 +AC_SUBST(pcre2h)
 +AC_SUBST(pcre2_pcre2h)
 +])
-diff --git a/src/rule.c b/src/rule.c
-index 8aae04e..41ba5e7 100644
 --- a/src/rule.c
 +++ b/src/rule.c
 @@ -82,14 +82,28 @@ int
@@ -417,7 +407,7 @@ index 8aae04e..41ba5e7 100644
              return 0;
          }
      }
-@@ -109,8 +123,15 @@ lookup_rule(const struct cork_dllist *rules, const char *name, size_t name_len)
+@@ -109,8 +123,15 @@ lookup_rule(const struct cork_dllist *ru
  
      cork_dllist_foreach_void(rules, curr, next) {
          rule_t *rule = cork_container_of(curr, rule_t, entries);
@@ -451,8 +441,6 @@ index 8aae04e..41ba5e7 100644
 +    }
      ss_free(rule);
  }
-diff --git a/src/rule.h b/src/rule.h
-index 015bc42..84a89af 100644
 --- a/src/rule.h
 +++ b/src/rule.h
 @@ -33,17 +33,27 @@
@@ -489,6 +477,3 @@ index 015bc42..84a89af 100644
  
      struct cork_dllist_item entries;
  } rule_t;
--- 
-2.42.0
-
