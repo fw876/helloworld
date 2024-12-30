@@ -1176,3 +1176,45 @@ msgstr "socks5 服务器可以从外部接收的最大数据包大小（单位�
 
 msgid "Disable ChinaDNS-NG"
 msgstr "直通模式（禁用 ChinaDNS-NG）"
+
+msgid "Clear logs"
+msgstr "清空日志"
+
+msgid "Backup and Restore"
+msgstr "备份还原"
+
+msgid "Backup or Restore Client and Server Configurations."
+msgstr "备份或还原客户端及服务端配置。"
+
+msgid "Note: Restoring configurations across different versions may cause compatibility issues."
+msgstr "注意：不同版本间的配置恢复可能会导致兼容性问题。"
+
+msgid "Create Backup File"
+msgstr "创建备份文件"
+
+msgid "Restore Backup File"
+msgstr "恢复备份文件"
+
+msgid "DL Backup"
+msgstr "下载备份"
+
+msgid "RST Backup"
+msgstr "恢复备份"
+
+msgid "UL Restore"
+msgstr "上传恢复"
+
+msgid "CLOSE WIN"
+msgstr "关闭窗口"
+
+msgid "Restore to default configuration"
+msgstr "恢复默认配置"
+
+msgid "Do Reset"
+msgstr "执行重置"
+
+msgid "Do you want to restore the client to default settings?"
+msgstr "是否要恢复客户端默认配置？"
+
+msgid "Are you sure you want to restore the client to default settings?"
+msgstr "是否真的要恢复客户端默认配置？"
