@@ -111,7 +111,7 @@ function check_port()
 		ret = socket:connect(s.server, s.server_port)
 		if tostring(ret) == "true" then
 			socket:close()
-			retstring .. "<font><b style='color:green'>[" .. server_name .. "] OK.</b></font><br />"
+			retstring = retstring .. "<font><b style='color:green'>[" .. server_name .. "] OK.</b></font><br />"
 		else
 			retstring = retstring .. "<font><b style='color:red'>[" .. server_name .. "] Error.</b></font><br />"
 		end
