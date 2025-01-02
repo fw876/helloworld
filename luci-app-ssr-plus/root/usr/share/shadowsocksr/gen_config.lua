@@ -12,6 +12,7 @@ local chain = arg[5] or "0"
 local chain_local_port = string.split(chain, "/")[2] or "0"
 
 local server = ucursor:get_all("shadowsocksr", server_section)
+local socks_server = ucursor:get_all("shadowsocksr", "@socks5_proxy[0]") or {}
 local xray_fragment = ucursor:get_all("shadowsocksr", "@global_xray_fragment[0]") or {}
 local xray_noise = ucursor:get_all("shadowsocksr", "@xray_noise_packets[0]") or {}
 local outbound_settings = nil
@@ -180,10 +181,20 @@ end
 	-- 检查是否启用 socks 代理
 if proto:find("tcp") and socks_port ~= "0" then
     table.insert(Xray.inbounds, {
-	-- socks
+        -- socks
         protocol = "socks",
         port = tonumber(socks_port),
-        settings = {auth = "noauth", udp = true}
+        settings = {
+			auth = socks_server.socks5_auth,
+			udp = true,
+			mixed = (socks_server.socks5_mixed == '1') and true or false,
+			accounts = (socks_server.socks5_auth ~= "noauth") and {
+				{
+					user = socks_server.socks5_user,
+					pass = socks_server.socks5_pass
+				}
+			} or nil
+		}
     })
 end
 
