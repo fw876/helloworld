@@ -26,8 +26,8 @@ s = fb:section(SimpleSection, translate("Backup and Restore"), translate("Backup
                             "<br><font style='color:red'><b>" ..
                             translate("Note: Restoring configurations across different versions may cause compatibility issues.") ..
                             "</b></font>")
-o = s:option(DummyValue, '', nil)
-o.template = "shadowsocksr/backup_restore"
+s.anonymous = true
+s:append(Template("shadowsocksr/backup_restore"))
 
 -- 定义备份目标文件和目录
 local backup_targets = {
