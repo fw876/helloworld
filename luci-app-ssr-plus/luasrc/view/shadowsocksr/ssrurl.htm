@@ -263,6 +263,18 @@ function import_ssr_url(btn, urlname, sid) {
 				}
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.splithttp_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "/";
 				break;
+			case "xhttp":
+				if (params.get("security") !== "tls") {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
+				}
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_mode')[0].value = params.get("mode") || "auto";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "/";
+				if (params.get("extra") && params.get("extra").trim() !== "") {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_xhttp_extra')[0].checked = true; // 设置 enable_xhttp_extra 为 true
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_xhttp_extra')[0].dispatchEvent(event); // 触发事件
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_extra')[0].value = params.get("extra") || "";
+				}
+				break;
 			case "kcp":
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.kcp_guise')[0].value = params.get("headerType") || "none";
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.seed')[0].value = params.get("seed") || "";
@@ -338,6 +350,16 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.splithttp_host')[0].value = ssm.host;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.splithttp_path')[0].value = ssm.path;
 			}
+			if (ssm.net == "xhttp") {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_mode')[0].value = ssm.mode;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_host')[0].value = ssm.host;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_path')[0].value = ssm.path;
+				if (params.get("extra") && params.get("extra").trim() !== "") {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_xhttp_extra')[0].checked = true; // 设置 enable_xhttp_extra 为 true
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_xhttp_extra')[0].dispatchEvent(event); // 触发事件
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_extra')[0].value = ssm.extra;
+				}
+			}
 			if (ssm.net == "h2") {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.h2_host')[0].value = ssm.host;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.h2_path')[0].value = ssm.path;
@@ -352,6 +374,7 @@ function import_ssr_url(btn, urlname, sid) {
 			if (ssm.tls == "tls") {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].checked = true;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].dispatchEvent(event);
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_alpn')[0].value = ssm.alpn;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = ssm.sni || ssm.host;
 			}
 			if (ssm.mux !== undefined) {
@@ -412,6 +435,7 @@ function import_ssr_url(btn, urlname, sid) {
 				setElementValue('cbid.shadowsocksr.' + sid + '.tls_flow', params.get("flow") || "none");
 				dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.tls_flow', event);
 
+				setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_alpn', params.get("alpn") || "");
 				setElementValue('cbid.shadowsocksr.' + sid + '.fingerprint', params.get("fp") || "");
 				setElementValue('cbid.shadowsocksr.' + sid + '.tls_host', params.get("sni") || "");
 			}
@@ -433,6 +457,18 @@ function import_ssr_url(btn, urlname, sid) {
 					setElementValue('cbid.shadowsocksr.' + sid + '.splithttp_host', params.get("host") ? decodeURIComponent(params.get("host")) : "");
 				}
 				setElementValue('cbid.shadowsocksr.' + sid + '.splithttp_path', params.get("path") ? decodeURIComponent(params.get("path")) : "/");
+				break;
+			case "xhttp":
+				if (params.get("security") !== "tls") {
+					setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_host', params.get("host") ? decodeURIComponent(params.get("host")) : "");
+				}
+				setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_mode', params.get("mode") || "auto");
+				setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_path', params.get("path") ? decodeURIComponent(params.get("path")) : "/");
+				if (params.get("extra") && params.get("extra").trim() !== "") {
+					setElementValue('cbid.shadowsocksr.' + sid + '.enable_xhttp_extra', true); // 设置 enable_xhttp_extra 为 true
+					dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.enable_xhttp_extra', event); // 触发事件
+					setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_extra', params.get("extra") || "");
+				}
 				break;
 			case "kcp":
 				setElementValue('cbid.shadowsocksr.' + sid + '.kcp_guise', params.get("headerType") || "none");

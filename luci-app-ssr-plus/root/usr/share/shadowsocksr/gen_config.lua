@@ -4,7 +4,7 @@ local ucursor = require "luci.model.uci".cursor()
 local json = require "luci.jsonc"
 
 local server_section = arg[1]
-local proto = arg[2]
+local proto = arg[2] or "tcp"
 local local_port = arg[3] or "0"
 local socks_port = arg[4] or "0"
 
@@ -179,7 +179,7 @@ end
 
 	-- 开启 socks 代理
 	-- 检查是否启用 socks 代理
-if proto:find("tcp") and socks_port ~= "0" then
+if proto and proto:find("tcp") and socks_port ~= "0" then
     table.insert(Xray.inbounds, {
         -- socks
         protocol = "socks",
@@ -209,7 +209,7 @@ end
 				security = (server.xtls == '1') and "xtls" or (server.tls == '1') and "tls" or (server.reality == '1') and "reality" or nil,
 				tlsSettings = (server.tls == '1') and {
 					-- tls
-					alpn = server.tls_alpn,
+					alpn = (server.transport == "xhttp" and server.xhttp_alpn ~= "") and server.xhttp_alpn or server.tls_alpn,
 					fingerprint = server.fingerprint,
 					allowInsecure = (server.insecure == "1"),
 					serverName = server.tls_host,
@@ -225,6 +225,7 @@ end
 					minVersion = "1.3"
 				} or nil,
 				realitySettings = (server.reality == '1') and {
+					alpn =  (server.transport == "xhttp" and server.xhttp_alpn ~= "") and server.xhttp_alpn or nil,
 					publicKey = server.reality_publickey,
 					shortId = server.reality_shortid,
 					spiderX = server.reality_spiderx,
@@ -270,6 +271,20 @@ end
 					-- splithttp
 					host = (server.splithttp_host or server.tls_host) or nil,
 					path = server.splithttp_path or "/"
+				} or nil,
+				xhttpSettings = (server.transport == "xhttp") and {
+					-- xhttp
+					mode = server.xhttp_mode or "auto",
+					host = (server.xhttp_host or server.tls_host) or nil,
+					path = server.xhttp_path or "/",
+					extra = (server.enable_xhttp_extra == "1" and server.xhttp_extra) and (function()
+						local success, parsed = pcall(json.parse, server.xhttp_extra)
+							if success then
+								return parsed.extra or parsed
+							else
+								return nil
+							end
+						end)() or nil
 				} or nil,
 				httpSettings = (server.transport == "h2") and {
 					-- h2
@@ -387,7 +402,7 @@ local ss = {
 	server_port = tonumber(server.server_port),
 	local_address = "0.0.0.0",
 	local_port = tonumber(local_port),
-	mode = (proto == "tcp,udp") and "tcp_and_udp" or proto .. "_only",
+	mode = (proto == "tcp,udp") and "tcp_and_udp" or (proto .. "_only"),
 	password = server.password,
 	method = server.encrypt_method_ss,
 	timeout = tonumber(server.timeout),
@@ -395,7 +410,7 @@ local ss = {
 	reuse_port = true
 }
 local hysteria = {
-	server = (server.server_port and (server.port_range and (server.server .. ":" .. server.server_port .. "," .. server.port_range) or server.server .. ":" .. server.server_port) or (server.port_range and server.server .. ":" .. server.port_range or server.server .. ":443")),
+	server = (server.server_port and (server.port_range and (server.server .. ":" .. server.server_port .. "," .. server.port_range) or (server.server .. ":" .. server.server_port) or (server.port_range and server.server .. ":" .. server.port_range or server.server .. ":443"))),
 	bandwidth = (server.uplink_capacity or server.downlink_capacity) and {
 	up = tonumber(server.uplink_capacity) and tonumber(server.uplink_capacity) .. " mbps" or nil,
 	down = tonumber(server.downlink_capacity) and tonumber(server.downlink_capacity) .. " mbps" or nil 

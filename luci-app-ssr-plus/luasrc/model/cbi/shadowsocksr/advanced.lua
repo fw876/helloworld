@@ -204,12 +204,12 @@ for key, server_type in pairs(type_table) do
 end
 
 -- Socks User
-o = s:option(Value, "socks5_user", translate("Socks5 User"), translate("Only when auth is password valid, Mandatory."))
+o = s:option(Value, "socks5_user", translate("Socks5 User"), translate("Only when Socks5 Auth Mode is password valid, Mandatory."))
 o.rmempty = true
 o:depends("socks5_auth", "password")
 
 -- Socks Password
-o = s:option(Value, "socks5_pass", translate("Socks5 Password"), translate("Only when auth is password valid, Not mandatory."))
+o = s:option(Value, "socks5_pass", translate("Socks5 Password"), translate("Only when Socks5 Auth Mode is password valid, Not mandatory."))
 o.password = true
 o.rmempty = true
 o:depends("socks5_auth", "password")
@@ -263,7 +263,7 @@ o.default = 0
 s = m:section(TypedSection, "xray_noise_packets", translate("Xray Noise Packets"))
 s.description = translate(
     "<font style='color:red'>" .. translate("To send noise packets, select \"Noise\" in Xray Settings.") .. "</font>" ..
-    "<br/><font><b>" .. translate("For specific usage, see: ") .. "</b></font>" ..
+    "<br/><font><b>" .. translate("For specific usage, see:") .. "</b></font>" ..
     "<a href='https://xtls.github.io/config/outbounds/freedom.html' target='_blank'>" ..
     "<font style='color:green'><b>" .. translate("Click to the page") .. "</b></font></a>")
 s.template = "cbi/tblsection"

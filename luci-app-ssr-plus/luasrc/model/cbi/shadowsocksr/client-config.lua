@@ -4,6 +4,7 @@
 require "nixio.fs"
 require "luci.sys"
 require "luci.http"
+require "luci.jsonc"
 require "luci.model.ipkg"
 
 local m, s, o
@@ -504,7 +505,6 @@ o.rmempty = true
 o.default = ""
 o:depends("type", "tuic")
 
-
 o = s:option(ListValue, "udp_relay_mode", translate("UDP relay mode"))
 o:depends("type", "tuic")
 o:value("native", translate("native UDP characteristics"))
@@ -623,6 +623,7 @@ o:value("kcp", "mKCP")
 o:value("ws", "WebSocket")
 o:value("httpupgrade", "HTTPUpgrade")
 o:value("splithttp", "SplitHTTP")
+o:value("xhttp", "XHTTP")
 o:value("h2", "HTTP/2")
 o:value("quic", "QUIC")
 o:value("grpc", "gRPC")
@@ -702,6 +703,78 @@ o.rmempty = true
 o = s:option(Value, "splithttp_path", translate("Splithttp Path"))
 o:depends("transport", "splithttp")
 o.rmempty = true
+
+-- [[ XHTTP部分 ]]--
+o = s:option(ListValue, "xhttp_alpn", translate("XHTTP Alpn"))
+o.default = ""
+o:value("", translate("Default"))
+o:value("h3")
+o:value("h2")
+o:value("h3,h2")
+o:value("http/1.1")
+o:value("h2,http/1.1")
+o:value("h3,h2,http/1.1")
+o:depends("transport", "xhttp")
+
+o = s:option(ListValue, "xhttp_mode", translate("XHTTP Mode"))
+o:depends("transport", "xhttp")
+o.default = "auto"
+o:value("auto")
+o:value("packet-up")
+o:value("stream-up")
+o:value("stream-one")
+
+o = s:option(Value, "xhttp_host", translate("XHTTP Host"))
+o:depends({transport = "xhttp", tls = false})
+o.rmempty = true
+
+o = s:option(Value, "xhttp_path", translate("XHTTP Path"))
+o.placeholder = "/"
+o:depends("transport", "xhttp")
+o.rmempty = true
+
+o = s:option(Flag, "enable_xhttp_extra", translate("XHTTP Extra"))
+o.description = translate("Enable this option to configure XHTTP Extra (JSON format).")
+o.default = "0"
+o.rmempty = false
+o:depends("transport", "xhttp")
+
+o = s:option(TextValue, "xhttp_extra", " ")
+o.description = translate(
+    "<font><b>" .. translate("Configure XHTTP Extra Settings (JSON format), see:") .. "</b></font>" ..
+    " <a href='https://xtls.github.io/config/transports/splithttp.html#extra' target='_blank'>" ..
+    "<font style='color:green'><b>" .. translate("Click to the page") .. "</b></font></a>")
+o:depends("enable_xhttp_extra", true)
+o.rmempty = true
+o.rows = 10
+o.wrap = "off"
+o.custom_write = function(self, section, value)
+    m:set(section, "xhttp_extra", value)
+    local success, data = pcall(luci.jsonc.parse, value)
+    if success and data then
+        local address = (data.extra and data.extra.downloadSettings and data.extra.downloadSettings.address)
+            or (data.downloadSettings and data.downloadSettings.address)
+        if address and address ~= "" then
+            m:set(section, "download_address", address)
+        else
+            m:del(section, "download_address")
+        end
+    else
+        m:del(section, "download_address")
+    end
+end
+o.validate = function(self, value)
+    value = value:gsub("\r\n", "\n"):gsub("^[ \t]*\n", ""):gsub("\n[ \t]*$", ""):gsub("\n[ \t]*\n", "\n")
+    if value:sub(-1) == "\n" then
+        value = value:sub(1, -2)
+    end
+    local success, data = pcall(luci.jsonc.parse, value)
+    if not success or not data then
+        return nil, translate("Invalid JSON format")
+    end
+
+    return value
+end
 
 -- [[ H2部分 ]]--
 
