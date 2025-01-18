@@ -184,7 +184,7 @@ if proto:find("tcp") and socks_port ~= "0" then
         -- socks
         protocol = "socks",
         port = tonumber(socks_port),
-        settings = {
+        settings = (socks_server.server ~= "same") and {
 			auth = socks_server.socks5_auth,
 			udp = true,
 			mixed = (socks_server.socks5_mixed == '1') and true or false,
@@ -194,7 +194,7 @@ if proto:find("tcp") and socks_port ~= "0" then
 					pass = socks_server.socks5_pass
 				}
 			} or nil
-		}
+		} or nil
     })
 end
 
