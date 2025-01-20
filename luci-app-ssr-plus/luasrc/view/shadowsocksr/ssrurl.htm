@@ -374,12 +374,19 @@ function import_ssr_url(btn, urlname, sid) {
 			if (ssm.tls == "tls") {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].checked = true;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].dispatchEvent(event);
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_alpn')[0].value = ssm.alpn;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.fingerprint')[0].value = ssm.fp;
+				if (ssm.net == "xhttp") {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_alpn')[0].value = ssm.alpn;
+				}
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = ssm.sni || ssm.host;
 			}
 			if (ssm.mux !== undefined) {
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].checked = true;
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].dispatchEvent(event);
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].checked = true;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].dispatchEvent(event);
+			}
+			if (ssm.xmux !== undefined) {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.xmux')[0].checked = true;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.xmux')[0].dispatchEvent(event);
 			}
 			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
