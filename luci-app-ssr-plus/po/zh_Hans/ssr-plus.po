@@ -91,18 +91,44 @@ msgstr "TLS 主机名"
 msgid "allowInsecure"
 msgstr "允许不安全连接"
 
-msgid "Enabling MPTCP Requires Server Support."
-msgstr "启用 MPTCP 需服务端支持。"
+msgid "Enable Mux.Cool"
+msgstr "启用 Mux.Cool"
+
+msgid "Enable Xudp Mux"
+msgstr "启用 Xudp Mux"
+
+msgid "Enable Multipath TCP, need to be enabled in both server and client configuration."
+msgstr "启用 Multipath TCP，需在服务端和客户端配置中同时启用。"
 
 msgid "concurrency"
 msgstr "TCP 最大并发连接数"
 
+msgid "Default: disable. When entering a negative number, such as -1, The Mux module will not be used to carry TCP traffic."
+msgstr "默认：禁用。填负数时，如 -1，不使用 Mux 模块承载 TCP 流量。"
+
+msgid "Min value is 1, Max value is 128. When omitted or set to 0, it equals 8."
+msgstr "最小值 1，最大值 128。省略或者填 0 时都等于 8。"
+
 msgid "xudpConcurrency"
 msgstr "UDP 最大并发连接数"
+
+msgid "Default:16. When entering a negative number, such as -1, The Mux module will not be used to carry UDP traffic, Use original UDP transmission method of proxy protocol."
+msgstr "默认值：16。填负数时，如 -1，不使用 Mux 模块承载 UDP 流量。将使用代理协议原本的 UDP 传输方式。"
+
+msgid "Min value is 1, Max value is 1024. When omitted or set to 0, Will same path as TCP traffic."
+msgstr "最小值 1，最大值 1024。 省略或者填 0 时，将与 TCP 流量走同一条路，也就是传统的行为。"
 
 msgid "xudpProxyUDP443"
 msgstr "对被代理的 UDP/443 流量处理方式"
 
+msgid "Default reject rejects traffic."
+msgstr "默认 reject 拒绝流量。"
+
+msgid "allow: Allows use Mux connection."
+msgstr "allow：允许走 Mux 连接。"
+
+msgid "skip: Not use Mux module to carry UDP 443 traffic, Use original UDP transmission method of proxy protocol."
+msgstr "skip：不使用 Mux 模块承载 UDP 443 流量，将使用代理协议原本的 UDP 传输方式。"
 
 msgid "custom_tcpcongestion"
 msgstr "连接服务器节点的 TCP 拥塞控制算法"
@@ -306,6 +332,9 @@ msgstr "服务器"
 
 msgid "TCP Fast Open"
 msgstr "TCP 快速打开"
+
+msgid "Enabling TCP Fast Open Requires Server Support."
+msgstr "启用 TCP 快速打开需要服务端支持。"
 
 msgid "Status"
 msgstr "状态"

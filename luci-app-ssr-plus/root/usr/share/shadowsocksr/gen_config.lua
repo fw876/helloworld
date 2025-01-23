@@ -29,7 +29,7 @@ function vmess_vless()
 						alterId = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and tonumber(server.alter_id) or nil,
 						security = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and server.security or nil,
 						encryption = (server.v2ray_protocol == "vless") and server.vless_encryption or nil,
-						flow = (((server.xtls == '1') or (server.tls == '1') or (server.reality == '1')) and server.tls_flow ~= "none") and server.tls_flow or nil
+						flow = (((server.xtls == '1') or (server.tls == '1') or (server.reality == '1')) and (((server.tls_flow ~= "none") and server.tls_flow) or ((server.xhttp_tls_flow ~= "none") and server.xhttp_tls_flow))) or nil
 					}
 				}
 			}
@@ -310,18 +310,19 @@ end
 				} or nil,
 				sockopt = {
 					mark = 250,
+					tcpFastOpen = (server.tcpfastOpen == "1") and true or false, -- XHTTP Tcp Fast Open
 					tcpMptcp = (server.mptcp == "1") and true or nil, -- MPTCP
-					tcpNoDelay = (server.mptcp == "1") and true or nil, -- MPTCP
+					Penetrate = (server.mptcp == "1") and true or nil, -- Penetrate MPTCP
 					tcpcongestion = server.custom_tcpcongestion, -- 连接服务器节点的 TCP 拥塞控制算法
 					dialerProxy = (xray_fragment.fragment == "1" or xray_fragment.noise == "1") and "dialerproxy" or nil
 				}
 			} or nil,
 			mux = (server.v2ray_protocol ~= "wireguard") and {
 				-- mux
-				enabled = (server.mux == "1") and true or false, -- Mux
-				concurrency = tonumber(server.concurrency), -- TCP 最大并发连接数
-				xudpConcurrency = tonumber(server.xudpConcurrency), -- UDP 最大并发连接数
-				xudpProxyUDP443 = server.xudpProxyUDP443 -- 对被代理的 UDP/443 流量处理方式
+				enabled = (server.mux == "1" or server.xmux == "1") and true or false, -- Mux
+				concurrency = (server.mux == "1" and ((server.concurrency ~= "0") and tonumber(server.concurrency) or 8)) or (server.xmux == "1" and -1) or nil, -- TCP 最大并发连接数
+				xudpConcurrency = ((server.xudpConcurrency ~= "0") and tonumber(server.xudpConcurrency)) or nil, -- UDP 最大并发连接数
+				xudpProxyUDP443 = (server.mux == "1") and server.xudpProxyUDP443 or nil -- 对被代理的 UDP/443 流量处理方式
 			} or nil
 		}
 	}
@@ -349,8 +350,9 @@ if xray_fragment.fragment ~= "0" or (xray_fragment.noise ~= "0" and xray_noise.e
 		streamSettings = {
 			sockopt = {
 			mark = 250,
+			tcpFastOpen = (server.tcpfastOpen == "1") and true or false, -- XHTTP Tcp Fast Open
 			tcpMptcp = (server.mptcp == "1") and true or nil, -- MPTCP
-			tcpNoDelay = (server.mptcp == "1") and true or nil, -- MPTCP
+			Penetrate = (server.mptcp == "1") and true or nil, -- Penetrate MPTCP
 			tcpcongestion = server.custom_tcpcongestion -- 连接服务器节点的 TCP 拥塞控制算法
 			}
 		}
