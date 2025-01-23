@@ -508,6 +508,7 @@ start_udp() {
 shunt_dns_command() {
 	local shunt_dns_mode="$(uci_get_by_type global shunt_dns_mode)"
 	local shunt_dnsserver="$(uci_get_by_type global shunt_dnsserver)"
+	local tmp_port=$1
 	case "$shunt_dns_mode" in
 	1)
 		ln_start_bin $(first_type dns2socks) dns2socks 127.0.0.1:$tmp_port $shunt_dnsserver 127.0.0.1:$tmp_shunt_dns_port -q
@@ -545,14 +546,14 @@ start_shunt() {
 			local tmp_port=$tmp_shunt_local_port
 			ln_start_bin $(first_type ${type}local ${type}-local) ${type}-local -c $shunt_dns_config_file
 		fi
-		shunt_dns_command
+		shunt_dns_command $tmp_port
 		echolog "shunt:$(get_name $type) Started!"
 		;;
 	v2ray)
 		local tmp_port=${tmp_local_port:-$tmp_shunt_local_port}
 		gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port $tmp_port
 		ln_start_bin $(first_type xray v2ray) v2ray run -c $shunt_config_file
-		shunt_dns_command
+		shunt_dns_command $tmp_port
 		echolog "shunt:$($(first_type xray v2ray) version | head -1) Started!"
 		;;
 	trojan)
@@ -564,7 +565,7 @@ start_shunt() {
 			local tmp_port=$tmp_shunt_local_port
 			ln_start_bin $(first_type trojan) $type --config $shunt_dns_config_file
 		fi
-		shunt_dns_command
+		shunt_dns_command $tmp_port
 		echolog "shunt:$($(first_type trojan) --version 2>&1 | head -1) Started!"
 		;;
 	naiveproxy)
@@ -576,7 +577,7 @@ start_shunt() {
 			local tmp_port=$tmp_shunt_local_port
 			ln_start_bin $(first_type naive) naive --config $shunt_dns_config_file
 		fi
-		shunt_dns_command
+		shunt_dns_command $tmp_port
 		echolog "shunt:$($(first_type "naive") --version 2>&1 | head -1) Started!"
 		redir_udp=0
 		;;
@@ -589,7 +590,7 @@ start_shunt() {
 			gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port $tmp_port
 		fi
 		ln_start_bin $(first_type hysteria) hysteria client --config $shunt_config_file
-		shunt_dns_command
+		shunt_dns_command $tmp_port
 		echolog "shunt:$($(first_type hysteria) version | grep Version | awk '{print "Hysteria2: " $2}') Started!"
 		;;
 	tuic)
@@ -601,7 +602,7 @@ start_shunt() {
 		[ -n "$tmp_local_port" ] && tmp_port=$tmp_local_port || tmp_port=$tmp_shunt_local_port
 		gen_config_file $SHUNT_SERVER $type 3 $tmp_port		# make a tuic socks :304
 		ln_start_bin $(first_type tuic-client) tuic-client --config $shunt_dns_config_file
-		shunt_dns_command
+		shunt_dns_command $tmp_port
 		echolog "Netflix Separated Shunt Server:tuic-client $($(first_type tuic-client) --version) Started!"
 		# FIXME: ipt2socks cannot handle udp reply from tuic
 		#redir_udp=0
@@ -611,7 +612,7 @@ start_shunt() {
 		gen_config_file $SHUNT_SERVER $type 3 "10${tmp_shunt_port}" $tmp_port chain/$tmp_shunt_port #make a redir:303 and a socks:304
 		#echo "debug \$tmp_port=$tmp_port, \$tmp_shunt_port=${tmp_shunt_port},  \$tmp_shunt_local_port=$tmp_shunt_local_port"
 		ln_start_bin $(first_type shadow-tls) shadow-tls config --config $chain_config_file
-		shunt_dns_command
+		shunt_dns_command $tmp_port
 		local chain_type=$(uci_get_by_name $SHUNT_SERVER chain_type)
 		case ${chain_type} in
 		vmess)
@@ -637,7 +638,7 @@ start_shunt() {
 	# 		local tmp_port=$tmp_shunt_local_port
 	# 		ln_start_bin $(first_type microsocks) microsocks -i 127.0.0.1 -p $tmp_port shunt-dns-ssr-plus
 	# 	fi
-	# 	shunt_dns_command
+	# 	shunt_dns_command $tmp_port
 	# 	echolog "shunt:$type REDIRECT/TPROXY Started!"
 	# 	;;
 	*)
@@ -649,7 +650,7 @@ start_shunt() {
 			local tmp_port=$tmp_shunt_local_port
 			ln_start_bin $(first_type microsocks) microsocks -i 127.0.0.1 -p $tmp_port shunt-dns-ssr-plus
 		fi
-		shunt_dns_command
+		shunt_dns_command $tmp_port
 		echolog "shunt:$type REDIRECT/TPROXY Started!"
 		;;
 	esac
