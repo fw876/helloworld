@@ -552,6 +552,10 @@ start_shunt() {
 	v2ray)
 		local tmp_port=${tmp_local_port:-$tmp_shunt_local_port}
 		gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port $tmp_port
+		if grep -q '"auth"\s*:\s*"password"' $shunt_config_file; then
+			sed -i -e 's/"auth"\s*:\s*"password"/\"auth\": \"noauth\"/g' \
+			       -e '/"accounts": \[/,/\]/d' $shunt_config_file
+		fi
 		ln_start_bin $(first_type xray v2ray) v2ray run -c $shunt_config_file
 		shunt_dns_command $tmp_port
 		echolog "shunt:$($(first_type xray v2ray) version | head -1) Started!"
@@ -589,6 +593,10 @@ start_shunt() {
 			local tmp_port=$tmp_shunt_local_port
 			gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port $tmp_port
 		fi
+		if grep -q '"auth"\s*:\s*"password"' $shunt_config_file; then
+			sed -i -e 's/"auth"\s*:\s*"password"/\"auth\": \"noauth\"/g' \
+			       -e '/"accounts": \[/,/\]/d' $shunt_config_file
+		fi
 		ln_start_bin $(first_type hysteria) hysteria client --config $shunt_config_file
 		shunt_dns_command $tmp_port
 		echolog "shunt:$($(first_type hysteria) version | grep Version | awk '{print "Hysteria2: " $2}') Started!"
@@ -616,6 +624,10 @@ start_shunt() {
 		local chain_type=$(uci_get_by_name $SHUNT_SERVER chain_type)
 		case ${chain_type} in
 		vmess)
+			if grep -q '"auth"\s*:\s*"password"' $shunt_config_file; then
+				sed -i -e 's/"auth"\s*:\s*"password"/\"auth\": \"noauth\"/g' \
+				       -e '/"accounts": \[/,/\]/d' $shunt_config_file
+			fi
 			ln_start_bin $(first_type xray v2ray) v2ray run -c $shunt_config_file
 			echolog "Netflix Separated Shunt Server:shadow-tls chain-to$($(first_type xray) --version) Started!"
 			;;
