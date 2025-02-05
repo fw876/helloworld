@@ -1,0 +1,115 @@
+From f4ee43fa27e00a573d90a8cac68f12655570bbf7 Mon Sep 17 00:00:00 2001
+From: lwb1978 <86697442+lwb1978@users.noreply.github.com>
+Date: Tue, 4 Feb 2025 15:51:17 +0800
+Subject: [PATCH] Deprecate load16_be() function in favor to ntohs() function
+
+---
+ src/aead.c     | 2 +-
+ src/local.c    | 6 +++---
+ src/server.c   | 2 +-
+ src/udprelay.c | 2 +-
+ src/utils.c    | 8 --------
+ src/utils.h    | 1 -
+ 6 files changed, 6 insertions(+), 15 deletions(-)
+
+diff --git a/src/aead.c b/src/aead.c
+index 73349da64..e5d9b01e7 100644
+--- a/src/aead.c
++++ b/src/aead.c
+@@ -605,7 +605,7 @@ aead_chunk_decrypt(cipher_ctx_t *ctx, uint8_t *p, uint8_t *c, uint8_t *n,
+         return CRYPTO_ERROR;
+     assert(*plen == CHUNK_SIZE_LEN);
+ 
+-    mlen = load16_be(len_buf);
++    mlen = ntohs(*(uint16_t*)len_buf);
+     mlen = mlen & CHUNK_SIZE_MASK;
+ 
+     if (mlen == 0)
+diff --git a/src/local.c b/src/local.c
+index fa1ca7b31..76d46de17 100644
+--- a/src/local.c
++++ b/src/local.c
+@@ -382,7 +382,7 @@ server_handshake(EV_P_ ev_io *w, buffer_t *buf)
+         abuf->len += in_addr_len + 2;
+ 
+         if (acl || verbose) {
+-            uint16_t p = load16_be(buf->data + request_len + in_addr_len);
++            uint16_t p = ntohs(*(uint16_t*)(buf->data + request_len + in_addr_len));
+             if (!inet_ntop(AF_INET, (const void *)(buf->data + request_len),
+                            ip, INET_ADDRSTRLEN)) {
+                 LOGI("inet_ntop(AF_INET): %s", strerror(errno));
+@@ -400,7 +400,7 @@ server_handshake(EV_P_ ev_io *w, buffer_t *buf)
+         abuf->len += name_len + 2;
+ 
+         if (acl || verbose) {
+-            uint16_t p = load16_be(buf->data + request_len + 1 + name_len);
++            uint16_t p = ntohs(*(uint16_t*)(buf->data + request_len + 1 + name_len));
+             memcpy(host, buf->data + request_len + 1, name_len);
+             host[name_len] = '\0';
+             sprintf(port, "%d", p);
+@@ -414,7 +414,7 @@ server_handshake(EV_P_ ev_io *w, buffer_t *buf)
+         abuf->len += in6_addr_len + 2;
+ 
+         if (acl || verbose) {
+-            uint16_t p = load16_be(buf->data + request_len + in6_addr_len);
++            uint16_t p = ntohs(*(uint16_t*)(buf->data + request_len + in6_addr_len));
+             if (!inet_ntop(AF_INET6, (const void *)(buf->data + request_len),
+                            ip, INET6_ADDRSTRLEN)) {
+                 LOGI("inet_ntop(AF_INET6): %s", strerror(errno));
+diff --git a/src/server.c b/src/server.c
+index 73b65996d..be8c6ffcf 100644
+--- a/src/server.c
++++ b/src/server.c
+@@ -1129,7 +1129,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
+             return;
+         }
+ 
+-        port = ntohs(load16_be(server->buf->data + offset));
++        port = *(uint16_t*)(server->buf->data + offset);
+ 
+         offset += 2;
+ 
+diff --git a/src/udprelay.c b/src/udprelay.c
+index 5de38830a..f6a5a7c25 100644
+--- a/src/udprelay.c
++++ b/src/udprelay.c
+@@ -316,7 +316,7 @@ parse_udprelay_header(const char *buf, const size_t buf_len,
+     }
+ 
+     if (port != NULL) {
+-        sprintf(port, "%d", load16_be(buf + offset));
++        sprintf(port, "%d", ntohs(*(uint16_t*)(buf + offset)));
+     }
+     offset += 2;
+ 
+diff --git a/src/utils.c b/src/utils.c
+index d3ff2aba6..c7a5f0aa6 100644
+--- a/src/utils.c
++++ b/src/utils.c
+@@ -571,14 +571,6 @@ get_default_conf(void)
+ #endif
+ }
+ 
+-uint16_t
+-load16_be(const void *s)
+-{
+-    const uint8_t *in = (const uint8_t *)s;
+-    return ((uint16_t)in[0] << 8)
+-           | ((uint16_t)in[1]);
+-}
+-
+ int
+ get_mptcp(int enable)
+ {
+diff --git a/src/utils.h b/src/utils.h
+index 1df24c166..c20506da9 100644
+--- a/src/utils.h
++++ b/src/utils.h
+@@ -249,7 +249,6 @@ void *ss_realloc(void *ptr, size_t new_size);
+ 
+ int ss_is_ipv6addr(const char *addr);
+ char *get_default_conf(void);
+-uint16_t load16_be(const void *s);
+ int get_mptcp(int enable);
+ 
+ #endif // _UTILS_H
