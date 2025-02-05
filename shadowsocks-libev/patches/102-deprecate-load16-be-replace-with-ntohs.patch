@@ -12,11 +12,9 @@ Subject: [PATCH] Deprecate load16_be() function in favor to ntohs() function
  src/utils.h    | 1 -
  6 files changed, 6 insertions(+), 15 deletions(-)
 
-diff --git a/src/aead.c b/src/aead.c
-index 73349da64..e5d9b01e7 100644
 --- a/src/aead.c
 +++ b/src/aead.c
-@@ -605,7 +605,7 @@ aead_chunk_decrypt(cipher_ctx_t *ctx, uint8_t *p, uint8_t *c, uint8_t *n,
+@@ -605,7 +605,7 @@ aead_chunk_decrypt(cipher_ctx_t *ctx, ui
          return CRYPTO_ERROR;
      assert(*plen == CHUNK_SIZE_LEN);
  
@@ -25,11 +23,9 @@ index 73349da64..e5d9b01e7 100644
      mlen = mlen & CHUNK_SIZE_MASK;
  
      if (mlen == 0)
-diff --git a/src/local.c b/src/local.c
-index fa1ca7b31..76d46de17 100644
 --- a/src/local.c
 +++ b/src/local.c
-@@ -382,7 +382,7 @@ server_handshake(EV_P_ ev_io *w, buffer_t *buf)
+@@ -390,7 +390,7 @@ server_handshake(EV_P_ ev_io *w, buffer_
          abuf->len += in_addr_len + 2;
  
          if (acl || verbose) {
@@ -38,7 +34,7 @@ index fa1ca7b31..76d46de17 100644
              if (!inet_ntop(AF_INET, (const void *)(buf->data + request_len),
                             ip, INET_ADDRSTRLEN)) {
                  LOGI("inet_ntop(AF_INET): %s", strerror(errno));
-@@ -400,7 +400,7 @@ server_handshake(EV_P_ ev_io *w, buffer_t *buf)
+@@ -408,7 +408,7 @@ server_handshake(EV_P_ ev_io *w, buffer_
          abuf->len += name_len + 2;
  
          if (acl || verbose) {
@@ -47,7 +43,7 @@ index fa1ca7b31..76d46de17 100644
              memcpy(host, buf->data + request_len + 1, name_len);
              host[name_len] = '\0';
              sprintf(port, "%d", p);
-@@ -414,7 +414,7 @@ server_handshake(EV_P_ ev_io *w, buffer_t *buf)
+@@ -422,7 +422,7 @@ server_handshake(EV_P_ ev_io *w, buffer_
          abuf->len += in6_addr_len + 2;
  
          if (acl || verbose) {
@@ -56,11 +52,9 @@ index fa1ca7b31..76d46de17 100644
              if (!inet_ntop(AF_INET6, (const void *)(buf->data + request_len),
                             ip, INET6_ADDRSTRLEN)) {
                  LOGI("inet_ntop(AF_INET6): %s", strerror(errno));
-diff --git a/src/server.c b/src/server.c
-index 73b65996d..be8c6ffcf 100644
 --- a/src/server.c
 +++ b/src/server.c
-@@ -1129,7 +1129,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
+@@ -1137,7 +1137,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
              return;
          }
  
@@ -69,11 +63,9 @@ index 73b65996d..be8c6ffcf 100644
  
          offset += 2;
  
-diff --git a/src/udprelay.c b/src/udprelay.c
-index 5de38830a..f6a5a7c25 100644
 --- a/src/udprelay.c
 +++ b/src/udprelay.c
-@@ -316,7 +316,7 @@ parse_udprelay_header(const char *buf, const size_t buf_len,
+@@ -316,7 +316,7 @@ parse_udprelay_header(const char *buf, c
      }
  
      if (port != NULL) {
@@ -82,8 +74,6 @@ index 5de38830a..f6a5a7c25 100644
      }
      offset += 2;
  
-diff --git a/src/utils.c b/src/utils.c
-index d3ff2aba6..c7a5f0aa6 100644
 --- a/src/utils.c
 +++ b/src/utils.c
 @@ -571,14 +571,6 @@ get_default_conf(void)
@@ -101,11 +91,9 @@ index d3ff2aba6..c7a5f0aa6 100644
  int
  get_mptcp(int enable)
  {
-diff --git a/src/utils.h b/src/utils.h
-index 1df24c166..c20506da9 100644
 --- a/src/utils.h
 +++ b/src/utils.h
-@@ -249,7 +249,6 @@ void *ss_realloc(void *ptr, size_t new_size);
+@@ -249,7 +249,6 @@ void *ss_realloc(void *ptr, size_t new_s
  
  int ss_is_ipv6addr(const char *addr);
  char *get_default_conf(void);
