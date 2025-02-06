@@ -549,7 +549,9 @@ shunt_dns_config_file_port() {
         if [ "$(uci_get_by_type socks5_proxy socks5_auth nil)" != "noauth" ]; then
             # 全局socks 有密码，NetFlix不能使用auth验证，需设置为无密码的socks配置用于分流
             # 删除 NetFlix dns 端口密码验证
-            sed -i -e 's/"auth"\s*:\s*"password"/\"auth\": \"noauth\"/g' \
+            sed -i \
+                   -e '/"mixed"/d' \
+                   -e 's/"auth"\s*:\s*"password"/\"auth\": \"noauth\"/g' \
                    -e '/"accounts": \[/,/\]/d' $shunt_config_file
         fi
     fi
