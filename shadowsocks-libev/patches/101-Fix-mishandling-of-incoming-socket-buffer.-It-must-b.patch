@@ -11,11 +11,9 @@ Subject: [PATCH] Fix mishandling of incoming socket buffer. It must be set on
  src/tunnel.c | 16 ++++++++--------
  4 files changed, 32 insertions(+), 32 deletions(-)
 
-diff --git a/src/local.c b/src/local.c
-index fa1ca7b..51f62c4 100644
 --- a/src/local.c
 +++ b/src/local.c
-@@ -205,6 +205,14 @@ create_and_bind(const char *addr, const char *port)
+@@ -205,6 +205,14 @@ create_and_bind(const char *addr, const
              }
          }
  
@@ -45,11 +43,9 @@ index fa1ca7b..51f62c4 100644
      server_t *server = new_server(serverfd);
      server->listener = listener;
  
-diff --git a/src/redir.c b/src/redir.c
-index d36fe3f..86b7238 100644
 --- a/src/redir.c
 +++ b/src/redir.c
-@@ -201,6 +201,14 @@ create_and_bind(const char *addr, const char *port)
+@@ -201,6 +201,14 @@ create_and_bind(const char *addr, const
              LOGI("tcp tproxy mode enabled");
          }
  
@@ -79,11 +75,9 @@ index d36fe3f..86b7238 100644
      int index                    = rand() % listener->remote_num;
      struct sockaddr *remote_addr = listener->remote_addr[index];
  
-diff --git a/src/server.c b/src/server.c
-index 73b6599..ef347a5 100644
 --- a/src/server.c
 +++ b/src/server.c
-@@ -620,6 +620,14 @@ create_and_bind(const char *host, const char *port, int mptcp)
+@@ -620,6 +620,14 @@ create_and_bind(const char *host, const
              }
          }
  
@@ -113,11 +107,9 @@ index 73b6599..ef347a5 100644
      setnonblocking(serverfd);
  
      server_t *server = new_server(serverfd, listener);
-diff --git a/src/tunnel.c b/src/tunnel.c
-index 99ed412..9f0dd57 100644
 --- a/src/tunnel.c
 +++ b/src/tunnel.c
-@@ -166,6 +166,14 @@ create_and_bind(const char *addr, const char *port)
+@@ -166,6 +166,14 @@ create_and_bind(const char *addr, const
              }
          }
  
@@ -147,6 +139,3 @@ index 99ed412..9f0dd57 100644
      int index                    = rand() % listener->remote_num;
      struct sockaddr *remote_addr = listener->remote_addr[index];
  
--- 
-2.39.5
-
