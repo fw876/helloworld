@@ -184,11 +184,11 @@ if proto and proto:find("tcp") and socks_port ~= "0" then
         -- socks
         protocol = "socks",
         port = tonumber(socks_port),
-        settings = (socks_server.server ~= "same") and {
-			auth = socks_server.socks5_auth,
+        settings = {
+			auth = socks_server.socks5_auth or "noauth",
 			udp = true,
-			mixed = (socks_server.socks5_mixed == '1') and true or false,
-			accounts = (socks_server.socks5_auth ~= "noauth") and {
+			mixed = ((socks_server.socks5_mixed == '1') and true or false) or (socks_server.server == 'same') and nil,
+			accounts = (socks_server.server ~= "same" and (socks_server.socks5_auth and socks_server.socks5_auth ~= "noauth")) and {
 				{
 					user = socks_server.socks5_user,
 					pass = socks_server.socks5_pass
