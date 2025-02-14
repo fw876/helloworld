@@ -541,7 +541,7 @@ shunt_dns_config_file_port() {
             # 新增NetFlix dns 使用端口
             local port=$tmp_shunt_local_port
                    jq --arg port "$port" '.inbounds |= .[0:1] + [{"protocol":"socks","port":($port | tonumber),"settings":{"udp":true,"auth":"noauth"}}] + .[1:]' "$shunt_config_file" > "$shunt_config_file.tmp" && mv "$shunt_config_file.tmp" $shunt_config_file
-            echo "$port"  # 返回端口号
+            echo $port  # 返回端口号
             return 0  # 成功返回
         else
             sed -i -e '/"mixed"/d' $shunt_config_file
@@ -560,7 +560,7 @@ shunt_dns_config_file_port() {
         fi
     fi
     # 使用传入的端口
-    echo "$1"  # 返回传入的端口号
+    echo $1  # 返回传入的端口号
     return 0  # 成功返回
 }
 
@@ -584,13 +584,7 @@ start_shunt() {
 		local tmp_port=${tmp_local_port:-$tmp_shunt_local_port}
 		gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port $tmp_port
 		# 处理配置文件中的 NetFlix 端口
-		if [ "$LOCAL_SERVER" == "$SHUNT_SERVER" ]; then
-			# NetFlix 和 全局socks 节点相同
-			tmp_port=$(shunt_dns_config_file_port "$tmp_port")
-		else
-			# NetFlix 和 全局 socks 节点不相同
-			shunt_dns_config_file_port "$tmp_port"
-		fi
+		tmp_port=$(shunt_dns_config_file_port $tmp_port)
 		ln_start_bin $(first_type xray v2ray) v2ray run -c $shunt_config_file
 		shunt_dns_command $tmp_port
 		echolog "shunt:$($(first_type xray v2ray) version | head -1) Started!"
@@ -890,7 +884,13 @@ load_config() {
 	else
 		GLOBAL_SERVER=$switch_server
 	fi
-	LOCAL_SERVER=$(uci_get_by_type socks5_proxy server nil)
+	if [ "$(uci_get_by_type socks5_proxy enabled 0)" == "1" ]; then
+		# 只有开启 全局socks 才需要取值
+		LOCAL_SERVER=$(uci_get_by_type socks5_proxy server nil)
+	else
+		# 没有开启 设置为 nil
+		LOCAL_SERVER=nil
+	fi
 	if [ "$GLOBAL_SERVER" == "nil" ]; then
 		mode="tcp,udp"
 		_local="2"
@@ -899,7 +899,13 @@ load_config() {
 		return 1
 	fi
 	UDP_RELAY_SERVER=$(uci_get_by_type global udp_relay_server nil)
-	SHUNT_SERVER=$(uci_get_by_type global netflix_server nil)
+	if [ "$(uci_get_by_type global netflix_enable 0)" == "1" ]; then
+		# 只有开启 NetFlix分流 才需要取值
+		SHUNT_SERVER=$(uci_get_by_type global netflix_server nil)
+	else
+		# 没有开启 设置为 nil
+		SHUNT_SERVER=nil
+	fi
 	tcp_config_file=$TMP_PATH/tcp-only-ssr-retcp.json
 	case "$UDP_RELAY_SERVER" in
 	nil)
