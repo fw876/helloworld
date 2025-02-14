@@ -543,6 +543,8 @@ shunt_dns_config_file_port() {
                    jq --arg port "$port" '.inbounds |= .[0:1] + [{"protocol":"socks","port":($port | tonumber),"settings":{"udp":true,"auth":"noauth"}}] + .[1:]' "$shunt_config_file" > "$shunt_config_file.tmp" && mv "$shunt_config_file.tmp" $shunt_config_file
             echo "$port"  # 返回端口号
             return 0  # 成功返回
+        else
+            sed -i -e '/"mixed"/d' $shunt_config_file
         fi
     else
         # NetFlix 和 全局 socks 节点不相同
@@ -553,6 +555,8 @@ shunt_dns_config_file_port() {
                    -e '/"mixed"/d' \
                    -e 's/"auth"\s*:\s*"password"/\"auth\": \"noauth\"/g' \
                    -e '/"accounts": \[/,/\]/d' $shunt_config_file
+        else
+            sed -i -e '/"mixed"/d' $shunt_config_file
         fi
     fi
     # 使用传入的端口
