@@ -67,6 +67,11 @@ o.write = function()
 	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr", "servers"))
 end
 
+o = s:option(Flag, "allow_insecure", translate("Allow subscribe Insecure nodes By default"))
+o.rmempty = false
+o.description = translate("Subscribe nodes allows insecure connection as TLS client (insecure)")
+o.default = "0"
+
 o = s:option(Flag, "switch", translate("Subscribe Default Auto-Switch"))
 o.rmempty = false
 o.description = translate("Subscribe new add server default Auto-Switch on")

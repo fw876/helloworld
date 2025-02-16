@@ -1292,3 +1292,9 @@ msgstr "是否要恢复客户端默认配置？"
 
 msgid "Are you sure you want to restore the client to default settings?"
 msgstr "是否真的要恢复客户端默认配置？"
+
+msgid "Allow subscribe Insecure nodes By default"
+msgstr "订阅节点允许不验证TLS证书"
+
+msgid "Subscribe nodes allows insecure connection as TLS client (insecure)"
+msgstr "订阅节点强制开启 不验证TLS客户端证书 (insecure)"
