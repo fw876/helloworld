@@ -843,6 +843,9 @@ msgstr "修改订阅 URL 和节点关键字后，请先点击更新"
 msgid "Update All Subscribe Servers"
 msgstr "更新所有订阅服务器节点"
 
+msgid "Enable Plugin"
+msgstr "启用插件"
+
 msgid "Plugin"
 msgstr "插件"
 
