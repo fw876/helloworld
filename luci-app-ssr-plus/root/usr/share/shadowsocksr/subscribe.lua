@@ -302,6 +302,10 @@ local function processData(szType, content)
 				if result.plugin == "simple-obfs" then
 					result.plugin = "obfs-local"
 				end
+				-- 如果插件不為 none，確保 enable_plugin 為 1
+				if result.plugin ~= "none" and result.plugin ~= "" then
+					result.enable_plugin = 1
+				end
 			end
 		else
 			result.server_port = host[2]:gsub("/","")
