@@ -296,8 +296,13 @@ end
 if is_finded("xray-plugin") then
 	o:value("xray-plugin", translate("xray-plugin"))
 end
+o:value("custom", translate("Custom"))
 o.rmempty = true
 o:depends({type = "ss", enable_plugin = true})
+
+o = s:option(Value, "custom_plugin", translate("Custom Plugin Path"))
+o.placeholder = "/path/to/custom-plugin"
+o:depends({plugin = "custom"})
 
 o = s:option(Value, "plugin_opts", translate("Plugin Opts"))
 o.rmempty = true

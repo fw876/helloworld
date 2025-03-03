@@ -580,7 +580,11 @@ function config:handleIndex(index)
 		ss = function()
 			ss.protocol = socks_port
 			if server.enable_plugin == "1" and server.plugin and server.plugin ~= "none" then
-				ss.plugin = server.plugin
+				if server.plugin == "custom" then
+					ss.plugin = server.custom_plugin
+				else
+					ss.plugin = server.plugin
+				end
 				ss.plugin_opts = server.plugin_opts or nil
 			end
 			print(json.stringify(ss, 1))
