@@ -28,7 +28,8 @@ local allow_insecure = ucic:get_first(name, 'server_subscribe', 'allow_insecure'
 local subscribe_url = ucic:get_first(name, 'server_subscribe', 'subscribe_url', {})
 local filter_words = ucic:get_first(name, 'server_subscribe', 'filter_words', '过期时间/剩余流量')
 local save_words = ucic:get_first(name, 'server_subscribe', 'save_words', '')
-local v2_ss = luci.sys.exec('type -t -p ss-redir sslocal') ~= "" and "ss" or "v2ray"
+local v2_ss = luci.sys.exec('type -t -p sslocal ss-redir') ~= "" and "ss" or "v2ray"
+local ss_variant = luci.sys.exec('type -t -p sslocal') ~= "" and "isSSRust" or luci.sys.exec('type -t -p ss-redir') ~= "" and "isSSLibev"
 local v2_tj = luci.sys.exec('type -t -p trojan') ~= "" and "trojan" or "v2ray"
 local log = function(...)
 	print(os.date("%Y-%m-%d %H:%M:%S ") .. table.concat({...}, " "))
@@ -278,6 +279,7 @@ local function processData(szType, content)
 		result.alias = UrlDecode(alias)
 		result.type = v2_ss
 		result.v2ray_protocol = (v2_ss == "v2ray") and "shadowsocks" or nil
+		result.ss_variant = ss_variant
 		result.encrypt_method_ss = method
 		result.password = password
 		result.server = host[1]

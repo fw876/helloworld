@@ -155,6 +155,9 @@ function import_ssr_url(btn, urlname, sid) {
 				}
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = ssu[0];
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].dispatchEvent(event);
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.ss_variant')[0].value = 
+					(ssu[0] === "ss") ? "isSSRust" : "isSSLibev";
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.ss_variant')[0].dispatchEvent(event);
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = server;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = port;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.password')[0].value = password || "";
