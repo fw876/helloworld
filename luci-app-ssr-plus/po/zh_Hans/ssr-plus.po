@@ -208,13 +208,13 @@ msgid "Certificate fingerprint"
 msgstr "证书指纹"
 
 msgid "shadowTLS protocol Version"
-msgstr "ShadowTLS协议版本"
+msgstr "ShadowTLS 协议版本"
 
 msgid "TLS 1.3 Strict mode"
 msgstr "TLS 1.3 限定模式"
 
 msgid "Disable TCP No_delay"
-msgstr "禁用TCP无延迟"
+msgstr "禁用 TCP 无延迟"
 
 msgid "shadow-TLS SNI"
 msgstr "服务器名称指示"
@@ -222,11 +222,17 @@ msgstr "服务器名称指示"
 msgid "Shadow-TLS ChainPoxy type"
 msgstr "代理链类型"
 
+msgid "Shadowsocks Variant"
+msgstr "shadowsocks 变体"
+
 msgid "Shadowsocks-rust Version"
 msgstr "shadowsocks rust 版本"
 
+msgid "Shadowsocks-libev Version"
+msgstr "Shadowsocks-libev 版本"
+
 msgid "Vmess Protocol"
-msgstr "VMESS协议"
+msgstr "VMESS 协议"
 
 msgid "Shadowsocks password"
 msgstr "shadowsocks密码"
