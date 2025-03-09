@@ -146,11 +146,8 @@ end
 if is_finded("ssr-redir") then
 	o:value("ssr", translate("ShadowsocksR"))
 end
-if is_finded("ss-local") or is_finded("ss-redir") then
-	o:value("ss", translate("Shadowsocks-libev Version"))
-end
-if is_finded("sslocal") or is_finded("ssmanager") then
-	o:value("ss", translate("Shadowsocks-rust Version"))
+if is_finded("ss-local") or is_finded("ss-redir") or is_finded("sslocal") or is_finded("ssmanager") then
+    o:value("ss", translate("Shadowsocks"))
 end
 if is_finded("trojan") then
 	o:value("trojan", translate("Trojan"))
@@ -186,6 +183,18 @@ for _, e in ipairs(luci.sys.net.devices()) do
 end
 o:depends("type", "tun")
 o.description = translate("Redirect traffic to this network interface")
+
+-- 新增一个选择框，用于选择 Shadowsocks 版本
+o = s:option(ListValue, "ss_variant", translate("Shadowsocks Variant"))
+local isSSRust = is_finded("sslocal") or is_finded("ssmanager")
+local isSSLibev = is_finded("ss-local") or is_finded("ss-redir")
+if isSSRust then
+    o:value("isSSRust", translate("Shadowsocks-rust Version"))
+end
+if isSSLibev then
+    o:value("isSSLibev", translate("Shadowsocks-libev Version"))
+end
+o:depends("type", "ss")
 
 o = s:option(ListValue, "v2ray_protocol", translate("V2Ray/XRay protocol"))
 o:value("vless", translate("VLESS"))
