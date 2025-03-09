@@ -1209,6 +1209,9 @@ msgstr "应用"
 msgid "Enable Netflix Mode"
 msgstr "启用 Netflix 分流模式"
 
+msgid "Disable shunt mode before, Please must first disable shunt node."
+msgstr "停用分流模式之前，请务必先停用分流节点。"
+
 msgid "TUIC User UUID"
 msgstr "TUIC 用户 uuid"
 
