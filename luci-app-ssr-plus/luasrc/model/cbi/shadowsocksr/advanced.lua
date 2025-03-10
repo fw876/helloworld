@@ -66,7 +66,7 @@ o:value("https://fastly.jsdelivr.net/gh/gaoyifan/china-operator-ip@ip-lists/chin
 o.default = "https://ispip.clang.cn/all_cn.txt"
 
 o = s:option(Flag, "netflix_enable", translate("Enable Netflix Mode"))
-o.description = translate("Disable shunt mode before, Please must first disable shunt node.")
+o.description = translate("When disabled shunt mode, will same time stopped shunt service.")
 o.rmempty = false
 
 o = s:option(Value, "nfip_url", translate("nfip_url"))
