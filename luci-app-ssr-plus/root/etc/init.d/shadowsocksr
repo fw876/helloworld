@@ -166,7 +166,7 @@ _exit() {
 }
 
 first_type() {
-	type -t -p "/bin/${1}" -p "${TMP_BIN_PATH}/${1}" -p "${1}" "$@" | head -n1
+	type -t -p "/bin/${1}" -p "/usr/bin/${1}" -p "${TMP_BIN_PATH}/${1}" -p "${1}" "$@" | head -n1
 }
 
 ln_start_bin() {
@@ -258,7 +258,7 @@ start_dns() {
 			fi
 		fi
 	fi
-	
+
 	if [ "$(uci_get_by_type global apple_optimization 1)" == "1" ]; then
 		local new_appledns="$(uci_get_by_type global apple_dns)"
 		if [ -n "$new_appledns" ]; then		
@@ -320,7 +320,7 @@ gen_service_file() { #1-server.type 2-cfgname 3-file_path
 
 get_name() {
 	case "$1" in
-	ss) echo "Shadowsocks" ;;
+	ss) echo "ShadowSocks" ;;
 	ssr) echo "ShadowsocksR" ;;
 	esac
 }
@@ -432,11 +432,23 @@ gen_config_file() { #server1 type2 code3 local_port4 socks_port5 chain6 threads5
 
 start_udp() {
 	local type=$(uci_get_by_name $UDP_RELAY_SERVER type)
+	local has_ss_type=$(uci_get_by_type server_subscribe ss_type)
 	redir_udp=1
 	case "$type" in
 	ss | ssr)
 		gen_config_file $UDP_RELAY_SERVER $type 2 $tmp_udp_port
-		ss_program="$(first_type ${type}local ${type}-redir)"
+		if [ "$has_ss_type" = "ss-libev" -o "$type" = "ssr" ]; then
+			ss_program="$(first_type ${type}-redir)"
+		elif [ "$has_ss_type" = "ss-rust" ]; then
+			ss_program="$(first_type ${type}local)"
+		fi
+		echolog "$(get_name $type) program is: $ss_program"
+		# 获取当前软链接指向的执行文件路径
+		old_ss_program=$(readlink -f "$TMP_PATH/bin/${type}-redir" 2>/dev/null)
+		# **当新旧执行文件路径不同时，删除旧链接**
+		if [ "$old_ss_program" != "$ss_program" ]; then
+			rm -rf "$TMP_PATH/bin/${type}-redir"
+		fi
 		ln_start_bin $ss_program ${type}-redir -c $udp_config_file
 		echolog "UDP TPROXY Relay:$(get_name $type) Started!"
 		;;
@@ -540,7 +552,7 @@ shunt_dns_config_file_port() {
             # 全局socks 有密码，NetFlix 不能使用 auth 验证，需更换为新端口并使用无密码的 socks 配置用于分流
             # 新增NetFlix dns 使用端口
             local port=$tmp_shunt_local_port
-                   jq --arg port "$port" '.inbounds |= .[0:1] + [{"protocol":"socks","port":($port | tonumber),"settings":{"udp":true,"auth":"noauth"}}] + .[1:]' "$shunt_config_file" > "$shunt_config_file.tmp" && mv "$shunt_config_file.tmp" $shunt_config_file
+            jq --arg port "$port" '.inbounds |= .[0:1] + [{"protocol":"socks","port":($port | tonumber),"settings":{"udp":true,"auth":"noauth"}}] + .[1:]' "$shunt_config_file" > "$shunt_config_file.tmp" && mv "$shunt_config_file.tmp" $shunt_config_file
             echo $port  # 返回端口号
             return 0  # 成功返回
         else
@@ -566,16 +578,38 @@ shunt_dns_config_file_port() {
 
 start_shunt() {
 	local type=$(uci_get_by_name $SHUNT_SERVER type)
+	local has_ss_type=$(uci_get_by_type server_subscribe ss_type)
 	case "$type" in
 	ss | ssr)
 		gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port
-		ss_program="$(first_type ${type}local ${type}-redir)"
+		if [ "$has_ss_type" = "ss-libev" -o "$type" = "ssr" ]; then
+			ss_program="$(first_type ${type}-redir)"
+		elif [ "$has_ss_type" = "ss-rust" ]; then
+			ss_program="$(first_type ${type}local)"
+		fi
+		echolog "$(get_name $type) program is: $ss_program"
+		# 获取当前软链接指向的执行文件路径
+		old_ss_program=$(readlink -f "$TMP_PATH/bin/${type}-redir" 2>/dev/null)
+		# **当新旧执行文件路径不同时，删除旧链接**
+		if [ "$old_ss_program" != "$ss_program" ]; then
+			rm -rf "$TMP_PATH/bin/${type}-redir"
+		fi
 		ln_start_bin $ss_program ${type}-redir -c $shunt_config_file
 		if [ -n "$tmp_local_port" ]; then
 			local tmp_port=$tmp_local_port
 		else
 			local tmp_port=$tmp_shunt_local_port
-			ln_start_bin $(first_type ${type}local ${type}-local) ${type}-local -c $shunt_dns_config_file
+			if [ "$has_ss_type" = "ss-libev" -o "$type" = "ssr" ]; then
+				dns_ss_program="$(first_type ${type}-local)"
+			elif [ "$has_ss_type" = "ss-rust" ]; then
+				dns_ss_program="$(first_type ${type}local)"
+			fi
+			# 获取当前软链接指向的执行文件路径
+			old_dns_ss_program=$(readlink -f "$TMP_PATH/bin/${type}-local" 2>/dev/null)
+			if [ "$old_dns_ss_program" != "$dns_ss_program" ]; then
+				rm -rf "$TMP_PATH/bin/${type}-local"
+			fi
+			ln_start_bin $dns_ss_program ${type}-local -c $shunt_dns_config_file
 		fi
 		shunt_dns_command $tmp_port
 		echolog "shunt:$(get_name $type) Started!"
@@ -695,10 +729,22 @@ start_local() {
 	local local_port=$(uci_get_by_type socks5_proxy local_port)
 	[ "$LOCAL_SERVER" == "$SHUNT_SERVER" ] && tmp_local_port=$local_port
 	local type=$(uci_get_by_name $LOCAL_SERVER type)
+	local has_ss_type=$(uci_get_by_type server_subscribe ss_type)
 	case "$type" in
 	ss | ssr)
 		gen_config_file $LOCAL_SERVER $type 4 $local_port
-		ss_program="$(first_type ${type}local ${type}-local)"
+		if [ "$has_ss_type" = "ss-libev" -o "$type" = "ssr" ]; then
+			ss_program="$(first_type ${type}-local)"
+		elif [ "$has_ss_type" = "ss-rust" ]; then
+			ss_program="$(first_type ${type}local)"
+		fi
+		echolog "$(get_name $type) program is: $ss_program"
+		# 获取当前软链接指向的执行文件路径
+		old_ss_program=$(readlink -f "$TMP_PATH/bin/${type}-local" 2>/dev/null)
+		# **当 新旧执行文件路径不同时，删除旧链接**
+		if [ "$old_ss_program" != "$ss_program" ]; then
+			rm -rf "$TMP_PATH/bin/${type}-local"
+		fi
 		ln_start_bin $ss_program ${type}-local -c $local_config_file
 		echolog "Global_Socks5:$(get_name $type) Started!"
 		;;
@@ -789,12 +835,24 @@ Start_Run() {
 	fi
 	local tcp_port=$(uci_get_by_name $GLOBAL_SERVER local_port)
 	local type=$(uci_get_by_name $GLOBAL_SERVER type)
+	local has_ss_type=$(uci_get_by_type server_subscribe ss_type)
 	case "$type" in
 	ss | ssr)
 		gen_config_file $GLOBAL_SERVER $type 1 $tcp_port
-		ss_program="$(first_type ${type}local ${type}-redir)"
+		if [ "$has_ss_type" = "ss-libev" -o "$type" = "ssr" ]; then
+			ss_program="$(first_type ${type}-redir)"
+		elif [ "$has_ss_type" = "ss-rust" ]; then
+			ss_program="$(first_type ${type}local)"
+		fi
+		echolog "$(get_name $type) program is: $ss_program"
+		# 获取当前软链接指向的执行文件路径
+		old_ss_program=$(readlink -f "$TMP_PATH/bin/${type}-redir" 2>/dev/null)
+		# **当新旧执行文件路径不同时，删除旧链接**
+		if [ "$old_ss_program" != "$ss_program" ]; then
+			rm -rf "$TMP_PATH/bin/${type}-redir"
+		fi
 		for i in $(seq 1 $threads); do
-			ln_start_bin "$ss_program" ${type}-redir -c $tcp_config_file
+			ln_start_bin $ss_program ${type}-redir -c $tcp_config_file
 		done
 		echolog "Main node:$(get_name $type) $threads Threads Started!"
 		;;
@@ -1000,10 +1058,22 @@ start_server() {
 			fi
 		fi
 		local type=$(uci_get_by_name $1 type)
+		local has_ss_type=$(uci_get_by_type server_subscribe ss_type)
 		case "$type" in
 		ss | ssr)
 			gen_service_file ${type} $1 $TMP_PATH/ssr-server$server_count.json
-			ln_start_bin $(first_type ${type}server ${type}-server) ${type}-server -c $TMP_PATH/ssr-server$server_count.json
+			if [ "$has_ss_type" = "ss-libev" -o "$type" = "ssr" ]; then
+				ss_program="$(first_type ${type}-server)"
+			elif [ "$has_ss_type" = "ss-rust" ]; then
+				ss_program="$(first_type ${type}server)"
+			fi
+			# 获取当前软链接指向的执行文件路径
+			old_ss_program=$(readlink -f "$TMP_PATH/bin/${type}-server" 2>/dev/null)
+			# **当新旧执行文件路径不同时，删除旧链接**
+			if [ "$old_ss_program" != "$ss_program" ]; then
+				rm -rf "$TMP_PATH/bin/${type}-server" 
+			fi
+			ln_start_bin $ss_program ${type}-server -c $TMP_PATH/ssr-server$server_count.json
 			echolog "Server: $(get_name ${type}) Server$server_count Started!"
 			;;
 		socks5)
@@ -1201,7 +1271,12 @@ stop() {
 		uci -q commit "dhcp"
 	fi
 	if [ -f "$DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf" ]; then
-		rm -rf $DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf $TMP_DNSMASQ_PATH $TMP_PATH/*-ssr-*.json $TMP_PATH/ssr-server*.json
+		rm -rf $DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf \
+			$TMP_DNSMASQ_PATH \
+			$TMP_PATH/*-ssr-*.json \
+			$TMP_PATH/ssr-server*.json \
+			$TMP_PATH/*-config-*.json
+
 		/etc/init.d/dnsmasq restart >/dev/null 2>&1
 	fi
 	del_cron
@@ -1216,3 +1291,4 @@ reset() {
 	cp /usr/share/shadowsocksr/shadowsocksr.config /etc/config/shadowsocksr
 	unset_lock
 }
+

@@ -6,18 +6,28 @@ require "luci.sys"
 require "luci.http"
 require "luci.jsonc"
 require "luci.model.ipkg"
+require "luci.model.uci"
+local uci = require "luci.model.uci".cursor()
 
 local m, s, o
+
 local sid = arg[1]
 local uuid = luci.sys.exec("cat /proc/sys/kernel/random/uuid")
 
+-- 确保正确判断程序是否存在
 local function is_finded(e)
-	return luci.sys.exec('type -t -p "%s"' % e) ~= "" and true or false
+	return luci.sys.exec(string.format('type -t -p "%s" 2>/dev/null', e)) ~= ""
 end
 
 local function is_installed(e)
 	return luci.model.ipkg.installed(e)
 end
+
+local has_ss_rust = is_finded("sslocal") or is_finded("ssserver")
+local has_ss_libev = is_finded("ss-redir") or is_finded("ss-local")
+
+-- 读取当前存储的 ss_type
+local ss_type = uci:get_first("shadowsocksr", "server_subscribe", "ss_type")
 
 local server_table = {}
 local encrypt_methods = {
@@ -79,7 +89,7 @@ local encrypt_methods_ss = {
 	"camellia-256-cfb",
 	"salsa20",
 	"chacha20",
-	"chacha20-ietf" ]]
+	"chacha20-ietf" ]]--
 }
 
 local protocol = {
@@ -146,8 +156,8 @@ end
 if is_finded("ssr-redir") then
 	o:value("ssr", translate("ShadowsocksR"))
 end
-if is_finded("ss-local") or is_finded("ss-redir") or is_finded("sslocal") or is_finded("ssmanager") then
-    o:value("ss", translate("Shadowsocks"))
+if has_ss_rust or has_ss_libev then
+    o:value("ss", translate("ShadowSocks"))
 end
 if is_finded("trojan") then
 	o:value("trojan", translate("Trojan"))
@@ -185,16 +195,44 @@ o:depends("type", "tun")
 o.description = translate("Redirect traffic to this network interface")
 
 -- 新增一个选择框，用于选择 Shadowsocks 版本
-o = s:option(ListValue, "ss_variant", translate("Shadowsocks Variant"))
-local isSSRust = is_finded("sslocal") or is_finded("ssmanager")
-local isSSLibev = is_finded("ss-local") or is_finded("ss-redir")
-if isSSRust then
-    o:value("isSSRust", translate("Shadowsocks-rust Version"))
+o = s:option(ListValue, "has_ss_type", string.format("<b><span style='color:red;'>%s</span></b>", translate("ShadowSocks Node Use Version")))
+o.description = translate("Selection ShadowSocks Node Use Version.")
+-- 设置默认 Shadowsocks 版本
+-- 动态添加选项
+if has_ss_rust then
+    o:value("ss-rust", translate("ShadowSocks-rust Version"))
 end
-if isSSLibev then
-    o:value("isSSLibev", translate("Shadowsocks-libev Version"))
+if has_ss_libev then
+    o:value("ss-libev", translate("ShadowSocks-libev Version"))
+end
+-- 设置默认值
+if ss_type == "ss-rust" then
+    o.default = "ss-rust"
+elseif ss_type == "ss-libev" then
+    o.default = "ss-libev"
 end
 o:depends("type", "ss")
+o.write = function(self, section, value)
+    -- 更新 Shadowsocks 节点的 has_ss_type
+    uci:foreach("shadowsocksr", "servers", function(s)
+        local node_type = uci:get("shadowsocksr", s[".name"], "type")  -- 获取节点类型
+        if node_type == "ss" then  -- 仅修改 Shadowsocks 节点
+            local old_value = uci:get("shadowsocksr", s[".name"], "has_ss_type")
+            if old_value ~= value then
+                uci:set("shadowsocksr", s[".name"], "has_ss_type", value)
+            end
+        end
+    end)
+
+    -- 更新 server_subscribe 的 ss_type
+    local old_value = uci:get("shadowsocksr", "server_subscribe", "ss_type")
+    if old_value ~= value then
+        uci:set("shadowsocksr", "@server_subscribe[0]", "ss_type", value)
+    end
+
+    -- 更新当前 section 的 has_ss_type
+    Value.write(self, section, value)
+end
 
 o = s:option(ListValue, "v2ray_protocol", translate("V2Ray/XRay protocol"))
 o:value("vless", translate("VLESS"))
@@ -271,7 +309,12 @@ o:depends("type", "ssr")
 
 o = s:option(ListValue, "encrypt_method_ss", translate("Encrypt Method"))
 for _, v in ipairs(encrypt_methods_ss) do
-	o:value(v)
+	if v == "none" then
+	   o.default = "none"
+	   o:value("none", translate("none"))
+	else
+	    o:value(v, translate(v))
+	end
 end
 o.rmempty = true
 o:depends("type", "ss")

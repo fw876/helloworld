@@ -96,7 +96,7 @@ function check_port()
 	local retstring = "<br /><br />"
 	local s
 	local server_name = ""
-	local uci = luci.model.uci.cursor()
+	local uci = require "luci.model.uci".cursor()
 	local iret = 1
 	uci:foreach("shadowsocksr", "servers", function(s)
 		if s.alias then
