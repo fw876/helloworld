@@ -10,8 +10,21 @@ require "luci.util"
 require "luci.sys"
 require "luci.jsonc"
 require "luci.model.ipkg"
+local ucursor = require "luci.model.uci".cursor()
+
 -- these global functions are accessed all the time by the event handler
 -- so caching them is worth the effort
+-- 读取 ss_type 设置
+local ss_type = ucursor:get_first("shadowsocksr", "server_subscribe", "ss_type") or "ss-rust"
+-- 根据 ss_type 选择对应的程序
+local ss_program = ""
+if ss_type == "ss-rust" then
+    ss_program = "sslocal"  -- Rust 版本使用 sslocal
+elseif ss_type == "ss-libev" then
+    ss_program = "ss-redir"  -- Libev 版本使用 ss-redir
+else
+    ss_program = "v2ray"
+end
 local tinsert = table.insert
 local ssub, slen, schar, sbyte, sformat, sgsub = string.sub, string.len, string.char, string.byte, string.format, string.gsub
 local jsonParse, jsonStringify = luci.jsonc.parse, luci.jsonc.stringify
@@ -28,8 +41,8 @@ local allow_insecure = ucic:get_first(name, 'server_subscribe', 'allow_insecure'
 local subscribe_url = ucic:get_first(name, 'server_subscribe', 'subscribe_url', {})
 local filter_words = ucic:get_first(name, 'server_subscribe', 'filter_words', '过期时间/剩余流量')
 local save_words = ucic:get_first(name, 'server_subscribe', 'save_words', '')
-local v2_ss = luci.sys.exec('type -t -p sslocal ss-redir') ~= "" and "ss" or "v2ray"
-local ss_variant = luci.sys.exec('type -t -p sslocal') ~= "" and "isSSRust" or luci.sys.exec('type -t -p ss-redir') ~= "" and "isSSLibev"
+local v2_ss = luci.sys.exec('type -t -p ' .. ss_program .. ' 2>/dev/null') ~= "" and "ss" or "v2ray"
+local has_ss_type = luci.sys.exec('type -t -p ' .. ss_program .. ' 2>/dev/null') ~= "" and ss_type
 local v2_tj = luci.sys.exec('type -t -p trojan') ~= "" and "trojan" or "v2ray"
 local log = function(...)
 	print(os.date("%Y-%m-%d %H:%M:%S ") .. table.concat({...}, " "))
@@ -279,7 +292,7 @@ local function processData(szType, content)
 		result.alias = UrlDecode(alias)
 		result.type = v2_ss
 		result.v2ray_protocol = (v2_ss == "v2ray") and "shadowsocks" or nil
-		result.ss_variant = ss_variant
+		result.has_ss_type = has_ss_type
 		result.encrypt_method_ss = method
 		result.password = password
 		result.server = host[1]
@@ -771,3 +784,4 @@ if subscribe_url and #subscribe_url > 0 then
 		end
 	end)
 end
+
