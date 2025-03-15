@@ -1,10 +1,39 @@
 -- Licensed to the public under the GNU General Public License v3.
 require "luci.http"
+require "luci.sys"
 require "luci.dispatcher"
 require "luci.model.uci"
-local m, s, o
-local uci = luci.model.uci.cursor()
+local uci = require "luci.model.uci".cursor()
+
+local m, s, o, node
 local server_count = 0
+
+-- 确保正确判断程序是否存在
+local function is_finded(e)
+    return luci.sys.exec(string.format('type -t -p "%s" 2>/dev/null', e)) ~= ""
+end
+
+local has_ss_rust = is_finded("sslocal") or is_finded("ssserver")
+local has_ss_libev = is_finded("ss-redir") or is_finded("ss-local")
+
+local ss_type_list = {}
+
+if has_ss_rust then
+    table.insert(ss_type_list, { id = "ss-rust", name = translate("ShadowSocks-rust Version") })
+end
+if has_ss_libev then
+    table.insert(ss_type_list, { id = "ss-libev", name = translate("ShadowSocks-libev Version") })
+end
+
+-- 如果用户没有手动设置，则自动选择
+if ss_type == "" then
+    if has_ss_rust then
+        ss_type = "ss-rust"
+    elseif has_ss_libev then
+        ss_type = "ss-libev"
+    end
+end
+
 uci:foreach("shadowsocksr", "servers", function(s)
 	server_count = server_count + 1
 end)
@@ -47,6 +76,30 @@ end
 o.default = 30
 o.rmempty = true
 o:depends("auto_update", "1")
+
+-- 确保 ss_type_list 不为空
+if #ss_type_list > 0 then
+    o = s:option(ListValue, "ss_type", string.format("<b><span style='color:red;'>%s</span></b>", translate("ShadowSocks Node Use Version")))
+    o.description = translate("Selection ShadowSocks Node Use Version.")
+    for _, v in ipairs(ss_type_list) do
+        o:value(v.id, v.name) -- 存储 "ss-libev" / "ss-rust"，但 UI 显示完整名称
+    end
+    o.default = ss_type  -- 设置默认值
+    o.write = function(self, section, value)
+        -- 更新 Shadowsocks 节点的 has_ss_type
+        uci:foreach("shadowsocksr", "servers", function(s)
+            local node_type = uci:get("shadowsocksr", s[".name"], "type")  -- 获取节点类型
+            if node_type == "ss" then  -- 仅修改 Shadowsocks 节点
+                local old_value = uci:get("shadowsocksr", s[".name"], "has_ss_type")
+                if old_value ~= value then
+                    uci:set("shadowsocksr", s[".name"], "has_ss_type", value)
+                end
+            end
+        end)
+        -- 更新当前 section 的 ss_type
+        Value.write(self, section, value)
+    end
+end
 
 o = s:option(DynamicList, "subscribe_url", translate("Subscribe URL"))
 o.rmempty = true
