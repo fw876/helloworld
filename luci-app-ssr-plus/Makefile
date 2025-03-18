@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-ssr-plus
 PKG_VERSION:=189
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 
 PKG_CONFIG_DEPENDS:= \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_NONE_V2RAY \
@@ -34,10 +34,7 @@ LUCI_PKGARCH:=all
 LUCI_DEPENDS:= \
 	+coreutils +coreutils-base64 +dns2socks +dns2tcp +dnsmasq-full +@PACKAGE_dnsmasq_full_ipset +ipset +kmod-ipt-nat +jq \
 	+ip-full +iptables +iptables-mod-tproxy +lua +lua-neturl +libuci-lua +microsocks \
-	+tcping +resolveip +shadowsocksr-libev-ssr-check +uclient-fetch \
-	+PACKAGE_$(PKG_NAME)_INCLUDE_libustream-mbedtls:libustream-mbedtls \
-	+PACKAGE_$(PKG_NAME)_INCLUDE_libustream-openssl:libustream-openssl \
-	+PACKAGE_$(PKG_NAME)_INCLUDE_libustream-wolfssl:libustream-wolfssl \
+	+tcping +resolveip +shadowsocksr-libev-ssr-check +wget-ssl \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_V2ray:curl \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_V2ray:v2ray-core \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Xray:curl \
@@ -66,20 +63,6 @@ LUCI_DEPENDS:= \
 
 define Package/$(PKG_NAME)/config
 select PACKAGE_luci-lib-ipkg if PACKAGE_$(PKG_NAME)
-
-choice
-	prompt "Uclient SSL Lib Selection"
-	default PACKAGE_$(PKG_NAME)_INCLUDE_libustream-openssl
-	
-	config PACKAGE_$(PKG_NAME)_INCLUDE_libustream-mbedtls
-	bool "libustream-mbedtls"
-
-	config PACKAGE_$(PKG_NAME)_INCLUDE_libustream-openssl
-	bool "libustream-openssl"
-
-	config PACKAGE_$(PKG_NAME)_INCLUDE_PACKAGE_libustream-wolfssl
-	bool "libustream-wolfssl"
-endchoice
 
 choice
 	prompt "Shadowsocks Client Selection"
