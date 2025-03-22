@@ -15,7 +15,7 @@ local ad_count = 0
 local ip_count = 0
 local nfip_count = 0
 local Process_list = luci.sys.exec("busybox ps -w")
-local uci = luci.model.uci.cursor()
+local uci = require "luci.model.uci".cursor()
 -- html constants
 font_blue = [[<b style=color:green>]]
 style_blue = [[<b style=color:red>]]

@@ -8,7 +8,7 @@ require "luci.sys"
 require "luci.model.uci"
 local icount = 0
 local args = arg[1]
-local uci = luci.model.uci.cursor()
+local uci = require "luci.model.uci".cursor()
 
 -- 以下设置更新数据库至 DNSMASQ 配置路径
 -- 获取 DNSMASQ 配置 ID

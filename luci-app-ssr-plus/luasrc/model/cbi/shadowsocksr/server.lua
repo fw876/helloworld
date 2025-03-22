@@ -120,15 +120,9 @@ function o.cfgvalue(...)
 end
 
 o = sec:option(DummyValue, "encrypt_method", translate("Encrypt Method"))
-function o.cfgvalue(...)
-	local v = Value.cfgvalue(...)
-	return v and v:upper() or "-"
-end
-
-o = sec:option(DummyValue, "encrypt_method_ss", translate("Encrypt Method"))
-function o.cfgvalue(...)
-	local v = Value.cfgvalue(...)
-	return v and v:upper() or "-"
+function o.cfgvalue(self, section)
+	local method = self.map:get(section, "encrypt_method") or self.map:get(section, "encrypt_method_ss")
+	return method and method:upper() or "-"
 end
 
 o = sec:option(DummyValue, "protocol", translate("Protocol"))

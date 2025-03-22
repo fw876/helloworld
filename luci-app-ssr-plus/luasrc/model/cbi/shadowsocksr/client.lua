@@ -3,11 +3,11 @@
 -- Licensed to the public under the GNU General Public License v3.
 
 local m, s, sec, o
-local uci = luci.model.uci.cursor()
+local uci = require "luci.model.uci".cursor()
 
 local validation = require "luci.cbi.datatypes"
 local function is_finded(e)
-	return luci.sys.exec('type -t -p "%s"' % e) ~= "" and true or false
+	return luci.sys.exec(string.format('type -t -p "%s" 2>/dev/null', e)) ~= ""
 end
 
 m = Map("shadowsocksr", translate("ShadowSocksR Plus+ Settings"), translate("<h3>Support SS/SSR/V2RAY/XRAY/TROJAN/NAIVEPROXY/SOCKS5/TUN etc.</h3>"))
