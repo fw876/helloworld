@@ -10,6 +10,7 @@ require "luci.util"
 require "luci.sys"
 require "luci.jsonc"
 require "luci.model.ipkg"
+local ucursor = require "luci.model.uci".cursor()
 
 -- these global functions are accessed all the time by the event handler
 -- so caching them is worth the effort
@@ -41,6 +42,7 @@ end
 local v2_ss = luci.sys.exec('type -t -p ' .. ss_program .. ' 2>/dev/null') ~= "" and "ss" or "v2ray"
 local has_ss_type = luci.sys.exec('type -t -p ' .. ss_program .. ' 2>/dev/null') ~= "" and ss_type
 local v2_tj = luci.sys.exec('type -t -p trojan') ~= "" and "trojan" or "v2ray"
+local hy2_type = luci.sys.exec('type -t -p hysteria') ~= "" and "hysteria2"
 local log = function(...)
 	print(os.date("%Y-%m-%d %H:%M:%S ") .. table.concat({...}, " "))
 end
@@ -156,7 +158,37 @@ end
 -- 处理数据
 local function processData(szType, content)
 	local result = {type = szType, local_port = 1234, kcp_param = '--nocomp'}
-	if szType == 'ssr' then
+	if szType == "hysteria2" then
+		local url = URL.parse("http://" .. content)
+		local params = url.query
+
+		result.alias = url.fragment and UrlDecode(url.fragment) or nil
+		result.type = hy2_type
+		result.server = url.host
+		result.server_port = url.port
+		if params.protocol then
+			result.flag_transport = "1"
+			result.transport_protocol = params.protocol or "udp"
+		end
+		result.hy2_auth = url.user
+		result.uplink_capacity = params.upmbps
+		result.downlink_capacity = params.downmbps
+		if params.obfs and params.obfs-password then
+			result.flag_obfs = "1"
+			result.transport_protocol = params.obfs
+			result.transport_protocol = params.obfs-password
+		end
+		if params.sni then
+			result.tls = "1"
+			result.tls_host = params.sni
+		end
+		if params.insecure then
+			result.insecure = "1"
+			if params.sni then
+				result.pinsha256 = params.pinsha256
+			end
+		end
+	elseif szType == 'ssr' then
 		local dat = split(content, "/%?")
 		local hostInfo = split(dat[1], ':')
 		result.type = 'ssr'
@@ -309,6 +341,7 @@ local function processData(szType, content)
 					result.plugin_opts = plugin_info:sub(idx_pn + 1, #plugin_info)
 				else
 					result.plugin = plugin_info
+					result.plugin_opts = ""
 				end
 				-- 部分机场下发的插件名为 simple-obfs，这里应该改为 obfs-local
 				if result.plugin == "simple-obfs" then
@@ -781,4 +814,5 @@ if subscribe_url and #subscribe_url > 0 then
 		end
 	end)
 end
+
 
