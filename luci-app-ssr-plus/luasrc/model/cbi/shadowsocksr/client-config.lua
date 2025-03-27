@@ -144,7 +144,7 @@ s = m:section(NamedSection, sid, "servers")
 s.anonymous = true
 s.addremove = false
 
-o = s:option(DummyValue, "ssr_url", "SS/SSR/V2RAY/TROJAN URL")
+o = s:option(DummyValue, "ssr_url", "SS/SSR/V2RAY/TROJAN/HYSTERIA2 URL")
 o.rawhtml = true
 o.template = "shadowsocksr/ssrurl"
 o.value = sid

@@ -10,7 +10,6 @@ require "luci.util"
 require "luci.sys"
 require "luci.jsonc"
 require "luci.model.ipkg"
-local ucursor = require "luci.model.uci".cursor()
 
 -- these global functions are accessed all the time by the event handler
 -- so caching them is worth the effort
@@ -76,11 +75,20 @@ local encrypt_methods_ss = {
 	"camellia-256-cfb",
 	"salsa20",
 	"chacha20",
-	"chacha20-ietf" ]]
+	"chacha20-ietf" ]]--
 }
 -- 分割字符串
 local function split(full, sep)
-	full = full:gsub("%z", "") -- 这里不是很清楚 有时候结尾带个\0
+	if full == nil or type(full) ~= "string" then
+		-- print("Debug: split() received nil or non-string value")
+		return {}
+	end
+	full = full:gsub("%z", ""):gsub("^%s+", ""):gsub("%s+$", "") -- 去除首尾空白字符和\0
+	if full == "" then
+		-- print("Debug: split() received empty string after trimming")
+		return {}
+	end
+	sep = sep or "," -- 默认分隔符
 	local off, result = 1, {}
 	while true do
 		local nStart, nEnd = full:find(sep, off)
@@ -155,12 +163,32 @@ local function checkTabValue(tab)
 	end
 	return revtab
 end
+-- JSON完整性检查
+local function isCompleteJSON(str)
+    -- 检查JSON格式
+	if type(str) ~= "string" or str:match("^%s*$") then
+        return false
+    end
+	-- 尝试解析JSON验证完整性
+	local success, _ = pcall(jsonParse, str)
+	return success
+end
 -- 处理数据
 local function processData(szType, content)
 	local result = {type = szType, local_port = 1234, kcp_param = '--nocomp'}
+	-- 检查JSON的格式如不完整丢弃
+	if not isCompleteJSON(content) then
+		return nil
+	end
 	if szType == "hysteria2" then
 		local url = URL.parse("http://" .. content)
 		local params = url.query
+
+		-- 调试输出所有参数
+		-- log("Hysteria2 原始参数:")
+		-- for k,v in pairs(params) do
+			-- log(k.."="..v)
+		-- end
 
 		result.alias = url.fragment and UrlDecode(url.fragment) or nil
 		result.type = hy2_type
@@ -171,12 +199,12 @@ local function processData(szType, content)
 			result.transport_protocol = params.protocol or "udp"
 		end
 		result.hy2_auth = url.user
-		result.uplink_capacity = params.upmbps
-		result.downlink_capacity = params.downmbps
-		if params.obfs and params.obfs-password then
+		result.uplink_capacity = params.upmbps or "5"
+		result.downlink_capacity = params.downmbps or "20"
+		if params.obfs then
 			result.flag_obfs = "1"
-			result.transport_protocol = params.obfs
-			result.transport_protocol = params.obfs-password
+			result.obfs_type = params.obfs
+			result.salamander = params["obfs-password"] or params["obfs_password"]
 		end
 		if params.sni then
 			result.tls = "1"
@@ -210,8 +238,13 @@ local function processData(szType, content)
 			result.alias = "[" .. group .. "] "
 		end
 		result.alias = result.alias .. base64Decode(params.remarks)
-	elseif szType == 'vmess' then
-		local info = jsonParse(content)
+	elseif szType == "vmess" then
+		-- 解析正常节点
+		local success, info = pcall(jsonParse, content)
+		if not success or type(info) ~= "table" then
+			return nil
+		end
+		-- 处理有效数据
 		result.type = 'v2ray'
 		result.v2ray_protocol = 'vmess'
 		result.server = info.add
@@ -312,12 +345,21 @@ local function processData(szType, content)
 			idx_sp = content:find("#")
 			alias = content:sub(idx_sp + 1, -1)
 		end
-		local info = content:sub(1, idx_sp - 1)
+		local info = content:sub(1, idx_sp > 0 and idx_sp - 1 or #content)
 		local hostInfo = split(base64Decode(info), "@")
+		if #hostInfo < 2 then
+			--log("SS节点格式错误，解码后内容:", base64Decode(info))
+			return nil
+		end
 		local host = split(hostInfo[2], ":")
+		if #host < 2 then
+			--log("SS节点主机格式错误:", hostInfo[2])
+			return nil
+		end  
+		-- 提取用户信息
 		local userinfo = base64Decode(hostInfo[1])
-		local method = userinfo:sub(1, userinfo:find(":") - 1)
-		local password = userinfo:sub(userinfo:find(":") + 1, #userinfo)
+		local method, password = userinfo:match("^([^:]*):(.*)$")   
+		-- 填充结果
 		result.alias = UrlDecode(alias)
 		result.type = v2_ss
 		result.v2ray_protocol = (v2_ss == "v2ray") and "shadowsocks" or nil
@@ -325,39 +367,47 @@ local function processData(szType, content)
 		result.encrypt_method_ss = method
 		result.password = password
 		result.server = host[1]
-		if host[2]:find("/%?") then
-			local query = split(host[2], "/%?")
+		-- 处理端口和插件
+		local port_part = host[2]
+		if port_part:find("/%?") then
+			local query = split(port_part, "/%?")
 			result.server_port = query[1]
-			local params = {}
-			for _, v in pairs(split(query[2], '&')) do
-				local t = split(v, '=')
-				params[t[1]] = t[2]
-			end
-			if params.plugin then
-				local plugin_info = UrlDecode(params.plugin)
-				local idx_pn = plugin_info:find(";")
-				if idx_pn then
-					result.plugin = plugin_info:sub(1, idx_pn - 1)
-					result.plugin_opts = plugin_info:sub(idx_pn + 1, #plugin_info)
-				else
-					result.plugin = plugin_info
-					result.plugin_opts = ""
+			if query[2] then
+				local params = {}
+				for _, v in pairs(split(query[2], '&')) do
+					local t = split(v, '=')
+					if #t >= 2 then
+						params[t[1]] = t[2]
+					end
 				end
-				-- 部分机场下发的插件名为 simple-obfs，这里应该改为 obfs-local
-				if result.plugin == "simple-obfs" then
-					result.plugin = "obfs-local"
-				end
-				-- 如果插件不為 none，確保 enable_plugin 為 1
-				if result.plugin ~= "none" and result.plugin ~= "" then
-					result.enable_plugin = 1
+				if params.plugin then
+					local plugin_info = UrlDecode(params.plugin)
+					local idx_pn = plugin_info:find(";")
+					if idx_pn then
+						result.plugin = plugin_info:sub(1, idx_pn - 1)
+						result.plugin_opts = plugin_info:sub(idx_pn + 1, #plugin_info)
+					else
+						result.plugin = plugin_info
+						result.plugin_opts = ""
+					end
+					-- 部分机场下发的插件名为 simple-obfs，这里应该改为 obfs-local
+					if result.plugin == "simple-obfs" then
+						result.plugin = "obfs-local"
+					end
+					-- 如果插件不为 none，确保 enable_plugin 为 1
+					if result.plugin ~= "none" and result.plugin ~= "" then
+						result.enable_plugin = 1
+					end
 				end
 			end
 		else
-			result.server_port = host[2]:gsub("/","")
+			result.server_port = port_part:gsub("/","")
 		end
+		-- 检查加密方法
 		if not checkTabValue(encrypt_methods_ss)[method] then
-			-- 1202 年了还不支持 SS AEAD 的屑机场
-			result.server = nil
+        		-- 1202 年了还不支持 SS AEAD 的屑机场
+        		-- log("不支持的SS加密方法:", method)
+        		result.server = nil
 		end
 	elseif szType == "sip008" then
 		result.type = v2_ss
@@ -601,7 +651,7 @@ local function processData(szType, content)
 end
 -- wget
 local function wget(url)
-	local stdout = luci.sys.exec('wget-ssl -q --user-agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36" --no-check-certificate -O- "' .. url .. '"')
+	local stdout = luci.sys.exec('wget-ssl --timeout=20 --tries=3 -q --user-agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36" --no-check-certificate -O- "' .. url .. '"')
 	return trim(stdout)
 end
 
@@ -814,5 +864,3 @@ if subscribe_url and #subscribe_url > 0 then
 		end
 	end)
 end
-
-
