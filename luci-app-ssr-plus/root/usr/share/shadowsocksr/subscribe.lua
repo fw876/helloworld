@@ -180,7 +180,7 @@ local function processData(szType, content)
 	if not isCompleteJSON(content) then
 		return nil
 	end
-	if szType == "hysteria2" then
+	if szType == "hysteria2" or szType == "hy2" then
 		local url = URL.parse("http://" .. content)
 		local params = url.query
 
@@ -213,7 +213,7 @@ local function processData(szType, content)
 		if params.insecure then
 			result.insecure = "1"
 			if params.sni then
-				result.pinsha256 = params.pinsha256
+				result.pinsha256 = params.pinSHA256
 			end
 		end
 	elseif szType == 'ssr' then
