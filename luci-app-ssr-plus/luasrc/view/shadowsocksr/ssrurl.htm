@@ -100,6 +100,7 @@ function import_ssr_url(btn, urlname, sid) {
 		event.initEvent("change", true, true);
 		switch (ssu[0]) {
 		case "hysteria2":
+		case "hy2":
 			try {
 				var url = new URL("http://" + ssu[1]);
 				var params = url.searchParams;
@@ -108,7 +109,7 @@ function import_ssr_url(btn, urlname, sid) {
 				return false;
 			}
 
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = ssu[0];
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = (ssu[0] === "hy2") ? "hysteria2" : ssu[0];
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].dispatchEvent(event);
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = url.hostname;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = url.port || "80";
@@ -116,7 +117,7 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.lazy_mode')[0].checked = true;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.lazy_mode')[0].dispatchEvent(event);
 			}
-			if (params.get("protocol") && params.get("protocol") !== undefined) {
+			if (params.get("protocol")) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.flag_transport')[0].checked = true; // 设置 flag_transport 为 true
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.flag_transport')[0].dispatchEvent(event); // 触发事件
 
@@ -126,7 +127,7 @@ function import_ssr_url(btn, urlname, sid) {
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.hy2_auth')[0].dispatchEvent(event);
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.uplink_capacity')[0].value = params.get("upmbps") || "5";
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.downlink_capacity')[0].value = params.get("downmbps") || "20";
-			if (params.get("obfs") && (params.get("obfs") !== undefined)) {
+			if (params.get("obfs")) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.flag_obfs')[0].checked = true; // 设置 flag_obfs 为 true
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.flag_obfs')[0].dispatchEvent(event); // 触发事件
 
