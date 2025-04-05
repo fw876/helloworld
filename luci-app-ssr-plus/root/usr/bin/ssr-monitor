@@ -104,8 +104,20 @@ while [ "1" == "1" ]; do #死循环
 			ln_start_bin $(first_type microsocks) microsocks -i 127.0.0.1 -p $tmp_dns_port ssrplus-dns
 			ln_start_bin $(first_type dns2socks) dns2socks 127.0.0.1:$tmp_dns_port $dnsserver 127.0.0.1:$dns_port -q
 		fi
-	#mosdns
+	#dns2socks-rust
 	elif [ "$pdnsd_process" -eq 3 ]; then
+		icount=$(busybox ps -w | grep -e ssrplus-dns -e "dns2socks-rust -s socks5://127.0.0.1 $tmp_dns_port" | grep -v grep | wc -l)
+		if [ "$icount" -lt 2 ]; then #如果进程挂掉就重启它
+			logger -t "$NAME" "dns2socks-rust $dnsserver tunnel error.restart!"
+			echolog "dns2socks-rust $dnsserver tunnel error.restart!"
+			dnsserver=$(uci_get_by_type global tunnel_forward 8.8.4.4:53)
+			kill -9 $(busybox ps -w | grep ssrplus-dns | grep -v grep | awk '{print $1}') >/dev/null 2>&1
+			kill -9 $(busybox ps -w | grep "dns2socks-rust -s socks5://127.0.0.1 $tmp_dns_port" | grep -v grep | awk '{print $1}') >/dev/null 2>&1
+			ln_start_bin $(first_type microsocks) microsocks -i 127.0.0.1 -p $tmp_dns_port ssrplus-dns
+			ln_start_bin $(first_type dns2socks) dns2socks-rust -s socks5://127.0.0.1:$tmp_dns_port -d $dnsserver -l 127.0.0.1:$dns_port -f -c
+		fi
+	#mosdns
+	elif [ "$pdnsd_process" -eq 4 ]; then
 		icount=$(busybox ps -w | grep $TMP_BIN_PATH/mosdns | grep -v grep | wc -l)
 		if [ "$icount" -lt 1 ]; then #如果进程挂掉就重启它
 			logger -t "$NAME" "mosdns tunnel error.restart!"

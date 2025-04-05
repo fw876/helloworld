@@ -49,19 +49,19 @@ for _, key in pairs(key_table) do
 end
 
 if uci:get_first("shadowsocksr", 'global', 'netflix_enable', '0') == '1' then
-o = s:option(ListValue, "netflix_server", translate("Netflix Node"))
-o:value("nil", translate("Disable"))
-o:value("same", translate("Same as Global Server"))
-for _, key in pairs(key_table) do
-	o:value(key, server_table[key])
-end
-o.default = "nil"
-o.rmempty = false
+	o = s:option(ListValue, "netflix_server", translate("Netflix Node"))
+	o:value("nil", translate("Disable"))
+	o:value("same", translate("Same as Global Server"))
+	for _, key in pairs(key_table) do
+		o:value(key, server_table[key])
+	end
+	o.default = "nil"
+	o.rmempty = false
 
-o = s:option(Flag, "netflix_proxy", translate("External Proxy Mode"))
-o.rmempty = false
-o.description = translate("Forward Netflix Proxy through Main Proxy")
-o.default = "0"
+	o = s:option(Flag, "netflix_proxy", translate("External Proxy Mode"))
+	o.rmempty = false
+	o.description = translate("Forward Netflix Proxy through Main Proxy")
+	o.default = "0"
 end
 
 o = s:option(ListValue, "threads", translate("Multi Threads Option"))
@@ -96,8 +96,9 @@ o.default = 1
 o = s:option(ListValue, "pdnsd_enable", translate("Resolve Dns Mode"))
 o:value("1", translate("Use DNS2TCP query"))
 o:value("2", translate("Use DNS2SOCKS query and cache"))
+o:value("3", translate("Use DNS2SOCKS-RUST query and cache"))
 if is_finded("mosdns") then
-o:value("3", translate("Use MOSDNS query (Not Support Oversea Mode)"))
+	o:value("4", translate("Use MOSDNS query (Not Support Oversea Mode)"))
 end
 o:value("0", translate("Use Local DNS Service listen port 5335"))
 o.default = 1
@@ -118,6 +119,7 @@ o:value("114.114.114.114:53", translate("Oversea Mode DNS-1 (114.114.114.114)"))
 o:value("114.114.115.115:53", translate("Oversea Mode DNS-2 (114.114.115.115)"))
 o:depends("pdnsd_enable", "1")
 o:depends("pdnsd_enable", "2")
+o:depends("pdnsd_enable", "3")
 o.description = translate("Custom DNS Server format as IP:PORT (default: 8.8.4.4:53)")
 o.datatype = "ip4addrport"
 
@@ -128,11 +130,11 @@ o:value("tcp://209.244.0.3:53,tcp://209.244.0.4:53", translate("Level 3 Public D
 o:value("tcp://4.2.2.1:53,tcp://4.2.2.2:53", translate("Level 3 Public DNS-2 (4.2.2.1-2)"))
 o:value("tcp://4.2.2.3:53,tcp://4.2.2.4:53", translate("Level 3 Public DNS-3 (4.2.2.3-4)"))
 o:value("tcp://1.1.1.1:53,tcp://1.0.0.1:53", translate("Cloudflare DNS"))
-o:depends("pdnsd_enable", "3")
+o:depends("pdnsd_enable", "4")
 o.description = translate("Custom DNS Server for mosdns")
 
 o = s:option(Flag, "mosdns_ipv6", translate("Disable IPv6 in MOSDNS query mode"))
-o:depends("pdnsd_enable", "3")
+o:depends("pdnsd_enable", "4")
 o.rmempty = false
 o.default = "1"
 
@@ -150,6 +152,7 @@ if is_finded("chinadns-ng") then
 	o:value("1.2.4.8:53", translate("CNNIC SDNS (1.2.4.8)"))
 	o:depends({pdnsd_enable = "1", run_mode = "router"})
 	o:depends({pdnsd_enable = "2", run_mode = "router"})
+	o:depends({pdnsd_enable = "3", run_mode = "router"})
 	o.description = translate("Custom DNS Server format as IP:PORT (default: disabled)")
 	o.validate = function(self, value, section)
 		if (section and value) then

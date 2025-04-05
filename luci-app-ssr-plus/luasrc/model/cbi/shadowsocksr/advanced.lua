@@ -78,8 +78,9 @@ o:depends("netflix_enable", "1")
 
 o = s:option(ListValue, "shunt_dns_mode", translate("DNS Query Mode For Shunt Mode"))
 o:value("1", translate("Use DNS2SOCKS query and cache"))
+o:value("2", translate("Use DNS2SOCKS-RUST query and cache"))
 if is_finded("mosdns") then
-o:value("2", translate("Use MOSDNS query"))
+	o:value("3", translate("Use MosDNS query"))
 end
 o:depends("netflix_enable", "1")
 o.default = 1
@@ -97,6 +98,7 @@ o:value("4.2.2.3:53", translate("Level 3 Public DNS (4.2.2.3)"))
 o:value("4.2.2.4:53", translate("Level 3 Public DNS (4.2.2.4)"))
 o:value("1.1.1.1:53", translate("Cloudflare DNS (1.1.1.1)"))
 o:depends("shunt_dns_mode", "1")
+o:depends("shunt_dns_mode", "2")
 o.description = translate("Custom DNS Server format as IP:PORT (default: 8.8.4.4:53)")
 o.datatype = "ip4addrport"
 
@@ -107,11 +109,11 @@ o:value("tcp://209.244.0.3:53,tcp://209.244.0.4:53", translate("Level 3 Public D
 o:value("tcp://4.2.2.1:53,tcp://4.2.2.2:53", translate("Level 3 Public DNS-2 (4.2.2.1-2)"))
 o:value("tcp://4.2.2.3:53,tcp://4.2.2.4:53", translate("Level 3 Public DNS-3 (4.2.2.3-4)"))
 o:value("tcp://1.1.1.1:53,tcp://1.0.0.1:53", translate("Cloudflare DNS"))
-o:depends("shunt_dns_mode", "2")
-o.description = translate("Custom DNS Server for mosdns")
+o:depends("shunt_dns_mode", "3")
+o.description = translate("Custom DNS Server for MosDNS")
 
-o = s:option(Flag, "shunt_mosdns_ipv6", translate("Disable IPv6 In MOSDNS Query Mode (Shunt Mode)"))
-o:depends("shunt_dns_mode", "2")
+o = s:option(Flag, "shunt_mosdns_ipv6", translate("Disable IPv6 In MosDNS Query Mode (Shunt Mode)"))
+o:depends("shunt_dns_mode", "3")
 o.rmempty = false
 o.default = "0"
 
@@ -172,7 +174,7 @@ o.cfgvalue = function(self, section)
     if enabled == "0" then
         return m:get(section, "old_server")
     end
-    return Value.cfgvalue(self, section) -- Default to `same` when enabled
+    return Value.cfgvalue(self, section)-- Default to `same` when enabled
 end
 
 o.write = function(self, section, value)
@@ -203,7 +205,7 @@ for key, server_type in pairs(type_table) do
         o:depends("server", key)
     end
 end
-o:depends({server = "same", disable = true}) 
+o:depends({server = "same", disable = true})
 
 -- Socks User
 o = s:option(Value, "socks5_user", translate("Socks5 User"), translate("Only when Socks5 Auth Mode is password valid, Mandatory."))
@@ -226,7 +228,7 @@ for key, server_type in pairs(type_table) do
         o:depends("server", key)
     end
 end
-o:depends({server = "same", disable = true}) 
+o:depends({server = "same", disable = true})
 end
 
 -- Local Port
@@ -290,6 +292,7 @@ o = s:option(ListValue, "type", translate("Type"))
 o.default = "base64"
 o:value("rand", "rand")
 o:value("str", "str")
+o:value("hex", "hex")
 o:value("base64", "base64")
 
 o = s:option(Value, "domainStrategy", translate("Domain Strategy"))

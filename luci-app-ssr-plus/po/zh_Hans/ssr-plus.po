@@ -615,6 +615,9 @@ msgstr "使用 DNS2TCP 查询"
 msgid "Use DNS2SOCKS query and cache"
 msgstr "使用 DNS2SOCKS 查询并缓存"
 
+msgid "Use DNS2SOCKS-RUST query and cache"
+msgstr "使用 DNS2SOCKS-RUST 查询并缓存"
+
 msgid "Use MOSDNS query (Not Support Oversea Mode)"
 msgstr "使用 MOSDNS 查询 (不支持海外用户回国模式)"
 
@@ -630,11 +633,11 @@ msgstr "分流模式下的访问国外域名 DNS 服务器"
 msgid "Use MOSDNS query"
 msgstr "使用 MOSDNS 查询"
 
-msgid "Custom DNS Server for mosdns"
-msgstr "MOSDNS 自定义 DNS 服务器"
+msgid "Custom DNS Server for MosDNS"
+msgstr "MosDNS 自定义 DNS 服务器"
 
-msgid "Disable IPv6 In MOSDNS Query Mode (Shunt Mode)"
-msgstr "禁止 MOSDNS 返回 IPv6 记录 (分流模式)"
+msgid "Disable IPv6 In MosDNS Query Mode (Shunt Mode)"
+msgstr "禁止 MosDNS 返回 IPv6 记录 (分流模式)"
 
 msgid "DNS Server IP:Port"
 msgstr "DNS 服务器 IP:Port"

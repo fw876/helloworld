@@ -218,6 +218,12 @@ start_dns() {
 			pdnsd_enable_flag=2
 			;;
 		3)
+			ln_start_bin $(first_type microsocks) microsocks -i 127.0.0.1 -p $tmp_dns_port ssrplus-dns
+			ln_start_bin $(first_type dns2socks-rust) dns2socks-rust -s socks5://127.0.0.1:$tmp_dns_port -d $dnsserver -l 127.0.0.1:$dns_port -f -c
+			echolog "DNS2SOCKS Rust query and cache Started!"
+			pdnsd_enable_flag=3
+			;;
+		4)
 			local mosdns_ipv6="$(uci_get_by_type global mosdns_ipv6)"
 			local mosdns_dnsserver="$(uci_get_by_type global tunnel_forward_mosdns)"
 			output=$(for i in $(echo $mosdns_dnsserver | sed "s/,/ /g"); do
@@ -235,7 +241,7 @@ start_dns() {
 				sed -i "s/DNS_MODE/main_sequence_disable_IPv6/g" $TMP_PATH/mosdns-config.yaml
 			fi
 			ln_start_bin $(first_type mosdns) mosdns start -c $TMP_PATH/mosdns-config.yaml
-			pdnsd_enable_flag=3
+			pdnsd_enable_flag=4
 			;;
 		esac
 
@@ -526,6 +532,10 @@ shunt_dns_command() {
 		ln_start_bin $(first_type dns2socks) dns2socks 127.0.0.1:$tmp_port $shunt_dnsserver 127.0.0.1:$tmp_shunt_dns_port -q
 		;;
 	2)
+		ln_start_bin $(first_type dns2socks-rust) dns2socks-rust -s socks5://127.0.0.1:$tmp_port -d $shunt_dnsserver -l 127.0.0.1:$tmp_shunt_dns_port -f -c
+		echolog "DNS2SOCKS Rust Shunt query Started!"
+		;;
+	3)
 		local shunt_mosdns_ipv6="$(uci_get_by_type global shunt_mosdns_ipv6)"
 		local shunt_mosdns_dnsserver="$(uci_get_by_type global shunt_mosdns_dnsserver)"
 		output=$(for i in $(echo $shunt_mosdns_dnsserver | sed "s/,/ /g"); do
