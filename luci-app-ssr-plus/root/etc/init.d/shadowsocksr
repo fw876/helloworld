@@ -200,7 +200,12 @@ add_dns_into_ipset() {
 
 start_dns() {
 	local ssrplus_dns="$(uci_get_by_type global pdnsd_enable 0)"
-	local dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
+	local dnsproxy_dnsserver="$(uci_get_by_type global parse_method)"
+	if [ -n "$dnsproxy_dnsserver" ] && [ "$dnsproxy_dnsserver" != "parse_file" ]; then
+		dnsserver="$(uci_get_by_type global dnsproxy_tunnel_forward 8.8.4.4:53)"
+	else
+		dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
+	fi
 	local run_mode="$(uci_get_by_type global run_mode)"
 
 	if [ "$ssrplus_dns" != "0" ]; then
@@ -242,6 +247,25 @@ start_dns() {
 			fi
 			ln_start_bin $(first_type mosdns) mosdns start -c $TMP_PATH/mosdns-config.yaml
 			pdnsd_enable_flag=4
+			;;
+		5)
+			if [ "$dnsproxy_dnsserver" != "parse_file" ]; then
+				ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsserver --cache --cache-min-ttl=3600
+			else
+				dnsproxy_dnsserver_file="$TMP_PATH/dnsproxy_tunnel_forward.list"
+				if [ ! -f "$dnsproxy_dnsserver_file" ]; then
+					cp /etc/ssrplus/dnsproxy_tunnel_forward.list $dnsproxy_dnsserver_file
+					if grep -q "#" "$dnsproxy_dnsserver_file" || grep -q "^\s*$" "$dnsproxy_dnsserver_file"; then
+						sed -i -e '/^\s*#/d' -e '/^\s*$/d' -e 's/^[ \t]*//;s/[ \t]*$//' $dnsproxy_dnsserver_file
+					fi
+				fi
+				if [ -n "$dnsproxy_dnsserver_file" ] && [ -s "$dnsproxy_dnsserver_file" ]; then
+					local upstreams_logic_mode="$(uci_get_by_type global upstreams_logic_mode)"
+					ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsproxy_dnsserver_file --cache --cache-min-ttl=3600 --upstream-mode=$upstreams_logic_mode
+				fi
+			fi
+			echolog "DNSPROXY query and cache Started!"
+			pdnsd_enable_flag=5
 			;;
 		esac
 
@@ -525,7 +549,12 @@ start_udp() {
 
 shunt_dns_command() {
 	local shunt_dns_mode="$(uci_get_by_type global shunt_dns_mode)"
-	local shunt_dnsserver="$(uci_get_by_type global shunt_dnsserver)"
+	local shunt_dnsproxy_dnsserver="$(uci_get_by_type global shunt_parse_method)"
+	if [ -n "$shunt_dnsproxy_dnsserver" ] && [ "$shunt_dnsproxy_dnsserver" != "parse_file" ]; then
+		shunt_dnsserver="$(uci_get_by_type global dnsproxy_shunt_forward 8.8.4.4:53)"
+	else
+		shunt_dnsserver="$(uci_get_by_type global shunt_dnsserver 8.8.4.4:53)"
+	fi
 	local tmp_port=$1
 	case "$shunt_dns_mode" in
 	1)
@@ -551,6 +580,24 @@ shunt_dns_command() {
 			sed -i "s/DNS_MODE/main_sequence_disable_IPv6/g" $TMP_PATH/mosdns-config-shunt.yaml
 		fi
 		ln_start_bin $(first_type mosdns) mosdns start -c $TMP_PATH/mosdns-config-shunt.yaml
+		;;
+	4)
+		if [ "$shunt_dnsproxy_dnsserver" != "parse_file" ]; then
+			ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_port -p $tmp_shunt_dns_port -u $shunt_dnsserver --cache --cache-min-ttl=3600
+		else
+			shunt_dnsproxy_dnsserver_file="$TMP_PATH/dnsproxy_tunnel_forward.list"
+			if [ ! -f "$shunt_dnsproxy_dnsserver_file" ]; then
+				cp /etc/ssrplus/dnsproxy_tunnel_forward.list $shunt_dnsproxy_dnsserver_file
+				if grep -q "#" "$shunt_dnsproxy_dnsserver_file" || grep -q "^\s*$" "$shunt_dnsproxy_dnsserver_file"; then
+					sed -i -e '/^\s*#/d' -e '/^\s*$/d' -e 's/^[ \t]*//;s/[ \t]*$//' "$shunt_dnsproxy_dnsserver_file"
+				fi
+			fi
+			if [ -n "$shunt_dnsproxy_dnsserver_file" ] && [ -s "$shunt_dnsproxy_dnsserver_file" ]; then
+				local shunt_upstreams_logic_mode="$(uci_get_by_type global shunt_upstreams_logic_mode)"
+				ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_port -p $tmp_shunt_dns_port -u $shunt_dnsproxy_dnsserver_file --cache --cache-min-ttl=3600 --upstream-mode=$shunt_upstreams_logic_mode
+			fi
+		fi
+		echolog "DNSPROXY shunt query and cache Started!"
 		;;
 	esac
 }
