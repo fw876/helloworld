@@ -5,6 +5,23 @@
 local m, s, sec, o
 local uci = require "luci.model.uci".cursor()
 
+-- 获取 LAN IP 地址
+function lanip()
+	local lan_ip
+	lan_ip = luci.sys.exec("uci -q get network.lan.ipaddr 2>/dev/null | awk -F '/' '{print $1}' | tr -d '\n'")
+
+	if not lan_ip or lan_ip == "" then
+    	lan_ip = luci.sys.exec("ip address show $(uci -q -p /tmp/state get network.lan.ifname || uci -q -p /tmp/state get network.lan.device) | grep -w 'inet' | grep -Eo 'inet [0-9\.]+' | awk '{print $2}' | head -1 | tr -d '\n'")
+	end
+
+	if not lan_ip or lan_ip == "" then
+    	lan_ip = luci.sys.exec("ip addr show | grep -w 'inet' | grep 'global' | grep -Eo 'inet [0-9\.]+' | awk '{print $2}' | head -n 1 | tr -d '\n'")
+	end
+
+	return lan_ip
+end
+
+local lan_ip = lanip()
 local validation = require "luci.cbi.datatypes"
 local function is_finded(e)
 	return luci.sys.exec(string.format('type -t -p "%s" 2>/dev/null', e)) ~= ""
@@ -95,10 +112,17 @@ o.default = 1
 
 o = s:option(ListValue, "pdnsd_enable", translate("Resolve Dns Mode"))
 o:value("1", translate("Use DNS2TCP query"))
-o:value("2", translate("Use DNS2SOCKS query and cache"))
-o:value("3", translate("Use DNS2SOCKS-RUST query and cache"))
+if is_finded("dns2socks") then
+	o:value("2", translate("Use DNS2SOCKS query and cache"))
+end
+if is_finded("dns2socks-rust") then
+	o:value("3", translate("Use DNS2SOCKS-RUST query and cache"))
+end
 if is_finded("mosdns") then
 	o:value("4", translate("Use MOSDNS query (Not Support Oversea Mode)"))
+end
+if is_finded("dnsproxy") then
+	o:value("5", translate("Use DNSPROXY query and cache"))
 end
 o:value("0", translate("Use Local DNS Service listen port 5335"))
 o.default = 1
@@ -137,6 +161,47 @@ o = s:option(Flag, "mosdns_ipv6", translate("Disable IPv6 in MOSDNS query mode")
 o:depends("pdnsd_enable", "4")
 o.rmempty = false
 o.default = "1"
+
+if is_finded("dnsproxy") then
+	o = s:option(ListValue, "parse_method", translate("Select DNS parse Mode"))
+	o.description = translate(
+    	"<ul>" ..
+    	"<li>" .. translate("When use DNS list file, please ensure list file exists and is formatted correctly.") .. "</li>" ..
+    	"<li>" .. translate("Tips: Dnsproxy DNS Parse List Path:") ..
+    	" <a href='http://" .. lan_ip .. "/cgi-bin/luci/admin/services/shadowsocksr/control' target='_blank'>" ..
+    	translate("Click here to view or manage the DNS list file") .. "</a>" .. "</li>" ..
+    	"</ul>"
+	)
+	o:value("single_dns", translate("Set Single DNS"))
+	o:value("parse_file", translate("Use DNS List File"))
+	o:depends("pdnsd_enable", "5")
+	o.rmempty = true
+	o.default = "single_dns"
+
+	o = s:option(Value, "dnsproxy_tunnel_forward", translate("Anti-pollution DNS Server"))
+	o:value("sdns://AgUAAAAAAAAABzguOC40LjQgsKKKE4EwvtIbNjGjagI2607EdKSVHowYZtyvD9iPrkkHOC44LjQuNAovZG5zLXF1ZXJ5", translate("Google DNSCrypt SDNS"))
+	o:value("sdns://AgcAAAAAAAAADzE4NS4yMjIuMjIyLjIyMiAOp5Svj-oV-Fz-65-8H2VKHLKJ0egmfEgrdPeAQlUFFA8xODUuMjIyLjIyMi4yMjIKL2Rucy1xdWVyeQ", translate("dns.sb DNSCrypt SDNS"))
+	o:value("sdns://AgMAAAAAAAAADTE0OS4xMTIuMTEyLjkgsBkgdEu7dsmrBT4B4Ht-BQ5HPSD3n3vqQ1-v5DydJC8SZG5zOS5xdWFkOS5uZXQ6NDQzCi9kbnMtcXVlcnk", translate("Quad9 DNSCrypt SDNS"))
+	o:value("sdns://AQMAAAAAAAAAETk0LjE0MC4xNC4xNDo1NDQzINErR_JS3PLCu_iZEIbq95zkSV2LFsigxDIuUso_OQhzIjIuZG5zY3J5cHQuZGVmYXVsdC5uczEuYWRndWFyZC5jb20", translate("AdGuard DNSCrypt SDNS"))
+	o:value("sdns://AgcAAAAAAAAABzEuMC4wLjGgENk8mGSlIfMGXMOlIlCcKvq7AVgcrZxtjon911-ep0cg63Ul-I8NlFj4GplQGb_TTLiczclX57DvMV8Q-JdjgRgSZG5zLmNsb3VkZmxhcmUuY29tCi9kbnMtcXVlcnk", translate("Cloudflare DNSCrypt SDNS"))
+	o:value("sdns://AgcAAAAAAAAADjEwNC4xNi4yNDkuMjQ5ABJjbG91ZGZsYXJlLWRucy5jb20KL2Rucy1xdWVyeQ", translate("cloudflare-dns.com DNSCrypt SDNS"))
+	o:depends("parse_method", "single_dns")
+	o.description = translate("Custom DNS Server (support: IP:Port or tls://IP:Port or https://IP/dns-query and other format).")
+
+	o = s:option(ListValue, "upstreams_logic_mode", translate("Defines the upstreams logic mode"))
+	o.description = translate(
+    	"<ul>" ..
+    	"<li>" .. translate("Defines the upstreams logic mode, possible values: load_balance, parallel, fastest_addr (default: load_balance).") .. "</li>" ..
+    	"<li>" .. translate("When two or more DNS servers are deployed, enable this function.") .. "</li>" ..
+    	"</ul>"
+	)
+	o:value("load_balance", translate("load_balance"))
+	o:value("parallel", translate("parallel"))
+	o:value("fastest_addr", translate("fastest_addr"))
+	o:depends("parse_method", "parse_file")
+	o.rmempty = true
+	o.default = "load_balance"
+end
 
 if is_finded("chinadns-ng") then
 	o = s:option(Value, "chinadns_forward", translate("Domestic DNS Server"))
