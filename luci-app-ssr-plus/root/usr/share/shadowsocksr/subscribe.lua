@@ -30,7 +30,7 @@ local subscribe_url = ucic:get_first(name, 'server_subscribe', 'subscribe_url', 
 local filter_words = ucic:get_first(name, 'server_subscribe', 'filter_words', '过期时间/剩余流量')
 local save_words = ucic:get_first(name, 'server_subscribe', 'save_words', '')
 -- 读取 ss_type 设置
-local ss_type = ucic:get_first(name, 'server_subscribe', 'ss_type')
+local ss_type = ucic:get_first(name, 'server_subscribe', 'ss_type', 'ss-rust')
 -- 根据 ss_type 选择对应的程序
 local ss_program = ""
 if ss_type == "ss-rust" then
@@ -180,6 +180,7 @@ local function processData(szType, content)
 	if not isCompleteJSON(content) then
 		return nil
 	end
+
 	if szType == "hysteria2" or szType == "hy2" then
 		local url = URL.parse("http://" .. content)
 		local params = url.query
@@ -788,7 +789,7 @@ local execute = function()
 						if result then
 							-- 中文做地址的 也没有人拿中文域名搞，就算中文域也有Puny Code SB 机场
 							if not result.server or not result.server_port or result.alias == "NULL" or check_filer(result) or result.server:match("[^0-9a-zA-Z%-_%.%s]") or cache[groupHash][result.hashkey] then
-								log('丢弃无效节点: ' .. result.type .. ' 节点, ' .. result.alias)
+								log('丢弃无效节点: ' .. result.alias)
 							else
 								-- log('成功解析: ' .. result.type ..' 节点, ' .. result.alias)
 								result.grouphashkey = groupHash
