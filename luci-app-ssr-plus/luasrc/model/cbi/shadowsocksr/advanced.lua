@@ -180,6 +180,13 @@ if is_finded("dnsproxy") then
 	o:depends("shunt_parse_method", "parse_file")
 	o.rmempty = true
 	o.default = "load_balance"
+
+	o = s:option(Flag, "shunt_dnsproxy_ipv6", translate("Disable IPv6 query mode"))
+	o.description = translate("When disabled, all AAAA requests are not resolved.")
+	o:depends("shunt_parse_method", "single_dns")
+	o:depends("shunt_parse_method", "parse_file")
+	o.rmempty = false
+	o.default = "1"
 end
 
 o = s:option(Flag, "apple_optimization", translate("Apple domains optimization"), translate("For Apple domains equipped with Chinese mainland CDN, always responsive to Chinese CDN IP addresses"))

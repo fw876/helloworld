@@ -136,8 +136,11 @@ while [ "1" == "1" ]; do #死循环
 				dnsserver="$(uci_get_by_type global dnsproxy_tunnel_forward 8.8.4.4:53)"
 			fi
 			kill -9 $(busybox ps -w | grep "dnsproxy -l 127.0.0.1 -p $tmp_port" | grep -v grep | awk '{print $1}') >/dev/null 2>&1
+			dnsproxy_ipv6="$(uci_get_by_type global dnsproxy_ipv6)"
+				disabled_ipv6="--ipv6-disabled"
+			fi
 			if [ "$dnsproxy_dnsserver" != "parse_file" ]; then
-				ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsserver --cache --cache-min-ttl=3600
+				ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsserver $disabled_ipv6 --cache --cache-min-ttl=3600
 			else
 				dnsproxy_dnsserver_file="$TMP_PATH/dnsproxy_dns.list"
 				cleaned_file="$TMP_PATH/cleaned_dns.list"
@@ -184,7 +187,7 @@ while [ "1" == "1" ]; do #死循环
 
 				if [ -n "$dnsproxy_dnsserver_file" ] && [ -s "$dnsproxy_dnsserver_file" ]; then
 					local upstreams_logic_mode="$(uci_get_by_type global upstreams_logic_mode)"
-					ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsproxy_dnsserver_file --cache --cache-min-ttl=3600 --upstream-mode=$upstreams_logic_mode
+					ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsproxy_dnsserver_file $disabled_ipv6 --cache --cache-min-ttl=3600 --upstream-mode=$upstreams_logic_mode
 				fi
 			fi
 		fi

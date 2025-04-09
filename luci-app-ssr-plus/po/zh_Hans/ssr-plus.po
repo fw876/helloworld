@@ -648,6 +648,12 @@ msgstr "并行查询"
 msgid "fastest_addr"
 msgstr "最快响应"
 
+msgid "Disable IPv6 query mode"
+msgstr "禁止返回 IPv6 记录"
+
+msgid "When disabled, all AAAA requests are not resolved."
+msgstr "当禁用时，不解析所有 AAAA 请求。"
+
 msgid "Defines the upstreams logic mode, possible values: load_balance, parallel, fastest_addr (default: load_balance)."
 msgstr "定义上游逻辑模式，可选择值：负载均衡、并行查询、最快响应（默认值：负载均衡）。"
 

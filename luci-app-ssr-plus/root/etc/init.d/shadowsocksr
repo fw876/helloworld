@@ -249,8 +249,12 @@ start_dns() {
 			pdnsd_enable_flag=4
 			;;
 		5)
+			dnsproxy_ipv6="$(uci_get_by_type global dnsproxy_ipv6)"
+			if [ "$dnsproxy_ipv6" -eq "1" ]; then
+				disabled_ipv6="--ipv6-disabled"
+			fi
 			if [ "$dnsproxy_dnsserver" != "parse_file" ]; then
-				ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsserver --cache --cache-min-ttl=3600
+				ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsserver $disabled_ipv6 --cache --cache-min-ttl=3600
 			else
 				dnsproxy_dnsserver_file="$TMP_PATH/dnsproxy_dns.list"
 				cleaned_file="$TMP_PATH/cleaned_dns.list"
@@ -297,7 +301,7 @@ start_dns() {
 
 				if [ -n "$dnsproxy_dnsserver_file" ] && [ -s "$dnsproxy_dnsserver_file" ]; then
 					local upstreams_logic_mode="$(uci_get_by_type global upstreams_logic_mode)"
-					ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsproxy_dnsserver_file --cache --cache-min-ttl=3600 --upstream-mode=$upstreams_logic_mode
+					ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsproxy_dnsserver_file $disabled_ipv6 --cache --cache-min-ttl=3600 --upstream-mode=$upstreams_logic_mode
 				fi
 			fi
 			echolog "DNSPROXY query and cache Started!"
@@ -618,8 +622,12 @@ shunt_dns_command() {
 		ln_start_bin $(first_type mosdns) mosdns start -c $TMP_PATH/mosdns-config-shunt.yaml
 		;;
 	4)
+		shunt_dnsproxy_ipv6="$(uci_get_by_type global shunt_dnsproxy_ipv6)"
+		if [ "$shunt_dnsproxy_ipv6" -eq "1" ]; then
+			shunt_disabled_ipv6="--ipv6-disabled"
+		fi
 		if [ "$shunt_dnsproxy_dnsserver" != "parse_file" ]; then
-			ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_port -p $tmp_shunt_dns_port -u $shunt_dnsserver --cache --cache-min-ttl=3600
+			ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_port -p $tmp_shunt_dns_port -u $shunt_dnsserver $shunt_disabled_ipv6 --cache --cache-min-ttl=3600
 		else
 			shunt_dnsproxy_dnsserver_file="$TMP_PATH/dnsproxy_dns.list"
 			cleaned_file="$TMP_PATH/cleaned_dns_servers.list"
@@ -666,7 +674,7 @@ shunt_dns_command() {
 			
 			if [ -n "$shunt_dnsproxy_dnsserver_file" ] && [ -s "$shunt_dnsproxy_dnsserver_file" ]; then
 				local shunt_upstreams_logic_mode="$(uci_get_by_type global shunt_upstreams_logic_mode)"
-				ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_port -p $tmp_shunt_dns_port -u $shunt_dnsproxy_dnsserver_file --cache --cache-min-ttl=3600 --upstream-mode=$shunt_upstreams_logic_mode
+				ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_port -p $tmp_shunt_dns_port -u $shunt_dnsproxy_dnsserver_file $shunt_disabled_ipv6 --cache --cache-min-ttl=3600 --upstream-mode=$shunt_upstreams_logic_mode
 			fi
 		fi
 		echolog "DNSPROXY shunt query and cache Started!"
