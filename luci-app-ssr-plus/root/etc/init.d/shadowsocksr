@@ -200,7 +200,12 @@ add_dns_into_ipset() {
 
 start_dns() {
 	local ssrplus_dns="$(uci_get_by_type global pdnsd_enable 0)"
-	local dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
+	local dnsproxy_dnsserver="$(uci_get_by_type global parse_method)"
+	if [ -n "$dnsproxy_dnsserver" ] && [ "$dnsproxy_dnsserver" != "parse_file" ]; then
+		dnsserver="$(uci_get_by_type global dnsproxy_tunnel_forward 8.8.4.4:53)"
+	else
+		dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
+	fi
 	local run_mode="$(uci_get_by_type global run_mode)"
 
 	if [ "$ssrplus_dns" != "0" ]; then
@@ -218,6 +223,12 @@ start_dns() {
 			pdnsd_enable_flag=2
 			;;
 		3)
+			ln_start_bin $(first_type microsocks) microsocks -i 127.0.0.1 -p $tmp_dns_port ssrplus-dns
+			ln_start_bin $(first_type dns2socks-rust) dns2socks-rust -s socks5://127.0.0.1:$tmp_dns_port -d $dnsserver -l 127.0.0.1:$dns_port -f -c
+			echolog "DNS2SOCKS Rust query and cache Started!"
+			pdnsd_enable_flag=3
+			;;
+		4)
 			local mosdns_ipv6="$(uci_get_by_type global mosdns_ipv6)"
 			local mosdns_dnsserver="$(uci_get_by_type global tunnel_forward_mosdns)"
 			output=$(for i in $(echo $mosdns_dnsserver | sed "s/,/ /g"); do
@@ -235,7 +246,66 @@ start_dns() {
 				sed -i "s/DNS_MODE/main_sequence_disable_IPv6/g" $TMP_PATH/mosdns-config.yaml
 			fi
 			ln_start_bin $(first_type mosdns) mosdns start -c $TMP_PATH/mosdns-config.yaml
-			pdnsd_enable_flag=3
+			pdnsd_enable_flag=4
+			;;
+		5)
+			dnsproxy_ipv6="$(uci_get_by_type global dnsproxy_ipv6)"
+			if [ "$dnsproxy_ipv6" -eq "1" ]; then
+				disabled_ipv6="--ipv6-disabled"
+			fi
+			if [ "$dnsproxy_dnsserver" != "parse_file" ]; then
+				ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsserver $disabled_ipv6 --cache --cache-min-ttl=3600
+			else
+				dnsproxy_dnsserver_file="$TMP_PATH/dnsproxy_dns.list"
+				cleaned_file="$TMP_PATH/cleaned_dns.list"
+				temp_file="$TMP_PATH/temp_dns.list"
+				> "$cleaned_file"
+				# 清理输入文件并去重
+				while IFS= read -r line || [ -n "$line" ]; do
+				    line=$(echo "$line" | sed -E 's/^[ \t\r]+//; s/[ \t\r]+$//')
+					[ -z "$line" ] && continue
+					echo "$line" | grep -qE '^#' && continue
+					echo "$line" >> "$cleaned_file"
+				done < "/etc/ssrplus/dnsproxy_dns.list"
+				# 获取清理后文件的MD5
+				cleaned_md5=$(md5sum "$cleaned_file" | awk '{print $1}')
+				if [ ! -f "$dnsproxy_dnsserver_file" ]; then
+				    cp "$cleaned_file" "$dnsproxy_dnsserver_file"
+				else
+				    target_md5=$(md5sum "$dnsproxy_dnsserver_file" | awk '{print $1}')
+					if [ "$cleaned_md5" != "$target_md5" ]; then
+					    > "$temp_file"
+					    # 保留目标文件中也存在于清理文件的记录（去重）
+					    while IFS= read -r line; do
+						    line=$(echo "$line" | sed -E 's/^[ \t\r]+//; s/[ \t\r]+$//')
+						    if grep -qixF "$line" "$cleaned_file" && ! grep -qixF "$line" "$temp_file"; then
+							    echo "$line" >> "$temp_file"
+						    fi
+						done < "$dnsproxy_dnsserver_file"
+						# 添加清理文件中有但目标文件没有的记录（去重）
+						while IFS= read -r line; do
+						    line=$(echo "$line" | sed -E 's/^[ \t\r]+//; s/[ \t\r]+$//')
+							if ! grep -qixF "$line" "$temp_file"; then
+							    echo "$line" >> "$temp_file"
+							fi
+						done < "$cleaned_file"
+						temp_md5=$(md5sum "$temp_file" | awk '{print $1}')
+						if [ "$temp_md5" != "$target_md5" ]; then
+						    mv "$temp_file" "$dnsproxy_dnsserver_file"
+						else
+						    rm -f "$temp_file"
+						fi
+					fi
+				fi
+				rm -f "$cleaned_file"
+
+				if [ -n "$dnsproxy_dnsserver_file" ] && [ -s "$dnsproxy_dnsserver_file" ]; then
+					local upstreams_logic_mode="$(uci_get_by_type global upstreams_logic_mode)"
+					ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsproxy_dnsserver_file $disabled_ipv6 --cache --cache-min-ttl=3600 --upstream-mode=$upstreams_logic_mode
+				fi
+			fi
+			echolog "DNSPROXY query and cache Started!"
+			pdnsd_enable_flag=5
 			;;
 		esac
 
@@ -519,13 +589,22 @@ start_udp() {
 
 shunt_dns_command() {
 	local shunt_dns_mode="$(uci_get_by_type global shunt_dns_mode)"
-	local shunt_dnsserver="$(uci_get_by_type global shunt_dnsserver)"
+	local shunt_dnsproxy_dnsserver="$(uci_get_by_type global shunt_parse_method)"
+	if [ -n "$shunt_dnsproxy_dnsserver" ] && [ "$shunt_dnsproxy_dnsserver" != "parse_file" ]; then
+		shunt_dnsserver="$(uci_get_by_type global dnsproxy_shunt_forward 8.8.4.4:53)"
+	else
+		shunt_dnsserver="$(uci_get_by_type global shunt_dnsserver 8.8.4.4:53)"
+	fi
 	local tmp_port=$1
 	case "$shunt_dns_mode" in
 	1)
 		ln_start_bin $(first_type dns2socks) dns2socks 127.0.0.1:$tmp_port $shunt_dnsserver 127.0.0.1:$tmp_shunt_dns_port -q
 		;;
 	2)
+		ln_start_bin $(first_type dns2socks-rust) dns2socks-rust -s socks5://127.0.0.1:$tmp_port -d $shunt_dnsserver -l 127.0.0.1:$tmp_shunt_dns_port -f -c
+		echolog "DNS2SOCKS Rust Shunt query Started!"
+		;;
+	3)
 		local shunt_mosdns_ipv6="$(uci_get_by_type global shunt_mosdns_ipv6)"
 		local shunt_mosdns_dnsserver="$(uci_get_by_type global shunt_mosdns_dnsserver)"
 		output=$(for i in $(echo $shunt_mosdns_dnsserver | sed "s/,/ /g"); do
@@ -541,6 +620,64 @@ shunt_dns_command() {
 			sed -i "s/DNS_MODE/main_sequence_disable_IPv6/g" $TMP_PATH/mosdns-config-shunt.yaml
 		fi
 		ln_start_bin $(first_type mosdns) mosdns start -c $TMP_PATH/mosdns-config-shunt.yaml
+		;;
+	4)
+		shunt_dnsproxy_ipv6="$(uci_get_by_type global shunt_dnsproxy_ipv6)"
+		if [ "$shunt_dnsproxy_ipv6" -eq "1" ]; then
+			shunt_disabled_ipv6="--ipv6-disabled"
+		fi
+		if [ "$shunt_dnsproxy_dnsserver" != "parse_file" ]; then
+			ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_port -p $tmp_shunt_dns_port -u $shunt_dnsserver $shunt_disabled_ipv6 --cache --cache-min-ttl=3600
+		else
+			shunt_dnsproxy_dnsserver_file="$TMP_PATH/dnsproxy_dns.list"
+			cleaned_file="$TMP_PATH/cleaned_dns_servers.list"
+			temp_file="$TMP_PATH/temp_dns_servers.list"
+			> "$cleaned_file"
+			# 清理输入文件并去重
+			while IFS= read -r line || [ -n "$line" ]; do
+			    line=$(echo "$line" | sed -E 's/^[ \t\r]+//; s/[ \t\r]+$//')
+				[ -z "$line" ] && continue
+				echo "$line" | grep -qE '^#' && continue
+				echo "$line" >> "$cleaned_file"
+			done < "/etc/ssrplus/dnsproxy_dns.list"
+			# 获取清理后文件的MD5
+			cleaned_md5=$(md5sum "$cleaned_file" | awk '{print $1}')
+			if [ ! -f "$shunt_dnsproxy_dnsserver_file" ]; then
+			    cp "$cleaned_file" "$shunt_dnsproxy_dnsserver_file"
+			else
+			    target_md5=$(md5sum "$shunt_dnsproxy_dnsserver_file" | awk '{print $1}')
+				if [ "$cleaned_md5" != "$target_md5" ]; then
+				    > "$temp_file"
+					# 保留目标文件中也存在于清理文件的记录（去重）
+					while IFS= read -r line; do
+					    line=$(echo "$line" | sed -E 's/^[ \t\r]+//; s/[ \t\r]+$//')
+						if grep -qixF "$line" "$cleaned_file" && ! grep -qixF "$line" "$temp_file"; then
+						    echo "$line" >> "$temp_file"
+						fi
+					done < "$shunt_dnsproxy_dnsserver_file"
+					# 添加清理文件中有但目标文件没有的记录（去重）
+					while IFS= read -r line; do
+					    line=$(echo "$line" | sed -E 's/^[ \t\r]+//; s/[ \t\r]+$//')
+						if ! grep -qixF "$line" "$temp_file"; then
+						    echo "$line" >> "$temp_file"
+						fi
+					done < "$cleaned_file"
+					temp_md5=$(md5sum "$temp_file" | awk '{print $1}')
+					if [ "$temp_md5" != "$target_md5" ]; then
+					    mv "$temp_file" "$shunt_dnsproxy_dnsserver_file"
+					else
+						rm -f "$temp_file"
+					fi
+				fi
+			fi
+			rm -f "$cleaned_file"
+			
+			if [ -n "$shunt_dnsproxy_dnsserver_file" ] && [ -s "$shunt_dnsproxy_dnsserver_file" ]; then
+				local shunt_upstreams_logic_mode="$(uci_get_by_type global shunt_upstreams_logic_mode)"
+				ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_port -p $tmp_shunt_dns_port -u $shunt_dnsproxy_dnsserver_file $shunt_disabled_ipv6 --cache --cache-min-ttl=3600 --upstream-mode=$shunt_upstreams_logic_mode
+			fi
+		fi
+		echolog "DNSPROXY shunt query and cache Started!"
 		;;
 	esac
 }

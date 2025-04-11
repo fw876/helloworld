@@ -615,8 +615,50 @@ msgstr "使用 DNS2TCP 查询"
 msgid "Use DNS2SOCKS query and cache"
 msgstr "使用 DNS2SOCKS 查询并缓存"
 
+msgid "Use DNS2SOCKS-RUST query and cache"
+msgstr "使用 DNS2SOCKS-RUST 查询并缓存"
+
 msgid "Use MOSDNS query (Not Support Oversea Mode)"
 msgstr "使用 MOSDNS 查询 (不支持海外用户回国模式)"
+
+msgid "Use DNSPROXY query and cache"
+msgstr "使用 DNSPROXY 查询并缓存"
+
+msgid "Select DNS parse Mode"
+msgstr "选择 DNS 解析方式"
+
+msgid "Set Single DNS"
+msgstr "设置单个 DNS"
+
+msgid "Custom DNS Server (support: IP:Port or tls://IP:Port or https://IP/dns-query and other format)."
+msgstr "自定义 DNS 服务器（支持格式：IP:端口、tls://IP:端口、https://IP/dns-query 及其他格式）。"
+
+msgid "Use DNS List File"
+msgstr "使用 DNS 列表文件"
+
+msgid "Defines the upstreams logic mode"
+msgstr "定义上游逻辑模式"
+
+msgid "load_balance"
+msgstr "负载均衡"
+
+msgid "parallel"
+msgstr "并行查询"
+
+msgid "fastest_addr"
+msgstr "最快响应"
+
+msgid "Disable IPv6 query mode"
+msgstr "禁止返回 IPv6 记录"
+
+msgid "When disabled, all AAAA requests are not resolved."
+msgstr "当禁用时，不解析所有 AAAA 请求。"
+
+msgid "Defines the upstreams logic mode, possible values: load_balance, parallel, fastest_addr (default: load_balance)."
+msgstr "定义上游逻辑模式，可选择值：负载均衡、并行查询、最快响应（默认值：负载均衡）。"
+
+msgid "When two or more DNS servers are deployed, enable this function."
+msgstr "当部署两台或两台以上 DNS 服务器时，需要启用该功能。"
 
 msgid "Disable IPv6 in MOSDNS query mode"
 msgstr "禁止 MOSDNS 返回 IPv6 记录"
@@ -630,14 +672,29 @@ msgstr "分流模式下的访问国外域名 DNS 服务器"
 msgid "Use MOSDNS query"
 msgstr "使用 MOSDNS 查询"
 
-msgid "Custom DNS Server for mosdns"
-msgstr "MOSDNS 自定义 DNS 服务器"
+msgid "Custom DNS Server for MosDNS"
+msgstr "MosDNS 自定义 DNS 服务器"
 
-msgid "Disable IPv6 In MOSDNS Query Mode (Shunt Mode)"
-msgstr "禁止 MOSDNS 返回 IPv6 记录 (分流模式)"
+msgid "Disable IPv6 In MosDNS Query Mode (Shunt Mode)"
+msgstr "禁止 MosDNS 返回 IPv6 记录 (分流模式)"
 
 msgid "DNS Server IP:Port"
 msgstr "DNS 服务器 IP:Port"
+
+msgid "When use DNS list file, please ensure list file exists and is formatted correctly."
+msgstr "当使用 DNS 列表文件时，请确保列表文件存在并且格式正确。"
+
+msgid "Tips: Dnsproxy DNS Parse List Path:"
+msgstr "提示：Dnsproxy 的 DNS 解析列表路径："
+
+msgid "Click here to view or manage the DNS list file"
+msgstr "点击此处查看或管理 DNS 列表文件"
+
+msgid "Dnsproxy Parse List"
+msgstr "DNSPROXY 解析列表"
+
+msgid "Specifically for edit dnsproxy DNS parse files."
+msgstr "专门用于编辑 DNSPROXY 的 DNS 解析文件。"
 
 msgid "Domestic DNS Server"
 msgstr "国内 DNS 服务器"

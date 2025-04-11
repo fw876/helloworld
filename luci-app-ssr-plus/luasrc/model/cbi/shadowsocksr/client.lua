@@ -5,6 +5,23 @@
 local m, s, sec, o
 local uci = require "luci.model.uci".cursor()
 
+-- 获取 LAN IP 地址
+function lanip()
+	local lan_ip
+	lan_ip = luci.sys.exec("uci -q get network.lan.ipaddr 2>/dev/null | awk -F '/' '{print $1}' | tr -d '\n'")
+
+	if not lan_ip or lan_ip == "" then
+    	lan_ip = luci.sys.exec("ip address show $(uci -q -p /tmp/state get network.lan.ifname || uci -q -p /tmp/state get network.lan.device) | grep -w 'inet' | grep -Eo 'inet [0-9\.]+' | awk '{print $2}' | head -1 | tr -d '\n'")
+	end
+
+	if not lan_ip or lan_ip == "" then
+    	lan_ip = luci.sys.exec("ip addr show | grep -w 'inet' | grep 'global' | grep -Eo 'inet [0-9\.]+' | awk '{print $2}' | head -n 1 | tr -d '\n'")
+	end
+
+	return lan_ip
+end
+
+local lan_ip = lanip()
 local validation = require "luci.cbi.datatypes"
 local function is_finded(e)
 	return luci.sys.exec(string.format('type -t -p "%s" 2>/dev/null', e)) ~= ""
@@ -49,19 +66,19 @@ for _, key in pairs(key_table) do
 end
 
 if uci:get_first("shadowsocksr", 'global', 'netflix_enable', '0') == '1' then
-o = s:option(ListValue, "netflix_server", translate("Netflix Node"))
-o:value("nil", translate("Disable"))
-o:value("same", translate("Same as Global Server"))
-for _, key in pairs(key_table) do
-	o:value(key, server_table[key])
-end
-o.default = "nil"
-o.rmempty = false
+	o = s:option(ListValue, "netflix_server", translate("Netflix Node"))
+	o:value("nil", translate("Disable"))
+	o:value("same", translate("Same as Global Server"))
+	for _, key in pairs(key_table) do
+		o:value(key, server_table[key])
+	end
+	o.default = "nil"
+	o.rmempty = false
 
-o = s:option(Flag, "netflix_proxy", translate("External Proxy Mode"))
-o.rmempty = false
-o.description = translate("Forward Netflix Proxy through Main Proxy")
-o.default = "0"
+	o = s:option(Flag, "netflix_proxy", translate("External Proxy Mode"))
+	o.rmempty = false
+	o.description = translate("Forward Netflix Proxy through Main Proxy")
+	o.default = "0"
 end
 
 o = s:option(ListValue, "threads", translate("Multi Threads Option"))
@@ -95,9 +112,17 @@ o.default = 1
 
 o = s:option(ListValue, "pdnsd_enable", translate("Resolve Dns Mode"))
 o:value("1", translate("Use DNS2TCP query"))
-o:value("2", translate("Use DNS2SOCKS query and cache"))
+if is_finded("dns2socks") then
+	o:value("2", translate("Use DNS2SOCKS query and cache"))
+end
+if is_finded("dns2socks-rust") then
+	o:value("3", translate("Use DNS2SOCKS-RUST query and cache"))
+end
 if is_finded("mosdns") then
-o:value("3", translate("Use MOSDNS query (Not Support Oversea Mode)"))
+	o:value("4", translate("Use MOSDNS query (Not Support Oversea Mode)"))
+end
+if is_finded("dnsproxy") then
+	o:value("5", translate("Use DNSPROXY query and cache"))
 end
 o:value("0", translate("Use Local DNS Service listen port 5335"))
 o.default = 1
@@ -118,6 +143,7 @@ o:value("114.114.114.114:53", translate("Oversea Mode DNS-1 (114.114.114.114)"))
 o:value("114.114.115.115:53", translate("Oversea Mode DNS-2 (114.114.115.115)"))
 o:depends("pdnsd_enable", "1")
 o:depends("pdnsd_enable", "2")
+o:depends("pdnsd_enable", "3")
 o.description = translate("Custom DNS Server format as IP:PORT (default: 8.8.4.4:53)")
 o.datatype = "ip4addrport"
 
@@ -128,13 +154,61 @@ o:value("tcp://209.244.0.3:53,tcp://209.244.0.4:53", translate("Level 3 Public D
 o:value("tcp://4.2.2.1:53,tcp://4.2.2.2:53", translate("Level 3 Public DNS-2 (4.2.2.1-2)"))
 o:value("tcp://4.2.2.3:53,tcp://4.2.2.4:53", translate("Level 3 Public DNS-3 (4.2.2.3-4)"))
 o:value("tcp://1.1.1.1:53,tcp://1.0.0.1:53", translate("Cloudflare DNS"))
-o:depends("pdnsd_enable", "3")
+o:depends("pdnsd_enable", "4")
 o.description = translate("Custom DNS Server for mosdns")
 
 o = s:option(Flag, "mosdns_ipv6", translate("Disable IPv6 in MOSDNS query mode"))
-o:depends("pdnsd_enable", "3")
+o:depends("pdnsd_enable", "4")
 o.rmempty = false
 o.default = "1"
+
+if is_finded("dnsproxy") then
+	o = s:option(ListValue, "parse_method", translate("Select DNS parse Mode"))
+	o.description = translate(
+    	"<ul>" ..
+    	"<li>" .. translate("When use DNS list file, please ensure list file exists and is formatted correctly.") .. "</li>" ..
+    	"<li>" .. translate("Tips: Dnsproxy DNS Parse List Path:") ..
+    	" <a href='http://" .. lan_ip .. "/cgi-bin/luci/admin/services/shadowsocksr/control' target='_blank'>" ..
+    	translate("Click here to view or manage the DNS list file") .. "</a>" .. "</li>" ..
+    	"</ul>"
+	)
+	o:value("single_dns", translate("Set Single DNS"))
+	o:value("parse_file", translate("Use DNS List File"))
+	o:depends("pdnsd_enable", "5")
+	o.rmempty = true
+	o.default = "single_dns"
+
+	o = s:option(Value, "dnsproxy_tunnel_forward", translate("Anti-pollution DNS Server"))
+	o:value("sdns://AgUAAAAAAAAABzguOC40LjQgsKKKE4EwvtIbNjGjagI2607EdKSVHowYZtyvD9iPrkkHOC44LjQuNAovZG5zLXF1ZXJ5", translate("Google DNSCrypt SDNS"))
+	o:value("sdns://AgcAAAAAAAAADzE4NS4yMjIuMjIyLjIyMiAOp5Svj-oV-Fz-65-8H2VKHLKJ0egmfEgrdPeAQlUFFA8xODUuMjIyLjIyMi4yMjIKL2Rucy1xdWVyeQ", translate("dns.sb DNSCrypt SDNS"))
+	o:value("sdns://AgMAAAAAAAAADTE0OS4xMTIuMTEyLjkgsBkgdEu7dsmrBT4B4Ht-BQ5HPSD3n3vqQ1-v5DydJC8SZG5zOS5xdWFkOS5uZXQ6NDQzCi9kbnMtcXVlcnk", translate("Quad9 DNSCrypt SDNS"))
+	o:value("sdns://AQMAAAAAAAAAETk0LjE0MC4xNC4xNDo1NDQzINErR_JS3PLCu_iZEIbq95zkSV2LFsigxDIuUso_OQhzIjIuZG5zY3J5cHQuZGVmYXVsdC5uczEuYWRndWFyZC5jb20", translate("AdGuard DNSCrypt SDNS"))
+	o:value("sdns://AgcAAAAAAAAABzEuMC4wLjGgENk8mGSlIfMGXMOlIlCcKvq7AVgcrZxtjon911-ep0cg63Ul-I8NlFj4GplQGb_TTLiczclX57DvMV8Q-JdjgRgSZG5zLmNsb3VkZmxhcmUuY29tCi9kbnMtcXVlcnk", translate("Cloudflare DNSCrypt SDNS"))
+	o:value("sdns://AgcAAAAAAAAADjEwNC4xNi4yNDkuMjQ5ABJjbG91ZGZsYXJlLWRucy5jb20KL2Rucy1xdWVyeQ", translate("cloudflare-dns.com DNSCrypt SDNS"))
+	o:depends("parse_method", "single_dns")
+	o.description = translate("Custom DNS Server (support: IP:Port or tls://IP:Port or https://IP/dns-query and other format).")
+
+	o = s:option(ListValue, "upstreams_logic_mode", translate("Defines the upstreams logic mode"))
+	o.description = translate(
+    	"<ul>" ..
+    	"<li>" .. translate("Defines the upstreams logic mode, possible values: load_balance, parallel, fastest_addr (default: load_balance).") .. "</li>" ..
+    	"<li>" .. translate("When two or more DNS servers are deployed, enable this function.") .. "</li>" ..
+    	"</ul>"
+	)
+	o:value("load_balance", translate("load_balance"))
+	o:value("parallel", translate("parallel"))
+	o:value("fastest_addr", translate("fastest_addr"))
+	o:depends("parse_method", "parse_file")
+	o.rmempty = true
+	o.default = "load_balance"
+
+	o = s:option(Flag, "dnsproxy_ipv6", translate("Disable IPv6 query mode"))
+	o.description = translate("When disabled, all AAAA requests are not resolved.")
+	o:depends("parse_method", "single_dns")
+	o:depends("parse_method", "parse_file")
+	o.rmempty = false
+	o.default = "1"
+end
 
 if is_finded("chinadns-ng") then
 	o = s:option(Value, "chinadns_forward", translate("Domestic DNS Server"))
@@ -150,6 +224,7 @@ if is_finded("chinadns-ng") then
 	o:value("1.2.4.8:53", translate("CNNIC SDNS (1.2.4.8)"))
 	o:depends({pdnsd_enable = "1", run_mode = "router"})
 	o:depends({pdnsd_enable = "2", run_mode = "router"})
+	o:depends({pdnsd_enable = "3", run_mode = "router"})
 	o.description = translate("Custom DNS Server format as IP:PORT (default: disabled)")
 	o.validate = function(self, value, section)
 		if (section and value) then

@@ -3,6 +3,10 @@ require "nixio.fs"
 require "luci.sys"
 local m, s, o
 
+local function is_finded(e)
+	return luci.sys.exec(string.format('type -t -p "%s" 2>/dev/null', e)) ~= ""
+end
+
 m = Map("shadowsocksr")
 
 s = m:section(TypedSection, "access_control")
@@ -139,6 +143,24 @@ o.write = function(self, section, value)
 end
 o.remove = function(self, section, value)
 	nixio.fs.writefile(netflixconf, "")
+end
+
+if is_finded("dnsproxy") then
+	s:tab("dnsproxy", translate("Dnsproxy Parse List"))
+	local dnsproxyconf = "/etc/ssrplus/dnsproxy_dns.list"
+	o = s:taboption("dnsproxy", TextValue, "dnsproxyconf", "", "<font style=color:red>" .. translate("Specifically for edit dnsproxy DNS parse files.") .. "</font>")
+	o.rows = 13
+	o.wrap = "off"
+	o.rmempty = true
+	o.cfgvalue = function(self, section)
+		return nixio.fs.readfile(dnsproxyconf) or " "
+	end
+	o.write = function(self, section, value)
+		nixio.fs.writefile(dnsproxyconf, value:gsub("\r\n", "\n"))
+	end
+	o.remove = function(self, section, value)
+		nixio.fs.writefile(dnsproxyconf, "")
+	end
 end
 
 if luci.sys.call('[ -f "/www/luci-static/resources/uci.js" ]') == 0 then

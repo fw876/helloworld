@@ -104,8 +104,20 @@ while [ "1" == "1" ]; do #死循环
 			ln_start_bin $(first_type microsocks) microsocks -i 127.0.0.1 -p $tmp_dns_port ssrplus-dns
 			ln_start_bin $(first_type dns2socks) dns2socks 127.0.0.1:$tmp_dns_port $dnsserver 127.0.0.1:$dns_port -q
 		fi
-	#mosdns
+	#dns2socks-rust
 	elif [ "$pdnsd_process" -eq 3 ]; then
+		icount=$(busybox ps -w | grep -e ssrplus-dns -e "dns2socks-rust -s socks5://127.0.0.1 $tmp_dns_port" | grep -v grep | wc -l)
+		if [ "$icount" -lt 2 ]; then #如果进程挂掉就重启它
+			logger -t "$NAME" "dns2socks-rust $dnsserver tunnel error.restart!"
+			echolog "dns2socks-rust $dnsserver tunnel error.restart!"
+			dnsserver=$(uci_get_by_type global tunnel_forward 8.8.4.4:53)
+			kill -9 $(busybox ps -w | grep ssrplus-dns | grep -v grep | awk '{print $1}') >/dev/null 2>&1
+			kill -9 $(busybox ps -w | grep "dns2socks-rust -s socks5://127.0.0.1 $tmp_dns_port" | grep -v grep | awk '{print $1}') >/dev/null 2>&1
+			ln_start_bin $(first_type microsocks) microsocks -i 127.0.0.1 -p $tmp_dns_port ssrplus-dns
+			ln_start_bin $(first_type dns2socks) dns2socks-rust -s socks5://127.0.0.1:$tmp_dns_port -d $dnsserver -l 127.0.0.1:$dns_port -f -c
+		fi
+	#mosdns
+	elif [ "$pdnsd_process" -eq 4 ]; then
 		icount=$(busybox ps -w | grep $TMP_BIN_PATH/mosdns | grep -v grep | wc -l)
 		if [ "$icount" -lt 1 ]; then #如果进程挂掉就重启它
 			logger -t "$NAME" "mosdns tunnel error.restart!"
@@ -113,6 +125,71 @@ while [ "1" == "1" ]; do #死循环
 			dnsserver=$(uci_get_by_type global tunnel_forward 8.8.4.4:53)
 			kill -9 $(busybox ps -w | grep $TMP_BIN_PATH/mosdns | grep -v grep | awk '{print $1}') >/dev/null 2>&1
 			ln_start_bin $(first_type mosdns) mosdns start -c /etc/mosdns/config.yaml
+	#dnsproxy
+	elif [ "$pdnsd_process" -eq 5 ]; then
+		icount=$(busybox ps -w | grep -e ssrplus-dns -e "dnsproxy -l 127.0.0.1 -p $tmp_port" | grep -v grep | wc -l)
+		if [ "$icount" -lt 2 ]; then #如果进程挂掉就重启它
+			logger -t "$NAME" "dnsproxy $dnsserver tunnel error.restart!"
+			echolog "dnsproxy $dnsserver tunnel error.restart!"
+			local dnsproxy_dnsserver="$(uci_get_by_type global parse_method)"
+			if [ -n "$dnsproxy_dnsserver" ] && [ "$dnsproxy_dnsserver" != "parse_file" ]; then
+				dnsserver="$(uci_get_by_type global dnsproxy_tunnel_forward 8.8.4.4:53)"
+			fi
+			kill -9 $(busybox ps -w | grep "dnsproxy -l 127.0.0.1 -p $tmp_port" | grep -v grep | awk '{print $1}') >/dev/null 2>&1
+			dnsproxy_ipv6="$(uci_get_by_type global dnsproxy_ipv6)"
+				disabled_ipv6="--ipv6-disabled"
+			fi
+			if [ "$dnsproxy_dnsserver" != "parse_file" ]; then
+				ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsserver $disabled_ipv6 --cache --cache-min-ttl=3600
+			else
+				dnsproxy_dnsserver_file="$TMP_PATH/dnsproxy_dns.list"
+				cleaned_file="$TMP_PATH/cleaned_dns.list"
+				temp_file="$TMP_PATH/temp_dns.list"
+				> "$cleaned_file"
+				# 清理输入文件并去重
+				while IFS= read -r line || [ -n "$line" ]; do
+				    line=$(echo "$line" | sed -E 's/^[ \t\r]+//; s/[ \t\r]+$//')
+					[ -z "$line" ] && continue
+					echo "$line" | grep -qE '^#' && continue
+					echo "$line" >> "$cleaned_file"
+				done < "/etc/ssrplus/dnsproxy_dns.list"
+				# 获取清理后文件的MD5
+				cleaned_md5=$(md5sum "$cleaned_file" | awk '{print $1}')
+				if [ ! -f "$dnsproxy_dnsserver_file" ]; then
+				    cp "$cleaned_file" "$dnsproxy_dnsserver_file"
+				else
+				    target_md5=$(md5sum "$dnsproxy_dnsserver_file" | awk '{print $1}')
+					if [ "$cleaned_md5" != "$target_md5" ]; then
+					    > "$temp_file"
+					    # 保留目标文件中也存在于清理文件的记录（去重）
+					    while IFS= read -r line; do
+						    line=$(echo "$line" | sed -E 's/^[ \t\r]+//; s/[ \t\r]+$//')
+						    if grep -qixF "$line" "$cleaned_file" && ! grep -qixF "$line" "$temp_file"; then
+							    echo "$line" >> "$temp_file"
+						    fi
+						done < "$dnsproxy_dnsserver_file"
+						# 添加清理文件中有但目标文件没有的记录（去重）
+						while IFS= read -r line; do
+						    line=$(echo "$line" | sed -E 's/^[ \t\r]+//; s/[ \t\r]+$//')
+							if ! grep -qixF "$line" "$temp_file"; then
+							    echo "$line" >> "$temp_file"
+							fi
+						done < "$cleaned_file"
+						temp_md5=$(md5sum "$temp_file" | awk '{print $1}')
+						if [ "$temp_md5" != "$target_md5" ]; then
+						    mv "$temp_file" "$dnsproxy_dnsserver_file"
+						else
+						    rm -f "$temp_file"
+						fi
+					fi
+				fi
+				rm -f "$cleaned_file"
+
+				if [ -n "$dnsproxy_dnsserver_file" ] && [ -s "$dnsproxy_dnsserver_file" ]; then
+					local upstreams_logic_mode="$(uci_get_by_type global upstreams_logic_mode)"
+					ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsproxy_dnsserver_file $disabled_ipv6 --cache --cache-min-ttl=3600 --upstream-mode=$upstreams_logic_mode
+				fi
+			fi
 		fi
 	fi
 	#chinadns-ng
