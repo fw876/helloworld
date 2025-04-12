@@ -334,6 +334,7 @@ o.default = "1"
 -- [[ Enable Shadowsocks Plugin ]]--
 o = s:option(Flag, "enable_plugin", translate("Enable Plugin"))
 o.rmempty = true
+o:depends("type", "ss")
 o.default = "0"
 
 -- Shadowsocks Plugin
@@ -350,7 +351,7 @@ if is_finded("xray-plugin") then
 end
 o:value("custom", translate("Custom"))
 o.rmempty = true
-o:depends({type = "ss", enable_plugin = true})
+o:depends({enable_plugin = true})
 
 o = s:option(Value, "custom_plugin", translate("Custom Plugin Path"))
 o.placeholder = "/path/to/custom-plugin"
@@ -358,7 +359,7 @@ o:depends({plugin = "custom"})
 
 o = s:option(Value, "plugin_opts", translate("Plugin Opts"))
 o.rmempty = true
-o:depends({type = "ss", enable_plugin = true})
+o:depends({enable_plugin = true})
 
 o = s:option(ListValue, "protocol", translate("Protocol"))
 for _, v in ipairs(protocol) do
