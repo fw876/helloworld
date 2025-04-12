@@ -117,6 +117,12 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.lazy_mode')[0].checked = true;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.lazy_mode')[0].dispatchEvent(event);
 			}
+			if (params.get("mport")) {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.flag_port_hopping')[0].checked = true; // 设置 flag_transport 为 true
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.flag_port_hopping')[0].dispatchEvent(event); // 触发事件
+
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.port_range')[0].value = params.get("mport") || "";
+			}
 			if (params.get("protocol")) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.flag_transport')[0].checked = true; // 设置 flag_transport 为 true
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.flag_transport')[0].dispatchEvent(event); // 触发事件

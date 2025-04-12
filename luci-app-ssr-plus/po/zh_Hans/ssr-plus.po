@@ -159,16 +159,19 @@ msgid "NOTE: If the server uses the userpass authentication, the format must be 
 msgstr "注意： 如果服务器使用 userpass 验证，格式必须是 username:password。"
 
 msgid "Enable Port Hopping"
-msgstr "启用端口跃迁"
+msgstr "启用端口跳跃"
 
 msgid "Enable Transport Protocol Settings"
 msgstr "启用传输协议设置"
 
-msgid "Port Range"
-msgstr "端口范围值"
+msgid "Port hopping range"
+msgstr "端口跳跃范围"
+
+msgid "Format as 10000:20000 or 10000-20000 Multiple groups are separated by commas (,)."
+msgstr "格式为：10000:20000 或 10000-20000 多组时用逗号（,）隔开。"
 
 msgid "Port Hopping Interval(Unit:Second)"
-msgstr "端口跃迁间隔（单位：秒）"
+msgstr "端口跳跃间隔（单位：秒）"
 
 msgid "Enable Lazy Mode"
 msgstr "启用懒狗模式"

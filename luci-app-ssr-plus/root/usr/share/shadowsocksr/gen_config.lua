@@ -412,35 +412,35 @@ local ss = {
 	reuse_port = true
 }
 local hysteria2 = {
-	server = (server.server_port and (server.port_range and (server.server .. ":" .. server.server_port .. "," .. server.port_range) or (server.server .. ":" .. server.server_port) or (server.port_range and server.server .. ":" .. server.port_range or server.server .. ":443"))),
+	server = (server.server_port and (server.port_range and (server.server .. ":" .. server.server_port .. "," .. string.gsub(server.port_range, ":", "-")) or (server.server .. ":" .. server.server_port) or (server.port_range and server.server .. ":" .. string.gsub(server.port_range, ":", "-") or server.server .. ":443"))),
 	bandwidth = (server.uplink_capacity or server.downlink_capacity) and {
 	up = tonumber(server.uplink_capacity) and tonumber(server.uplink_capacity) .. " mbps" or nil,
 	down = tonumber(server.downlink_capacity) and tonumber(server.downlink_capacity) .. " mbps" or nil 
-	},
+	} or nil,
 	socks5 = (proto:find("tcp") and tonumber(socks_port) and tonumber(socks_port) ~= 0) and {
 		listen = "0.0.0.0:" .. tonumber(socks_port),
 		disable_udp = false
 	} or nil,
-	transport = (server.transport_protocol) and {
-		type = (server.transport_protocol) or udp,
+	transport = server.transport_protocol and {
+		type = server.transport_protocol or "udp",
 		udp = (server.port_range and (server.hopinterval) and {
-                        hopInterval = (server.port_range and (tonumber(server.hopinterval) .. "s") or nil)
-                } or nil)
-        } or nil,
+			hopInterval = (server.port_range and (tonumber(server.hopinterval) .. "s") or nil)
+		} or nil)
+	} or nil,
 --[[
 	tcpTProxy = (proto:find("tcp") and local_port ~= "0") and {
-					listen = "0.0.0.0:" .. tonumber(local_port)
+		listen = "0.0.0.0:" .. tonumber(local_port)
 	} or nil,
 ]]--
 	tcpRedirect = (proto:find("tcp") and local_port ~= "0") and {
-					listen = "0.0.0.0:" .. tonumber(local_port)
+		listen = "0.0.0.0:" .. tonumber(local_port)
 	} or nil,
 	udpTProxy = (proto:find("udp") and local_port ~= "0") and {
-					listen = "0.0.0.0:" .. tonumber(local_port)
+		listen = "0.0.0.0:" .. tonumber(local_port)
 	} or nil,
 	obfs = (server.flag_obfs == "1") and {
-				type = server.obfs_type,
-				salamander = { password = server.salamander }
+		type = server.obfs_type,
+		salamander = { password = server.salamander }
 	} or nil,
 	quic = (server.flag_quicparam == "1" ) and {
 		initStreamReceiveWindow = (server.initstreamreceivewindow and server.initstreamreceivewindow or nil),
@@ -641,3 +641,4 @@ function config:handleIndex(index)
 end
 local f = config:new()
 f:handleIndex(server.type)
+

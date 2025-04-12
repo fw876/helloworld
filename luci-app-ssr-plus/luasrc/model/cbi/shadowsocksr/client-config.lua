@@ -392,9 +392,10 @@ o:depends("type", "hysteria2")
 o.rmempty = true
 o.default = "0"
 
-o = s:option(Value, "port_range", translate("Port Range"))
+o = s:option(Value, "port_range", translate("Port hopping range"))
+o.description = translate("Format as 10000:20000 or 10000-20000 Multiple groups are separated by commas (,).")
 o:depends({type = "hysteria2", flag_port_hopping = true})
-o.datatype = "portrange"
+--o.datatype = "portrange"
 o.rmempty = true
 
 o = s:option(Flag, "flag_transport", translate("Enable Transport Protocol Settings"))
