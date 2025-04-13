@@ -217,6 +217,10 @@ local function processData(szType, content)
 				result.pinsha256 = params.pinSHA256
 			end
 		end
+		if params.mport then
+			result.flag_port_hopping = "1"
+			result.port_range = params.mport
+		end
 	elseif szType == 'ssr' then
 		local dat = split(content, "/%?")
 		local hostInfo = split(dat[1], ':')
