@@ -612,6 +612,27 @@ msgstr "访问国外域名 DNS 服务器"
 msgid "Custom DNS Server format as IP:PORT (default: 8.8.4.4:53)"
 msgstr "格式为 IP:Port（默认：8.8.4.4:53）"
 
+msgid "Muitiple DNS server can saperate with ','"
+msgstr "多个上游 DNS 服务器请用 ',' 分隔（注意用英文逗号)"
+
+msgid "ChinaDNS-NG query protocol"
+msgstr "ChinaDNS-NG 查询协议"
+
+msgid "UDP/TCP upstream"
+msgstr "UDP/TCP 上游"
+
+msgid "TCP upstream"
+msgstr "TCP 上游"
+
+msgid "UDP upstream"
+msgstr "UDP 上游"
+
+msgid "DoT upstream (Need use wolfssl version)"
+msgstr "DoT 上游（需使用 wolfssl 版本）"
+
+msgid "ChinaDNS-NG shunt query protocol"
+msgstr "ChinaDNS-NG 分流查询协议"
+
 msgid "Use DNS2TCP query"
 msgstr "使用 DNS2TCP 查询"
 
@@ -626,6 +647,9 @@ msgstr "使用 MOSDNS 查询 (不支持海外用户回国模式)"
 
 msgid "Use DNSPROXY query and cache"
 msgstr "使用 DNSPROXY 查询并缓存"
+
+msgid "Use ChinaDNS-NG query and cache"
+msgstr "使用 ChinaDNS-NG 查询并缓存"
 
 msgid "Select DNS parse Mode"
 msgstr "选择 DNS 解析方式"

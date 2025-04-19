@@ -203,6 +203,8 @@ start_dns() {
 	local dnsproxy_dnsserver="$(uci_get_by_type global parse_method)"
 	if [ -n "$dnsproxy_dnsserver" ] && [ "$dnsproxy_dnsserver" != "parse_file" ]; then
 		dnsserver="$(uci_get_by_type global dnsproxy_tunnel_forward 8.8.4.4:53)"
+	elif [ -n "$ssrplus_dns" ] && [ "$ssrplus_dns" = "6" ]; then
+		dnsserver="$(uci_get_by_type global chinadns_ng_tunnel_forward 8.8.4.4:53)"
 	else
 		dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
 	fi
@@ -306,6 +308,38 @@ start_dns() {
 			fi
 			echolog "DNSPROXY query and cache Started!"
 			pdnsd_enable_flag=5
+			;;
+		6)
+			local chinadns_ng_proto="$(uci_get_by_type global chinadns_ng_proto)"
+			local chinadns_ng_dns=""
+			# 遍历每个 DNS 服务器
+			IFS=','  # 设置分隔符为逗号
+			for chinadns_ng_server in $dnsserver; do
+				# 处理单个服务器地址
+				local chinadns_ng_ip="${chinadns_ng_server%%:*}"
+				local chinadns_ng_port="${chinadns_ng_server##*:}"
+				[ "$chinadns_ng_ip" = "$chinadns_ng_port" ] && chinadns_ng_port="53"
+				chinadns_ng_tls_port="853"
+				# 根据协议类型格式化服务器地址
+				case "$chinadns_ng_proto" in
+					"none")
+            					chinadns_ng_server="${chinadns_ng_ip}#${chinadns_ng_port}"
+            					;;
+					"tls")
+            					chinadns_ng_server="${chinadns_ng_proto}://${chinadns_ng_ip}#${chinadns_ng_tls_port}"
+            					;;
+					*)
+            					chinadns_ng_server="${chinadns_ng_proto}://${chinadns_ng_ip}#${chinadns_ng_port}"
+            					;;
+				esac
+				# 添加到参数列表
+				chinadns_ng_dns="${chinadns_ng_dns} -t ${chinadns_ng_server}"
+			done
+			unset IFS  # 恢复默认分隔符
+			dnsserver="$chinadns_ng_dns"
+			ln_start_bin $(first_type chinadns-ng) chinadns-ng -b 127.0.0.1 -l $tmp_dns_port -l $dns_port -p 3 -d gfw $dnsserver -N --filter-qtype 64,65 -f -r --cache 4096 --cache-stale 86400 --cache-refresh 20
+			echolog "ChinaDNS-NG query and cache Started!"
+			pdnsd_enable_flag=6
 			;;
 		esac
 
@@ -592,6 +626,8 @@ shunt_dns_command() {
 	local shunt_dnsproxy_dnsserver="$(uci_get_by_type global shunt_parse_method)"
 	if [ -n "$shunt_dnsproxy_dnsserver" ] && [ "$shunt_dnsproxy_dnsserver" != "parse_file" ]; then
 		shunt_dnsserver="$(uci_get_by_type global dnsproxy_shunt_forward 8.8.4.4:53)"
+	elif [ -n "shunt_dns_mode" ] && [ "$shunt_dns_mode" = "5" ]; then
+		shunt_dnsserver="$(uci_get_by_type global chinadns_ng_shunt_dnsserver 8.8.4.4:53)"
 	else
 		shunt_dnsserver="$(uci_get_by_type global shunt_dnsserver 8.8.4.4:53)"
 	fi
@@ -678,6 +714,38 @@ shunt_dns_command() {
 			fi
 		fi
 		echolog "DNSPROXY shunt query and cache Started!"
+		;;
+	5)
+		local chinadns_ng_shunt_proto="$(uci_get_by_type global chinadns_ng_shunt_proto)"
+		local chinadns_ng_shunt_dns=""
+		# 遍历每个 DNS 服务器
+		IFS=','  # 设置分隔符为逗号
+		for chinadns_ng_shunt_server in $shunt_dnsserver; do
+			# 处理单个服务器地址
+			local chinadns_ng_shunt_ip="${chinadns_ng_shunt_server%%:*}"
+			local chinadns_ng_shunt_port="${chinadns_ng_shunt_server##*:}"
+			[ "$chinadns_ng_shunt_ip" = "$chinadns_ng_shunt_port" ] && chinadns_ng_shunt_port="53"
+			chinadns_ng_shunt_tls_port="853"
+			# 根据协议类型格式化服务器地址
+			case "$chinadns_ng_shunt_proto" in
+				"none")
+            				chinadns_ng_shunt_server="${chinadns_ng_shunt_ip}#${chinadns_ng_shunt_port}"
+            				;;
+				"tls")
+            				chinadns_ng_shunt_server="${chinadns_ng_shunt_proto}://${chinadns_ng_shunt_ip}#${chinadns_ng_shunt_tls_port}"
+            				;;
+				*)
+            				chinadns_ng_shunt_server="${chinadns_ng_shunt_proto}://${chinadns_ng_shunt_ip}#${chinadns_ng_shunt_port}"
+            				;;
+			esac
+			# 添加到参数列表
+			chinadns_ng_shunt_dns="${chinadns_ng_shunt_dns} -t ${chinadns_ng_shunt_server}"
+		done
+		unset IFS  # 恢复默认分隔符
+		shunt_dnsserver="$chinadns_ng_shunt_dns"
+		# 启动 chinadns-ng
+		ln_start_bin $(first_type chinadns-ng) chinadns-ng -b 127.0.0.1 -l $tmp_port -l $tmp_shunt_dns_port -p 3 -d gfw $shunt_dnsserver -N --filter-qtype 64,65 -f -r --cache 4096 --cache-stale 86400 --cache-refresh 20
+		echolog "ChinaDNS-NG shunt query and cache Started!"
 		;;
 	esac
 }

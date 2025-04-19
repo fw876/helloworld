@@ -95,7 +95,7 @@ while [ "1" == "1" ]; do #死循环
 	#dns2socks
 	elif [ "$pdnsd_process" -eq 2 ]; then
 		icount=$(busybox ps -w | grep -e ssrplus-dns -e "dns2socks 127.0.0.1 $tmp_dns_port" | grep -v grep | wc -l)
-		if [ "$icount" -lt 2 ]; then #如果进程挂掉就重启它
+		if [ "$icount" -lt 1 ]; then #如果进程挂掉就重启它
 			logger -t "$NAME" "dns2socks $dnsserver tunnel error.restart!"
 			echolog "dns2socks $dnsserver tunnel error.restart!"
 			dnsserver=$(uci_get_by_type global tunnel_forward 8.8.4.4:53)
@@ -107,7 +107,7 @@ while [ "1" == "1" ]; do #死循环
 	#dns2socks-rust
 	elif [ "$pdnsd_process" -eq 3 ]; then
 		icount=$(busybox ps -w | grep -e ssrplus-dns -e "dns2socks-rust -s socks5://127.0.0.1 $tmp_dns_port" | grep -v grep | wc -l)
-		if [ "$icount" -lt 2 ]; then #如果进程挂掉就重启它
+		if [ "$icount" -lt 1 ]; then #如果进程挂掉就重启它
 			logger -t "$NAME" "dns2socks-rust $dnsserver tunnel error.restart!"
 			echolog "dns2socks-rust $dnsserver tunnel error.restart!"
 			dnsserver=$(uci_get_by_type global tunnel_forward 8.8.4.4:53)
@@ -127,15 +127,15 @@ while [ "1" == "1" ]; do #死循环
 			ln_start_bin $(first_type mosdns) mosdns start -c /etc/mosdns/config.yaml
 	#dnsproxy
 	elif [ "$pdnsd_process" -eq 5 ]; then
-		icount=$(busybox ps -w | grep -e ssrplus-dns -e "dnsproxy -l 127.0.0.1 -p $tmp_port" | grep -v grep | wc -l)
-		if [ "$icount" -lt 2 ]; then #如果进程挂掉就重启它
+		icount=$(busybox ps -w | grep -e ssrplus-dns -e "dnsproxy -l 127.0.0.1 -p $tmp_dns_port" | grep -v grep | wc -l)
+		if [ "$icount" -lt 1 ]; then #如果进程挂掉就重启它
 			logger -t "$NAME" "dnsproxy $dnsserver tunnel error.restart!"
 			echolog "dnsproxy $dnsserver tunnel error.restart!"
 			local dnsproxy_dnsserver="$(uci_get_by_type global parse_method)"
 			if [ -n "$dnsproxy_dnsserver" ] && [ "$dnsproxy_dnsserver" != "parse_file" ]; then
 				dnsserver="$(uci_get_by_type global dnsproxy_tunnel_forward 8.8.4.4:53)"
 			fi
-			kill -9 $(busybox ps -w | grep "dnsproxy -l 127.0.0.1 -p $tmp_port" | grep -v grep | awk '{print $1}') >/dev/null 2>&1
+			kill -9 $(busybox ps -w | grep "dnsproxy -l 127.0.0.1 -p $tmp_dns_port" | grep -v grep | awk '{print $1}') >/dev/null 2>&1
 			dnsproxy_ipv6="$(uci_get_by_type global dnsproxy_ipv6)"
 				disabled_ipv6="--ipv6-disabled"
 			fi
@@ -191,8 +191,41 @@ while [ "1" == "1" ]; do #死循环
 				fi
 			fi
 		fi
+	#chinadns-ng(proxy)
+	elif [ "$pdnsd_process" -eq 6 ]; then
+		icount=$(busybox ps -w | grep -e ssrplus-dns -e "chinadns-ng -b 127.0.0.1 -l $tmp_dns_port" | grep -v grep | wc -l)
+		if [ "$icount" -lt 1 ]; then #如果进程挂掉就重启它
+			logger -t "$NAME" "chinadns-ng $dnsserver tunnel error.restart!"
+			echolog "chinadns-ng $dnsserver tunnel error.restart!"
+			dnsserver=$(uci_get_by_type global chinadns_ng_tunnel_forward 8.8.4.4:53)
+			kill -9 $(busybox ps -w | grep "chinadns-ng -b 127.0.0.1 -l $tmp_dns_port" | grep -v grep | awk '{print $1}') >/dev/null 2>&1
+			local chinadns_ng_proto="$(uci_get_by_type global chinadns_ng_proto)"
+			local chinadns_ng_dns=""
+			IFS=','
+			for chinadns_ng_server in $dnsserver; do
+				local chinadns_ng_ip="${chinadns_ng_server%%:*}"
+				local chinadns_ng_port="${chinadns_ng_server##*:}"
+				[ "$chinadns_ng_ip" = "$chinadns_ng_port" ] && chinadns_ng_port="53"
+				chinadns_ng_tls_port="853"
+				case "$chinadns_ng_proto" in
+					"none")
+						chinadns_ng_server="${chinadns_ng_ip}#${chinadns_ng_port}"
+						;;
+					"tls")
+						chinadns_ng_server="${chinadns_ng_proto}://${chinadns_ng_ip}#${chinadns_ng_tls_port}"
+						;;
+					*)
+						chinadns_ng_server="${chinadns_ng_proto}://${chinadns_ng_ip}#${chinadns_ng_port}"
+						;;
+				esac
+					chinadns_ng_dns="${chinadns_ng_dns} -t ${chinadns_ng_server}"
+			done
+			unset IFS
+			dnsserver="$chinadns_ng_dns"
+			ln_start_bin $(first_type chinadns-ng) chinadns-ng -b 127.0.0.1 -l $tmp_dns_port -l $dns_port -p 3 -d gfw $dnsserver -N --filter-qtype 64,65 -f -r --cache 4096 --cache-stale 86400 --cache-refresh 20
+		fi
 	fi
-	#chinadns-ng
+	#chinadns-ng(china)
 	if [ "$(uci -q get "dhcp.@dnsmasq[0]._unused_ssrp_changed")" = "1" ]; then
 		icount=$(busybox ps -w | grep $TMP_BIN_PATH/chinadns-ng | grep -v grep | wc -l)
 		if [ "$icount" -lt 1 ]; then #如果进程挂掉就重启它
