@@ -111,7 +111,9 @@ cp.placeholder = "e.g., 80,443,8080"
 o.default = 1
 
 o = s:option(ListValue, "pdnsd_enable", translate("Resolve Dns Mode"))
-o:value("1", translate("Use DNS2TCP query"))
+if is_finded("dns2tcp") then
+	o:value("1", translate("Use DNS2TCP query"))
+end
 if is_finded("dns2socks") then
 	o:value("2", translate("Use DNS2SOCKS query and cache"))
 end
@@ -123,6 +125,9 @@ if is_finded("mosdns") then
 end
 if is_finded("dnsproxy") then
 	o:value("5", translate("Use DNSPROXY query and cache"))
+end
+if is_finded("chinadns-ng") then
+	o:value("6", translate("Use ChinaDNS-NG query and cache"))
 end
 o:value("0", translate("Use Local DNS Service listen port 5335"))
 o.default = 1
@@ -212,6 +217,33 @@ if is_finded("dnsproxy") then
 end
 
 if is_finded("chinadns-ng") then
+	o = s:option(Value, "chinadns_ng_tunnel_forward", translate("Anti-pollution DNS Server"))
+	o:value("8.8.4.4:53", translate("Google Public DNS (8.8.4.4)"))
+	o:value("8.8.8.8:53", translate("Google Public DNS (8.8.8.8)"))
+	o:value("208.67.222.222:53", translate("OpenDNS (208.67.222.222)"))
+	o:value("208.67.220.220:53", translate("OpenDNS (208.67.220.220)"))
+	o:value("209.244.0.3:53", translate("Level 3 Public DNS (209.244.0.3)"))
+	o:value("209.244.0.4:53", translate("Level 3 Public DNS (209.244.0.4)"))
+	o:value("4.2.2.1:53", translate("Level 3 Public DNS (4.2.2.1)"))
+	o:value("4.2.2.2:53", translate("Level 3 Public DNS (4.2.2.2)"))
+	o:value("4.2.2.3:53", translate("Level 3 Public DNS (4.2.2.3)"))
+	o:value("4.2.2.4:53", translate("Level 3 Public DNS (4.2.2.4)"))
+	o:value("1.1.1.1:53", translate("Cloudflare DNS (1.1.1.1)"))
+	o:depends("pdnsd_enable", "6")
+	o.description = translate(
+    	"<ul>" ..
+    	"<li>" .. translate("Custom DNS Server format as IP:PORT (default: 8.8.4.4:53)") .. "</li>" .. 
+    	"<li>" .. translate("Muitiple DNS server can saperate with ','") .. "</li>" ..
+    	"</ul>"
+	)
+
+	o = s:option(ListValue, "chinadns_ng_proto", translate("ChinaDNS-NG query protocol"))
+	o:value("none", translate("UDP/TCP upstream"))
+	o:value("tcp", translate("TCP upstream"))
+	o:value("udp", translate("UDP upstream"))
+	o:value("tls", translate("DoT upstream (Need use wolfssl version)"))
+	o:depends("pdnsd_enable", "6")
+
 	o = s:option(Value, "chinadns_forward", translate("Domestic DNS Server"))
 	o:value("", translate("Disable ChinaDNS-NG"))
 	o:value("wan", translate("Use DNS from WAN"))
@@ -226,6 +258,8 @@ if is_finded("chinadns-ng") then
 	o:depends({pdnsd_enable = "1", run_mode = "router"})
 	o:depends({pdnsd_enable = "2", run_mode = "router"})
 	o:depends({pdnsd_enable = "3", run_mode = "router"})
+	o:depends({pdnsd_enable = "5", run_mode = "router"})
+	o:depends({pdnsd_enable = "6", run_mode = "router"})
 	o.description = translate("Custom DNS Server format as IP:PORT (default: disabled)")
 	o.validate = function(self, value, section)
 		if (section and value) then
