@@ -238,7 +238,7 @@ o = s:option(ListValue, "v2ray_protocol", translate("V2Ray/XRay protocol"))
 o:value("vless", translate("VLESS"))
 o:value("vmess", translate("VMess"))
 o:value("trojan", translate("Trojan"))
-o:value("shadowsocks", translate("Shadowsocks"))
+o:value("shadowsocks", translate("ShadowSocks"))
 if is_finded("xray") then
 	o:value("wireguard", translate("WireGuard"))
 end
@@ -518,7 +518,7 @@ o.default = ""
 o = s:option(ListValue, "chain_type", translate("Shadow-TLS ChainPoxy type"))
 o:depends("type", "shadowtls")
 if is_finded("sslocal") then
-	o:value("sslocal", translate("Shadowsocks-rust Version"))
+	o:value("sslocal", translate("ShadowSocks-rust Version"))
 end
 if is_finded("xray") or is_finded("v2ray") then
 	o:value("vmess", translate("Vmess Protocol"))

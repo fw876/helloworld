@@ -86,7 +86,7 @@ o.rmempty = false
 o = s:option(ListValue, "type", translate("Server Type"))
 o:value("socks5", translate("Socks5"))
 if nixio.fs.access("/usr/bin/ssserver") or nixio.fs.access("/usr/bin/ss-server") then
-	o:value("ss", translate("Shadowsocks"))
+	o:value("ss", translate("ShadowSocks"))
 end
 if nixio.fs.access("/usr/bin/ssr-server") then
 	o:value("ssr", translate("ShadowsocksR"))
@@ -143,7 +143,7 @@ end
 o.rmempty = false
 o:depends("type", "ssr")
 
-o = s:option(Value, "obfs_param", translate("Obfs param(optional)"))
+o = s:option(Value, "obfs_param", translate("Obfs param (optional)"))
 o:depends("type", "ssr")
 
 o = s:option(Flag, "fast_open", translate("TCP Fast Open"))
