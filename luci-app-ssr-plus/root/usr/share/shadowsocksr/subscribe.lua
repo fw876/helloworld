@@ -177,8 +177,10 @@ end
 local function processData(szType, content)
 	local result = {type = szType, local_port = 1234, kcp_param = '--nocomp'}
 	-- 检查JSON的格式如不完整丢弃
-	if not isCompleteJSON(content) then
-		return nil
+	if not (szType == "sip008" or szType == "ssd") then
+		if not isCompleteJSON(content) then
+			return nil
+		end
 	end
 
 	if szType == "hysteria2" or szType == "hy2" then
