@@ -419,6 +419,7 @@ local function processData(szType, content)
 	elseif szType == "sip008" then
 		result.type = v2_ss
 		result.v2ray_protocol = (v2_ss == "v2ray") and "shadowsocks" or nil
+		result.has_ss_type = has_ss_type
 		result.server = content.server
 		result.server_port = content.server_port
 		result.password = content.password
@@ -432,6 +433,7 @@ local function processData(szType, content)
 	elseif szType == "ssd" then
 		result.type = v2_ss
 		result.v2ray_protocol = (v2_ss == "v2ray") and "shadowsocks" or nil
+		result.has_ss_type = has_ss_type
 		result.server = content.server
 		result.server_port = content.port
 		result.password = content.password
