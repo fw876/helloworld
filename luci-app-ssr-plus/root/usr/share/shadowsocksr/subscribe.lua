@@ -680,12 +680,12 @@ local function processData(szType, content)
 	result.switch_enable = switch_enable
 	return result
 end
--- wget
-local function wget(url)
+-- curl
+local function curl(url)
 	-- 清理URL中的隐藏字符
 	url = url:gsub("%s+$", ""):gsub("^%s+", ""):gsub("%z", "")
 
-	local stdout = luci.sys.exec('wget-ssl --timeout=20 --tries=3 -q --user-agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36" --no-check-certificate -O- "' .. url .. '"')
+	local stdout = luci.sys.exec('curl -sSL --connect-timeout 20 --max-time 30 --retry 3 -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36" --insecure --location "' .. url .. '"')
 	return trim(stdout)
 end
 
@@ -739,7 +739,7 @@ local execute = function()
 			luci.sys.init.stop(name)
 		end
 		for k, url in ipairs(subscribe_url) do
-			local raw = wget(url)
+			local raw = curl(url)
 			if #raw > 0 then
 				local nodes, szType
 				local groupHash = md5(url)
