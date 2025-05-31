@@ -29,6 +29,7 @@ local allow_insecure = ucic:get_first(name, 'server_subscribe', 'allow_insecure'
 local subscribe_url = ucic:get_first(name, 'server_subscribe', 'subscribe_url', {})
 local filter_words = ucic:get_first(name, 'server_subscribe', 'filter_words', '过期时间/剩余流量')
 local save_words = ucic:get_first(name, 'server_subscribe', 'save_words', '')
+local user_agent = ucic:get_first(name, 'server_subscribe', 'user_agent', 'v2rayN/9.99')
 -- 读取 ss_type 设置
 local ss_type = ucic:get_first(name, 'server_subscribe', 'ss_type', 'ss-rust')
 -- 根据 ss_type 选择对应的程序
@@ -684,11 +685,6 @@ local function processData(szType, content)
 end
 -- curl
 local function curl(url)
-    -- 如果用户选择的是 "curl" 选项，则使用空 user_agent
-    if user_agent == "curl" then
-        user_agent = ""
-    end
-    
     -- 清理 URL 中的隐藏字符
     url = url:gsub("%s+$", ""):gsub("^%s+", ""):gsub("%z", "")
 
