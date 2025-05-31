@@ -684,11 +684,23 @@ local function processData(szType, content)
 end
 -- curl
 local function curl(url)
-	-- 清理URL中的隐藏字符
-	url = url:gsub("%s+$", ""):gsub("^%s+", ""):gsub("%z", "")
+    -- 如果用户选择的是 "curl" 选项，则使用空 user_agent
+    if user_agent == "curl" then
+        user_agent = ""
+    end
+    
+    -- 清理 URL 中的隐藏字符
+    url = url:gsub("%s+$", ""):gsub("^%s+", ""):gsub("%z", "")
 
-	local stdout = luci.sys.exec('curl -sSL --connect-timeout 20 --max-time 30 --retry 3 -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36" --insecure --location "' .. url .. '"')
-	return trim(stdout)
+    -- 构建curl命令（确保 user_agent 为空时不添加 -A 参数）
+    local cmd = string.format(
+        'curl -sSL --connect-timeout 20 --max-time 30 --retry 3 %s --insecure --location "%s"',
+        user_agent ~= "" and ('-A "' .. user_agent .. '"') or "",  -- 添加 or "" 处理 nil 情况
+        url:gsub('["$`\\]', '\\%0')  -- 安全转义
+    )
+    
+    local stdout = luci.sys.exec(cmd)
+    return trim(stdout)
 end
 
 local function check_filer(result)
