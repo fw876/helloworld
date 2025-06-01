@@ -84,6 +84,7 @@ flush_r() {
 ipset_r() {
 	[ -f "$IGNORE_LIST" ] && /usr/share/shadowsocksr/chinaipset.sh $IGNORE_LIST
 	$IPT -N SS_SPEC_WAN_AC
+	$IPT -I SS_SPEC_WAN_AC -p tcp --dport 53 -j RETURN
 	$IPT -I SS_SPEC_WAN_AC -p tcp ! --dport 53 -d $server -j RETURN
 	ipset -N gmlan hash:net 2>/dev/null
 	for ip in $LAN_GM_IP; do ipset -! add gmlan $ip; done
@@ -132,13 +133,15 @@ ipset_r() {
 	if [ "$SHUNT_PORT" != "0" ]; then
 		ipset -N netflix hash:net 2>/dev/null
 		for ip in $(cat ${SHUNT_LIST:=/dev/null} 2>/dev/null); do ipset -! add netflix $ip; done
+		$IPT -I SS_SPEC_WAN_AC -p udp --dport 53 -m set --match-set netflix dst -j RETURN
 		case "$SHUNT_PORT" in
 		0) ;;
 		1)
 			$IPT -I SS_SPEC_WAN_AC -p tcp -m set --match-set netflix dst -j REDIRECT --to-ports $local_port
 			;;
 		*)
-			$IPT -I SS_SPEC_WAN_AC -p tcp -m set --match-set netflix dst -j REDIRECT --to-ports $SHUNT_PORT
+			$IPT -I PREROUTING -m set --match-set netflix dst -j REDIRECT --to-ports $SHUNT_PORT
+			$IPT -I SS_SPEC_WAN_AC -m set --match-set netflix dst -j RETURN
 			if [ "$SHUNT_PROXY" == "1" ]; then
 				$IPT -I SS_SPEC_WAN_AC -p tcp -d $SHUNT_IP -j REDIRECT --to-ports $local_port
 			else
