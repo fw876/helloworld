@@ -683,20 +683,54 @@ local function processData(szType, content)
 	result.switch_enable = switch_enable
 	return result
 end
+
+-- 计算、储存和读取 md5 值
+-- 计算 md5 值
+local function md5_string(data)
+	-- 生成临时文件名
+	local tmp = "/tmp/md5_tmp_" .. os.time() .. "_" .. math.random(1000,9999) -- os.time 保证每秒唯一，但不足以避免全部冲突；math.random(1000,9999) 增加文件名唯一性，避免并发时冲突
+	nixio.fs.writefile(tmp, data) -- 写入临时文件
+	-- 执行 md5sum 命令
+	local md5 = luci.sys.exec(string.format('md5sum "%s" 2>/dev/null | cut -d " " -f1', tmp)):gsub("%s+", "")
+	nixio.fs.remove(tmp) -- 删除临时文件
+	return md5
+end
+
+-- 返回临时文件路径，用来存储订阅的 MD5 值，以便判断订阅内容是否发生变化。
+local function get_md5_path(groupHash)
+	return "/tmp/sub_md5_" .. groupHash
+end
+
+-- 读取上次订阅时记录的 MD5 值，以便和当前内容的 MD5 进行对比，从而判断是否需要更新节点列表。
+local function read_old_md5(groupHash)
+	local path = get_md5_path(groupHash)
+	if nixio.fs.access(path) then
+		return trim(nixio.fs.readfile(path) or "")
+	end
+	return ""
+end
+
+-- 将订阅分组最新内容的 MD5 值保存到对应的临时文件中，以便下次更新时进行对比。
+local function write_new_md5(groupHash, md5)
+	nixio.fs.writefile(get_md5_path(groupHash), md5)
+end
+
 -- curl
 local function curl(url)
-    -- 清理 URL 中的隐藏字符
-    url = url:gsub("%s+$", ""):gsub("^%s+", ""):gsub("%z", "")
+	-- 清理 URL 中的隐藏字符
+	url = url:gsub("%s+$", ""):gsub("^%s+", ""):gsub("%z", "")
 
-    -- 构建curl命令（确保 user_agent 为空时不添加 -A 参数）
-    local cmd = string.format(
-        'curl -sSL --connect-timeout 20 --max-time 30 --retry 3 %s --insecure --location "%s"',
-        user_agent ~= "" and ('-A "' .. user_agent .. '"') or "",  -- 添加 or "" 处理 nil 情况
-        url:gsub('["$`\\]', '\\%0')  -- 安全转义
-    )
-    
-    local stdout = luci.sys.exec(cmd)
-    return trim(stdout)
+	-- 构建curl命令（确保 user_agent 为空时不添加 -A 参数）
+	local cmd = string.format(
+		'curl -sSL --connect-timeout 20 --max-time 30 --retry 3 %s --insecure --location "%s"',
+		user_agent ~= "" and ('-A "' .. user_agent .. '"') or "",  -- 添加 or "" 处理 nil 情况
+		url:gsub('["$`\\]', '\\%0')  -- 安全转义
+	)
+
+	local stdout = luci.sys.exec(cmd)
+	stdout = trim(stdout)
+	local md5 = md5_string(stdout)
+	return stdout, md5
 end
 
 local function check_filer(result)
@@ -741,85 +775,148 @@ local function check_filer(result)
 	end
 end
 
+-- 加载订阅未变化的节点用于防止被误删
+local function loadOldNodes(groupHash)
+	local nodes = {}
+	cache[groupHash] = {}
+	nodeResult[#nodeResult + 1] = nodes
+	local index = #nodeResult
+
+	ucic:foreach(name, uciType, function(s)
+		if s.grouphashkey == groupHash and s.hashkey then
+			local section = setmetatable({}, {__index = s})
+			nodes[s.hashkey] = section
+			cache[groupHash][s.hashkey] = section
+		end
+	end)
+end
+
 local execute = function()
 	-- exec
 	do
-		if proxy == '0' then -- 不使用代理更新的话先暂停
-			log('服务正在暂停')
-			luci.sys.init.stop(name)
-		end
+		--local updated = false 
+		local service_stopped = false
 		for k, url in ipairs(subscribe_url) do
-			local raw = curl(url)
+			local raw, new_md5 = curl(url)
+			--log("raw 长度: "..#raw)
+			local groupHash = md5(url)
+			local old_md5 = read_old_md5(groupHash)
+
+			log("处理订阅: " .. url)
+			log("groupHash: " .. groupHash)
+			log("old_md5: " .. tostring(old_md5))
+			log("new_md5: " .. tostring(new_md5))
+
 			if #raw > 0 then
-				local nodes, szType
-				local groupHash = md5(url)
-				cache[groupHash] = {}
-				tinsert(nodeResult, {})
-				local index = #nodeResult
-				-- SSD 似乎是这种格式 ssd:// 开头的
-				if raw:find('ssd://') then
-					szType = 'ssd'
-					local nEnd = select(2, raw:find('ssd://'))
-					nodes = base64Decode(raw:sub(nEnd + 1, #raw))
-					nodes = jsonParse(nodes)
-					local extra = {airport = nodes.airport, port = nodes.port, encryption = nodes.encryption, password = nodes.password}
-					local servers = {}
-					-- SS里面包着 干脆直接这样
-					for _, server in ipairs(nodes.servers) do
-						tinsert(servers, setmetatable(server, {__index = extra}))
-					end
-					nodes = servers
-				-- SS SIP008 直接使用 Json 格式
-				elseif jsonParse(raw) then
-					nodes = jsonParse(raw).servers or jsonParse(raw)
-					if nodes[1].server and nodes[1].method then
-						szType = 'sip008'
-					end
+				if old_md5 and new_md5 == old_md5 then
+					log("订阅未变化, 跳过无需更新的订阅: " .. url)
+					-- 防止 diff 阶段误删未更新订阅节点
+					loadOldNodes(groupHash)
+					--ucic:foreach(name, uciType, function(s)
+					--	if s.grouphashkey == groupHash and s.hashkey then
+					--		cache[groupHash][s.hashkey] = s
+					--		tinsert(nodeResult[index], s)
+					--	end
+					--end)
 				else
-					-- ssd 外的格式
-					nodes = split(base64Decode(raw):gsub(" ", "_"), "\n")
-				end
-				for _, v in ipairs(nodes) do
-					if v then
-						local result
-						if szType then
-							result = processData(szType, v)
-						elseif not szType then
-							local node = trim(v)
-							local dat = split(node, "://")
-							if dat and dat[1] and dat[2] then
-								local dat3 = ""
-								if dat[3] then
-									dat3 = "://" .. dat[3]
-								end
-								if dat[1] == 'ss' or dat[1] == 'trojan' then
-									result = processData(dat[1], dat[2] .. dat3)
-								else
-									result = processData(dat[1], base64Decode(dat[2]))
-								end
-							end
-						else
-							log('跳过未知类型: ' .. szType)
+					updated = true
+					-- 保存更新后的 MD5 值到以 groupHash 为标识的临时文件中，用于下次订阅更新时进行对比
+					write_new_md5(groupHash, new_md5)
+
+					-- 暂停服务（仅当 MD5 有变化时才执行）
+					if proxy == '0' and not service_stopped then
+						log('服务正在暂停')
+						luci.sys.init.stop(name)
+						service_stopped = true
+					end
+
+					cache[groupHash] = {}
+					tinsert(nodeResult, {})
+					local index = #nodeResult
+					local nodes, szType
+
+					-- SSD 似乎是这种格式 ssd:// 开头的
+					if raw:find('ssd://') then
+						szType = 'ssd'
+						local nEnd = select(2, raw:find('ssd://'))
+						nodes = base64Decode(raw:sub(nEnd + 1, #raw))
+						nodes = jsonParse(nodes)
+						local extra = {
+							airport = nodes.airport,
+							port = nodes.port,
+							encryption = nodes.encryption,
+							password = nodes.password
+						}
+						local servers = {}
+						-- SS里面包着 干脆直接这样
+						for _, server in ipairs(nodes.servers or {}) do
+							tinsert(servers, setmetatable(server, {__index = extra}))
 						end
-						-- log(result)
-						if result then
-							-- 中文做地址的 也没有人拿中文域名搞，就算中文域也有Puny Code SB 机场
-							if not result.server or not result.server_port or result.alias == "NULL" or check_filer(result) or result.server:match("[^0-9a-zA-Z%-_%.%s]") or cache[groupHash][result.hashkey] then
-								log('丢弃无效节点: ' .. result.alias)
+						nodes = servers
+					-- SS SIP008 直接使用 Json 格式
+					elseif jsonParse(raw) then
+						nodes = jsonParse(raw).servers or jsonParse(raw)
+						if nodes[1] and nodes[1].server and nodes[1].method then
+							szType = 'sip008'
+						end
+					-- 其他 base64 格式
+					else
+						-- ssd 外的格式
+						nodes = split(base64Decode(raw):gsub(" ", "_"), "\n")
+					end
+					for _, v in ipairs(nodes) do
+						if v then
+							local result
+							if szType then
+								result = processData(szType, v)
+							elseif not szType then
+								local node = trim(v)
+								local dat = split(node, "://")
+								if dat and dat[1] and dat[2] then
+									local dat3 = ""
+									if dat[3] then
+										dat3 = "://" .. dat[3]
+									end
+									if dat[1] == 'ss' or dat[1] == 'trojan' then
+										result = processData(dat[1], dat[2] .. dat3)
+									else
+										result = processData(dat[1], base64Decode(dat[2]))
+									end
+								end
 							else
-								-- log('成功解析: ' .. result.type ..' 节点, ' .. result.alias)
-								result.grouphashkey = groupHash
-								tinsert(nodeResult[index], result)
-								cache[groupHash][result.hashkey] = nodeResult[index][#nodeResult[index]]
+								log('跳过未知类型: ' .. szType)
+							end
+							-- log(result)
+							if result then
+								-- 中文做地址的 也没有人拿中文域名搞，就算中文域也有Puny Code SB 机场
+								if not result.server or not result.server_port
+									or result.alias == "NULL"
+									or check_filer(result)
+									or result.server:match("[^0-9a-zA-Z%-_%.%s]")
+									or cache[groupHash][result.hashkey]
+								then
+									log('丢弃无效节点: ' .. result.alias)
+								else
+									-- log('成功解析: ' .. result.type ..' 节点, ' .. result.alias)
+									result.grouphashkey = groupHash
+									tinsert(nodeResult[index], result)
+									cache[groupHash][result.hashkey] = nodeResult[index][#nodeResult[index]]
+								end
 							end
 						end
 					end
+					log('成功解析节点数量: ' .. #nodes)
 				end
-				log('成功解析节点数量: ' .. #nodes)
 			else
 				log(url .. ': 获取内容为空')
 			end
 		end
+	end
+	-- 输出日志并判断是否需要进行 diff
+	if not updated then
+		log("订阅未变化，无需更新节点信息。")
+		log('保留手动添加的节点。')
+		return
 	end
 	-- diff
 	do
@@ -875,7 +972,7 @@ local execute = function()
 				if not ucic:get(name, globalServer) then
 					luci.sys.call("/etc/init.d/" .. name .. " stop > /dev/null 2>&1 &")
 					ucic:commit(name)
-					ucic:set(name, ucic:get_first(name, 'global'), 'global_server', ucic:get_first(name, uciType))
+					ucic:set(name, ucic:get_first(name, 'global'), 'global_server', firstServer)
 					ucic:commit(name)
 					log('当前主服务器节点已被删除，正在自动更换为第一个节点。')
 					luci.sys.call("/etc/init.d/" .. name .. " start > /dev/null 2>&1 &")
