@@ -191,7 +191,7 @@ local function processData(szType, content)
 		-- 调试输出所有参数
 		-- log("Hysteria2 原始参数:")
 		-- for k,v in pairs(params) do
-			-- log(k.."="..v)
+		--	log(k.."="..v)
 		-- end
 
 		result.alias = url.fragment and UrlDecode(url.fragment) or nil
@@ -203,9 +203,9 @@ local function processData(szType, content)
 			result.transport_protocol = params.protocol or "udp"
 		end
 		result.hy2_auth = url.user
-		result.uplink_capacity = params.upmbps or "5"
-		result.downlink_capacity = params.downmbps or "20"
-		if params.obfs then
+		result.uplink_capacity = tonumber((params.upmbps or ""):match("^(%d+)")) or 5
+		result.downlink_capacity = tonumber((params.downmbps or ""):match("^(%d+)")) or 20
+		if params["obfs-password"] or params["obfs_password"] then
 			result.flag_obfs = "1"
 			result.obfs_type = params.obfs
 			result.salamander = params["obfs-password"] or params["obfs_password"]
@@ -347,75 +347,146 @@ local function processData(szType, content)
 			result.tls = "0"
 		end
 	elseif szType == "ss" then
-		local idx_sp = 0
+		local idx_sp = content:find("#") or 0
 		local alias = ""
-		if content:find("#") then
-			idx_sp = content:find("#")
-			alias = content:sub(idx_sp + 1, -1)
+		if idx_sp > 0 then
+			alias = UrlDecode(content:sub(idx_sp + 1))
 		end
 		local info = content:sub(1, idx_sp > 0 and idx_sp - 1 or #content)
-		local hostInfo = split(base64Decode(info), "@")
-		if #hostInfo < 2 then
-			--log("SS节点格式错误，解码后内容:", base64Decode(info))
+
+		-- 拆 base64 主体和 ? 参数部分
+		local uri_main, query_str = info:match("^([^?]+)%??(.*)$")
+		--log("SS 节点格式:", uri_main)
+		local params = {}
+		if query_str and query_str ~= "" then
+			for _, v in ipairs(split(query_str, '&')) do
+				local t = split(v, '=')
+				if #t >= 2 then
+					params[t[1]] = UrlDecode(t[2])
+				end
+			end
+		end
+
+		local is_old_format = uri_main:find("@") and not uri_main:find("://.*@")
+		local base64_str, host_port, userinfo, server, port, method, password
+
+		if is_old_format then
+			-- 旧格式：base64(method:pass)@host:port
+			base64_str, host_port = uri_main:match("^([^@]+)@(.-)$")
+			log("SS 节点旧格式解析:", base64_str)
+			if not base64_str or not host_port then
+				log("SS 节点旧格式解析失败:", uri_main)
+				return nil
+			end
+			local decoded = base64Decode(UrlDecode(base64_str))
+			if not decoded then
+				log("SS base64 解码失败（旧格式）:", base64_str)
+				return nil
+			end
+			userinfo = decoded
+		else
+			-- 新格式：base64(method:pass@host:port)
+			local decoded = base64Decode(UrlDecode(uri_main))
+			if not decoded then
+				log("SS base64 解码失败（新格式）:", uri_main)
+				return nil
+			end
+			userinfo, host_port = decoded:match("^(.-)@(.-)$")
+			if not userinfo or not host_port then
+				log("SS 解码内容缺失 @ 分隔:", decoded)
+				return nil
+			end
+		end
+
+		-- 解析加密方式和密码（允许密码包含冒号）
+		local split_pos = userinfo:find(":")
+		if not split_pos then
+			log("SS 用户信息格式错误:", userinfo)
 			return nil
 		end
-		local host = split(hostInfo[2], ":")
-		if #host < 2 then
-			--log("SS节点主机格式错误:", hostInfo[2])
+		method = userinfo:sub(1, split_pos - 1)
+		password = userinfo:sub(split_pos + 1)
+
+		-- 解析服务器地址和端口（兼容 IPv6）
+		if host_port:find("^%[.*%]:%d+$") then
+			server, port = host_port:match("^%[(.*)%]:(%d+)$")
+		else
+			server, port = host_port:match("^(.-):(%d+)$")
+		end
+		if not server or not port then
+			log("SS 节点服务器信息格式错误:", host_port)
 			return nil
-		end  
-		-- 提取用户信息
-		local userinfo = base64Decode(hostInfo[1])
-		local method, password = userinfo:match("^([^:]*):(.*)$")   
-		-- 填充结果
-		result.alias = UrlDecode(alias)
+		end
+
+		-- 填充 result
+		result.alias = alias
 		result.type = v2_ss
 		result.v2ray_protocol = (v2_ss == "v2ray") and "shadowsocks" or nil
 		result.has_ss_type = has_ss_type
 		result.encrypt_method_ss = method
 		result.password = password
-		result.server = host[1]
-		-- 处理端口和插件
-		local port_part = host[2]
-		if port_part:find("/%?") then
-			local query = split(port_part, "/%?")
-			result.server_port = query[1]
-			if query[2] then
-				local params = {}
-				for _, v in pairs(split(query[2], '&')) do
-					local t = split(v, '=')
-					if #t >= 2 then
-						params[t[1]] = t[2]
-					end
-				end
-				if params.plugin then
-					local plugin_info = UrlDecode(params.plugin)
-					local idx_pn = plugin_info:find(";")
-					if idx_pn then
-						result.plugin = plugin_info:sub(1, idx_pn - 1)
-						result.plugin_opts = plugin_info:sub(idx_pn + 1, #plugin_info)
-					else
-						result.plugin = plugin_info
-						result.plugin_opts = ""
-					end
-					-- 部分机场下发的插件名为 simple-obfs，这里应该改为 obfs-local
-					if result.plugin == "simple-obfs" then
-						result.plugin = "obfs-local"
-					end
-					-- 如果插件不为 none，确保 enable_plugin 为 1
-					if result.plugin ~= "none" and result.plugin ~= "" then
+		result.server = server
+		result.server_port = port
+
+		-- 插件处理
+		if params.plugin then
+			local plugin_info = UrlDecode(params.plugin)
+			local idx_pn = plugin_info:find(";")
+			if idx_pn then
+				result.plugin = plugin_info:sub(1, idx_pn - 1)
+				result.plugin_opts = plugin_info:sub(idx_pn + 1, #plugin_info)
+			else
+				result.plugin = plugin_info
+				result.plugin_opts = ""
+			end
+			-- 部分机场下发的插件名为 simple-obfs，这里应该改为 obfs-local
+			if result.plugin == "simple-obfs" then
+				result.plugin = "obfs-local"
+			end
+			-- 如果插件不为 none，确保 enable_plugin 为 1
+			if result.plugin ~= "none" and result.plugin ~= "" then
+				result.enable_plugin = 1
+			end
+		elseif has_ss_type and has_ss_type ~= "ss-libev" then
+			if params["shadow-tls"] then
+				-- 特别处理 shadow-tls 作为插件
+				-- log("原始 shadow-tls 参数:", params["shadow-tls"])
+				local decoded_tls = base64Decode(UrlDecode(params["shadow-tls"]))
+				--log("SS 节点 shadow-tls 解码后:", decoded_tls or "nil")
+				if decoded_tls then
+					local ok, st = pcall(jsonParse, decoded_tls)
+					if ok and st then
+
+						result.plugin = "shadow-tls"
 						result.enable_plugin = 1
+					
+						local version_flag = ""
+						if st.version and tonumber(st.version) then
+					    	version_flag = string.format("v%s=1;", st.version)
+						end
+					
+						-- 合成 plugin_opts 格式：v%s=1;host=xxx;password=xxx
+						result.plugin_opts = string.format("%shost=%s;passwd=%s",
+					    	version_flag,
+							st.host or "",
+							st.password or "")
+					else
+						log("shadow-tls JSON 解析失败")
 					end
 				end
 			end
 		else
-			result.server_port = port_part:gsub("/","")
+			if params["shadow-tls"] then
+				log("错误：ShadowSocks-libev 不支持使用 shadow-tls 插件")
+				return nil, "ShadowSocks-libev 不支持使用 shadow-tls 插件"
+			end
 		end
-		-- 检查加密方法
+
+		-- 检查加密方法是否受支持
 		if not checkTabValue(encrypt_methods_ss)[method] then
-        		-- 1202 年了还不支持 SS AEAD 的屑机场
-        		-- log("不支持的SS加密方法:", method)
-        		result.server = nil
+			-- 1202 年了还不支持 SS AEAD 的屑机场
+			-- log("不支持的SS加密方法:", method)
+			result.server = nil
 		end
 	elseif szType == "sip008" then
 		result.type = v2_ss
@@ -798,7 +869,7 @@ local execute = function()
 		local service_stopped = false
 		for k, url in ipairs(subscribe_url) do
 			local raw, new_md5 = curl(url)
-			--log("raw 长度: "..#raw)
+			log("raw 长度: "..#raw)
 			local groupHash = md5(url)
 			local old_md5 = read_old_md5(groupHash)
 

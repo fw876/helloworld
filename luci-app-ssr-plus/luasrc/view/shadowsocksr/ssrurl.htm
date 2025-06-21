@@ -118,7 +118,7 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.lazy_mode')[0].dispatchEvent(event);
 			}
 			if (params.get("mport")) {
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.flag_port_hopping')[0].checked = true; // 设置 flag_transport 为 true
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.flag_port_hopping')[0].checked = true; // 设置 flag_port_hopping 为 true
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.flag_port_hopping')[0].dispatchEvent(event); // 触发事件
 
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.port_range')[0].value = params.get("mport") || "";
@@ -158,91 +158,122 @@ function import_ssr_url(btn, urlname, sid) {
 			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "ss":
-			var url0, param = "";
-			var sipIndex = ssu[1].indexOf("@");
-			var ploc = ssu[1].indexOf("#");
-			if (ploc > 0) {
-				url0 = ssu[1].substr(0, ploc);
-				param = ssu[1].substr(ploc + 1);
-			} else {
-				url0 = ssu[1];
-			}
-			if (sipIndex != -1) {
-				// SIP002
-				var userInfo = b64decsafe(url0.substr(0, sipIndex));
-				// console.log("userInfo:", userInfo); // 打印解析后的 userInfo
-				var temp = url0.substr(sipIndex + 1).split("/?");
-				var serverInfo = temp[0].split(":");
-				var server = serverInfo[0];
-				var port = serverInfo[1].replace("/","");
-				var method, password, enable_plugin, plugin, pluginOpts;
+			var url0 = ssu[1] || "";
+			var param = "";
 
-				// 解析 plugin 参数
-				if (temp[1]) {
-					var pluginInfo = decodeURIComponent(temp[1]);
-					// 使用正则匹配 plugin 参数
-					var pluginNameInfo = pluginInfo.match(/plugin=([^&]+)/);
-					if (pluginNameInfo) {
-						var pluginParams = pluginNameInfo[1].split(";");
-						plugin = pluginParams.shift(); // 获取 plugin
-						pluginOpts = pluginParams.length > 0 ? pluginParams.join(";") : "";
-					}
-				}
-				// 解析 userInfo（解析加密方法和密码）
+			// 先分离 #（alias）
+			var hashIndex = url0.indexOf("#");
+			if (hashIndex >= 0) {
+				param = url0.substring(hashIndex + 1);
+				url0 = url0.substring(0, hashIndex);
+			}
+
+			// 再分离 ?（参数）
+			var queryIndex = url0.indexOf("?");
+			var queryStr = "";
+			if (queryIndex >= 0) {
+				queryStr = url0.substring(queryIndex + 1);
+				url0 = url0.substring(0, queryIndex);
+			}
+
+			var params = Object.fromEntries(new URLSearchParams(queryStr));
+
+			// 判断是否 SIP002 格式（即含 @）
+			if (url0.indexOf("@") !== -1) {
+				// === SIP002 格式 ===
+				var sipIndex = url0.indexOf("@");
+				var userInfoB64 = url0.substring(0, sipIndex);
+				var userInfo = b64decsafe(userInfoB64);
 				var userInfoSplitIndex = userInfo.indexOf(":");
-				if (userInfoSplitIndex !== -1) {
-					method = userInfo.substr(0, userInfoSplitIndex);  // 提取加密方法
-					password = userInfo.substr(userInfoSplitIndex + 1);  // 提取密码
-					if (!method || method.trim() === "") {
-					    method = "none";  // 如果加密方法为空，设置为 "none"
-					}
-				}
-				var has_ss_type = (ss_type === "ss-rust") ? "ss-rust" : "ss-libev";
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = ssu[0];
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].dispatchEvent(event);
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.has_ss_type')[0].value = has_ss_type;
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.has_ss_type')[0].dispatchEvent(event);
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = server;
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = port;
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.password')[0].value = password || "";
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.encrypt_method_ss')[0].value = method;
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.encrypt_method_ss')[0].dispatchEvent(event);
-				if (plugin && plugin !== "none") {
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_plugin')[0].checked = true; // 设置 enable_plugin 为 true
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_plugin')[0].dispatchEvent(event); // 触发事件
+				var method = userInfo.substring(0, userInfoSplitIndex);
+				var password = userInfo.substring(userInfoSplitIndex + 1);
 
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.plugin')[0].value = plugin || "none";
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.plugin')[0].dispatchEvent(event);
-					if (plugin !== undefined) {
-						document.getElementsByName('cbid.shadowsocksr.' + sid + '.plugin_opts')[0].value = pluginOpts || "";
-					}
-				} else {
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_plugin')[0].checked = false;
+				var serverPart = url0.substring(url0.indexOf("@") + 1);
+				var serverInfo = serverPart.split(":");
+				var server = serverInfo[0];
+				var port = serverInfo[1];
+
+				var plugin = "", pluginOpts = "";
+				if (params.plugin) {
+					var pluginParams = decodeURIComponent(params.plugin).split(";");
+					plugin = pluginParams.shift();
+					pluginOpts = pluginParams.join(";");
 				}
-				if (param !== undefined) {
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = decodeURI(param);
-				}
-				s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			} else {
+				// === Base64 SS2022 / 普通格式 的整体编码格式 ===
 				var sstr = b64decsafe(url0);
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = ssu[0];
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].dispatchEvent(event);
-				var team = sstr.split('@');
-				var part1 = team[0].split(':');
-				var part2 = team[1].split(':');
-				var method = (part1[0] && part1[0].trim() !== "") ? part1[0].trim() : "none";
-				var password = part1[1] || "";
-				var server = part2[0];
-				var port = part2[1];
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = server;
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = port;
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.password')[0].value = password;
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.encrypt_method_ss')[0].value = method;
-				if (param != undefined) {
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = decodeURI(param);
+				if (!sstr) {
+					s.innerHTML = "<font style='color:red'>Base64 sstr failed</font>";
+					break;
 				}
-				s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
+
+				// 支持 SS2022 / 普通格式
+				var regex2022 = /^([^:]+):([^:]+):([^@]+)@([^:]+):(\d+)$/;
+				var regexNormal = /^([^:]+):([^@]+)@([^:]+):(\d+)$/;
+
+				var m2022 = sstr.match(regex2022);
+				var mNormal = sstr.match(regexNormal);
+
+				if (m2022) {
+					var method = m2022[1];
+					var password = m2022[2] + ":" + m2022[3];
+					var server = m2022[4];
+					var port = m2022[5];
+				} else if (mNormal) {
+					var method = mNormal[1];
+					var password = mNormal[2];
+					var server = mNormal[3];
+					var port = mNormal[4];
+				} else {
+					s.innerHTML = "<font style='color:red'>SS URL base64 sstr format not recognized</font>";
+					break;
+				}
+
+				var plugin = "", pluginOpts = "";
+				if (params["shadow-tls"]) {
+					try {
+						var decoded_tls = JSON.parse(atob(decodeURIComponent(params["shadow-tls"])));
+						plugin = "shadow-tls";
+						var versionFlag = "";
+						if (decoded_tls.version && !isNaN(decoded_tls.version)) {
+                			versionFlag = "v" + decoded_tls.version + "=1;";
+						}
+						pluginOpts = versionFlag + "host=" + (decoded_tls.host || "") + ";passwd=" + (decoded_tls.password || "");
+					} catch (e) {
+						console.log("shadow-tls decode failed:", e);
+					}
+				}
 			}
+
+			// === 填充配置项 ===
+			var has_ss_type = (ss_type === "ss-rust") ? "ss-rust" : "ss-libev";
+
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = ssu[0];
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].dispatchEvent(event);
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.has_ss_type')[0].value = has_ss_type;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.has_ss_type')[0].dispatchEvent(event);
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = server;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = port;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.password')[0].value = password || "";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.encrypt_method_ss')[0].value = method;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.encrypt_method_ss')[0].dispatchEvent(event);
+
+			if (plugin && plugin !== "none") {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_plugin')[0].checked = true; // 设置 enable_plugin 为 true
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_plugin')[0].dispatchEvent(event); // 触发事件
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.plugin')[0].value = plugin;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.plugin')[0].dispatchEvent(event);
+				if (plugin !== undefined) {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.plugin_opts')[0].value = pluginOpts || "";
+				}
+			} else {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_plugin')[0].checked = false;
+			}
+
+			if (param != undefined) {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = decodeURIComponent(param);
+			}
+			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "ssr":
 			var sstr = b64decsafe(ssu[1]);
@@ -580,5 +611,4 @@ function import_ssr_url(btn, urlname, sid) {
 <input type="button" class="btn cbi-button cbi-button-apply" value="<%:Import%>" onclick="return import_ssr_url(this, '<%=self.option%>', '<%=self.value%>')" />
 <span id="<%=self.option%>-status"></span>
 <%+cbi/valuefooter%>
-
 
