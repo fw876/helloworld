@@ -205,10 +205,10 @@ local function processData(szType, content)
 		result.hy2_auth = url.user
 		result.uplink_capacity = tonumber((params.upmbps or ""):match("^(%d+)")) or 5
 		result.downlink_capacity = tonumber((params.downmbps or ""):match("^(%d+)")) or 20
-		if params["obfs-password"] or params["obfs_password"] then
+		if params.obfs then
 			result.flag_obfs = "1"
 			result.obfs_type = params.obfs
-			result.salamander = params["obfs-password"] or params["obfs_password"]
+			result.salamander = params["obfs-password"] or params["obfs_password"] or nil
 		end
 		if params.sni then
 			result.tls = "1"
