@@ -431,11 +431,12 @@ o.default = "0"
 o = s:option(Value, "obfs_type", translate("Obfuscation Type"))
 o:depends({type = "hysteria2", flag_obfs = "1"})
 o.rmempty = true
-o.default = "salamander"
+o.placeholder = "salamander"
 
 o = s:option(Value, "salamander", translate("Obfuscation Password"))
 o:depends({type = "hysteria2", flag_obfs = "1"})
 o.rmempty = true
+o.placeholder = "cry_me_a_r1ver"
 
 o = s:option(Flag, "flag_quicparam", translate("Hysterir QUIC parameters"))
 o:depends("type", "hysteria2")
@@ -955,14 +956,14 @@ o = s:option(Value, "uplink_capacity", translate("Uplink Capacity(Default:Mbps)"
 o.datatype = "uinteger"
 o:depends("transport", "kcp")
 o:depends("type", "hysteria2")
-o.default = 5
+o.placeholder = 5
 o.rmempty = true
 
 o = s:option(Value, "downlink_capacity", translate("Downlink Capacity(Default:Mbps)"))
 o.datatype = "uinteger"
 o:depends("transport", "kcp")
 o:depends("type", "hysteria2")
-o.default = 20
+o.placeholder = 20
 o.rmempty = true
 
 o = s:option(Value, "read_buffer_size", translate("Read Buffer Size"))
