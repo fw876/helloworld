@@ -138,7 +138,7 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.flag_obfs')[0].dispatchEvent(event); // 触发事件
 
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.obfs_type')[0].value = params.get("obfs") || "salamander";
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.salamander')[0].value = params.get("obfs-password") || "cry_me_a_r1ver";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.salamander')[0].value = params.get("obfs-password") || params.get("obfs_password") || "";
 			}
 			if (params.get("sni")) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].checked = true; // 设置 flag_obfs 为 true
