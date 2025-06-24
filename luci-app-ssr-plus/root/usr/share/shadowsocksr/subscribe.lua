@@ -203,12 +203,12 @@ local function processData(szType, content)
 			result.transport_protocol = params.protocol or "udp"
 		end
 		result.hy2_auth = url.user
-		result.uplink_capacity = tonumber((params.upmbps or ""):match("^(%d+)")) or 5
-		result.downlink_capacity = tonumber((params.downmbps or ""):match("^(%d+)")) or 20
-		if params.obfs then
+		result.uplink_capacity = tonumber((params.upmbps or ""):match("^(%d+)")) or nil
+		result.downlink_capacity = tonumber((params.downmbps or ""):match("^(%d+)")) or nil
+		if params.obfs and params.obfs ~= "none" then
 			result.flag_obfs = "1"
 			result.obfs_type = params.obfs
-			result.salamander = params["obfs-password"] or params["obfs_password"] or nil
+			result.salamander = params["obfs-password"] or params["obfs_password"]
 		end
 		if params.sni then
 			result.tls = "1"
