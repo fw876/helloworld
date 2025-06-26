@@ -170,8 +170,8 @@ function import_ssr_url(btn, urlname, sid) {
 				url0 = url0.substring(0, hashIndex);
 			}
 
-			// 再分离 ?（参数）
-			var queryIndex = url0.indexOf("?");
+			// 再分离 ? 或 /?（参数）
+			var queryIndex = (url0 = url0.replace('/?', '?')).indexOf("?");
 			var queryStr = "";
 			if (queryIndex >= 0) {
 				queryStr = url0.substring(queryIndex + 1);
@@ -245,6 +245,23 @@ function import_ssr_url(btn, urlname, sid) {
 						console.log("shadow-tls decode failed:", e);
 					}
 				}
+			}
+
+			// 判断密码是否经过url编码
+			const isURLEncodedPassword = function(pwd) {
+				if (!/%[0-9A-Fa-f]{2}/.test(pwd)) return false;
+				try {
+					const decoded = decodeURIComponent(pwd.replace(/\+/g, "%20"));
+					const reencoded = encodeURIComponent(decoded);
+					return reencoded === pwd;
+				} catch (e) {
+					return false;
+				}
+			}
+			if (isURLEncodedPassword(password)) {
+				password = decodeURIComponent(password); // 解码URL编码
+			} else {
+				password = password; // 保持原始值
 			}
 
 			// === 填充配置项 ===
