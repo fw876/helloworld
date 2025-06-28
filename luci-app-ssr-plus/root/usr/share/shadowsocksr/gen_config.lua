@@ -510,7 +510,7 @@ local chain_sslocal = {
 	} or {{ 
 			protocol = "socks",
 			local_address = "0.0.0.0",
-			ocal_port = tonumber(socks_port)
+			local_port = tonumber(socks_port)
 			}},
 		servers = {
 			{
