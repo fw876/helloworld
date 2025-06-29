@@ -1465,7 +1465,7 @@ stop() {
 		# Force kill hanged programs
 		$PS -w | grep -v "grep" | grep "$TMP_PATH" | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 ; \
 	)
-	killall -q -9 v2ray-plugin obfs-local xray-plugin
+	killall -q -9 v2ray-plugin obfs-local xray-plugin shadow-tls
 	rm -f /var/lock/ssr-monitor.lock
 	if [ "$(uci -q get "dhcp.@dnsmasq[0]._unused_ssrp_changed")" = "1" ]; then
 		uci -q del "dhcp.@dnsmasq[0].noresolv"
