@@ -40,6 +40,7 @@ export naive_flags="
 is_official_build=true
 exclude_unwind_tables=true
 enable_resource_allowlist_generation=false
+chrome_pgo_phase=2
 symbol_level=0
 
 is_clang=true
@@ -49,7 +50,6 @@ fatal_linker_warnings=false
 treat_warnings_as_errors=false
 
 is_cronet_build=true
-chrome_pgo_phase=2
 
 enable_base_tracing=false
 use_udev=false
