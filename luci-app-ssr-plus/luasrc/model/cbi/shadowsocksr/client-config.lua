@@ -5,7 +5,6 @@ require "nixio.fs"
 require "luci.sys"
 require "luci.http"
 require "luci.jsonc"
-require "luci.model.ipkg"
 require "luci.model.uci"
 local uci = require "luci.model.uci".cursor()
 

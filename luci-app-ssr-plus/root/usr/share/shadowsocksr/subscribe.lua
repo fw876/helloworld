@@ -9,7 +9,6 @@ require "nixio"
 require "luci.util"
 require "luci.sys"
 require "luci.jsonc"
-require "luci.model.ipkg"
 
 -- these global functions are accessed all the time by the event handler
 -- so caching them is worth the effort
