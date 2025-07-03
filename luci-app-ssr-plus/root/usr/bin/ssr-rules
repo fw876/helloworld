@@ -84,7 +84,7 @@ flush_r() {
 ipset_r() {
 	[ -f "$IGNORE_LIST" ] && /usr/share/shadowsocksr/chinaipset.sh $IGNORE_LIST
 	$IPT -N SS_SPEC_WAN_AC 2>/dev/null
-	$IPT -I SS_SPEC_WAN_AC -p tcp --dport 53 -j RETURN
+	$IPT -I SS_SPEC_WAN_AC -p tcp --dport 53 -d 127.0.0.0/8 -j RETURN
 	$IPT -I SS_SPEC_WAN_AC -p tcp ! --dport 53 -d $server -j RETURN
 	ipset -N gmlan hash:net 2>/dev/null
 	for ip in $LAN_GM_IP; do ipset -! add gmlan $ip; done
