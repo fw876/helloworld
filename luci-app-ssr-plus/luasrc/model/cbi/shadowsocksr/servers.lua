@@ -1,6 +1,7 @@
 -- Licensed to the public under the GNU General Public License v3.
 require "luci.http"
 require "luci.sys"
+require "nixio.fs"
 require "luci.dispatcher"
 require "luci.model.uci"
 local uci = require "luci.model.uci".cursor()
@@ -151,6 +152,9 @@ o.write = function()
 	end)
 	uci:save("shadowsocksr")
 	uci:commit("shadowsocksr")
+	for file in nixio.fs.glob("/tmp/sub_md5_*") do
+		nixio.fs.remove(file)
+	end
 	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr", "delete"))
 	return
 end
