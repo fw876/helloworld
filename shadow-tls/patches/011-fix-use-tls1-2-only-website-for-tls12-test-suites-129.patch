@@ -1,0 +1,230 @@
+From 02dd0bc7bae8a2011729f95021690e694fd8e43e Mon Sep 17 00:00:00 2001
+From: V <vendettareborn@proton.me>
+Date: Fri, 25 Apr 2025 18:27:13 +0200
+Subject: [PATCH] fix: use tls1.2 only website for tls12 test suites (#129)
+
+* fix: use tls1.2 only website for tls12 test suites
+---
+ src/helper_v2.rs |  2 ++
+ src/main.rs      | 12 +++++++-----
+ src/sip003.rs    |  6 +++---
+ src/util.rs      |  2 +-
+ tests/tls12.rs   | 32 ++++++++++++++++----------------
+ 5 files changed, 29 insertions(+), 25 deletions(-)
+
+--- a/src/helper_v2.rs
++++ b/src/helper_v2.rs
+@@ -26,6 +26,7 @@ use crate::util::prelude::*;
+ 
+ pub(crate) const HMAC_SIZE_V2: usize = 8;
+ 
++#[allow(unused)]
+ pub(crate) trait HashedStream {
+     fn hash_stream(&self) -> [u8; 20];
+ }
+@@ -98,6 +99,7 @@ impl<S> HashedWriteStream<S> {
+         })
+     }
+ 
++    #[allow(unused)]
+     pub(crate) fn hash(&self) -> [u8; 20] {
+         self.hmac
+             .borrow()
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -252,7 +252,7 @@ pub(crate) fn get_sip003_arg() -> Option
+     let opts: HashMap<_, _> = opts.into_iter().collect();
+ 
+     let threads = opts.get("threads").map(|s| s.parse::<u8>().unwrap());
+-    let v3 = opts.get("v3").is_some();
++    let v3 = opts.contains_key("v3");
+     let passwd = opts
+         .get("passwd")
+         .expect("need passwd param(like passwd=123456)");
+@@ -262,15 +262,17 @@ pub(crate) fn get_sip003_arg() -> Option
+         v3,
+         ..Default::default()
+     };
+-    let args = if opts.get("server").is_some() {
++    let args = if opts.contains_key("server") {
+         let tls_addr = opts
+             .get("tls")
+             .expect("tls param must be specified(like tls=xxx.com:443)");
+         let tls_addrs = parse_server_addrs(tls_addr)
+             .expect("tls param parse failed(like tls=xxx.com:443 or tls=yyy.com:1.2.3.4:443;zzz.com:443;xxx.com)");
+-        let wildcard_sni =
+-            WildcardSNI::from_str(opts.get("wildcard-sni").map(AsRef::as_ref).unwrap_or("off"), true)
+-                .expect("wildcard_sni format error");
++        let wildcard_sni = WildcardSNI::from_str(
++            opts.get("wildcard-sni").map(AsRef::as_ref).unwrap_or("off"),
++            true,
++        )
++        .expect("wildcard_sni format error");
+         Args {
+             cmd: crate::Commands::Server {
+                 listen: format!("{ss_remote_host}:{ss_remote_port}"),
+--- a/src/sip003.rs
++++ b/src/sip003.rs
+@@ -6,7 +6,7 @@ pub fn parse_sip003_options(s: &str) ->
+     let mut i = 0;
+     while i < s.len() {
+         // read key
+-        let (offset, key) = index_unescaped(&s[i..], &[b'=', b';']).context("read key")?;
++        let (offset, key) = index_unescaped(&s[i..], b"=;").context("read key")?;
+         if key.is_empty() {
+             bail!("empty key in {}", &s[i..]);
+         }
+@@ -21,7 +21,7 @@ pub fn parse_sip003_options(s: &str) ->
+         // skip equals
+         i += 1;
+         // read value
+-        let (offset, value) = index_unescaped(&s[i..], &[b'=', b';']).context("read value")?;
++        let (offset, value) = index_unescaped(&s[i..], b"=;").context("read value")?;
+         i += offset;
+         opts.push((key, value));
+         // Skip the semicolon.
+@@ -36,7 +36,7 @@ fn index_unescaped(s: &str, term: &[u8])
+ 
+     while i < s.len() {
+         let mut b: u8 = s.as_bytes()[i];
+-        if term.iter().any(|&e| b == e) {
++        if term.contains(&b) {
+             break;
+         }
+         if b == b'\\' {
+--- a/src/util.rs
++++ b/src/util.rs
+@@ -599,7 +599,7 @@ pub(crate) async fn resolve(addr: &str)
+     addr_iter.next().ok_or_else(|| {
+         std::io::Error::new(
+             std::io::ErrorKind::InvalidInput,
+-            format!("unable to resolve addr: {}", addr),
++            format!("unable to resolve addr: {addr}"),
+         )
+     })
+ }
+--- a/tests/tls12.rs
++++ b/tests/tls12.rs
+@@ -4,7 +4,7 @@ use shadow_tls::{RunningArgs, TlsAddrs,
+ mod utils;
+ use utils::*;
+ 
+-// handshake: bing.com(tls1.2 only)
++// handshake: badssl.com(tls1.2 only)
+ // data: captive.apple.com:80
+ // protocol: v2
+ #[test]
+@@ -12,7 +12,7 @@ fn tls12_v2() {
+     let client = RunningArgs::Client {
+         listen_addr: "127.0.0.1:30000".to_string(),
+         target_addr: "127.0.0.1:30001".to_string(),
+-        tls_names: TlsNames::try_from("bing.com").unwrap(),
++        tls_names: TlsNames::try_from("badssl.com").unwrap(),
+         tls_ext: TlsExtConfig::new(None),
+         password: "test".to_string(),
+         nodelay: true,
+@@ -22,7 +22,7 @@ fn tls12_v2() {
+     let server = RunningArgs::Server {
+         listen_addr: "127.0.0.1:30001".to_string(),
+         target_addr: "captive.apple.com:80".to_string(),
+-        tls_addr: TlsAddrs::try_from("bing.com").unwrap(),
++        tls_addr: TlsAddrs::try_from("badssl.com").unwrap(),
+         password: "test".to_string(),
+         nodelay: true,
+         fastopen: true,
+@@ -31,7 +31,7 @@ fn tls12_v2() {
+     test_ok(client, server, CAPTIVE_HTTP_REQUEST, CAPTIVE_HTTP_RESP);
+ }
+ 
+-// handshake: bing.com(tls1.2 only)
++// handshake: badssl.com(tls1.2 only)
+ // data: captive.apple.com:80
+ // protocol: v3 lossy
+ #[test]
+@@ -39,7 +39,7 @@ fn tls12_v3_lossy() {
+     let client = RunningArgs::Client {
+         listen_addr: "127.0.0.1:30002".to_string(),
+         target_addr: "127.0.0.1:30003".to_string(),
+-        tls_names: TlsNames::try_from("bing.com").unwrap(),
++        tls_names: TlsNames::try_from("badssl.com").unwrap(),
+         tls_ext: TlsExtConfig::new(None),
+         password: "test".to_string(),
+         nodelay: true,
+@@ -49,7 +49,7 @@ fn tls12_v3_lossy() {
+     let server = RunningArgs::Server {
+         listen_addr: "127.0.0.1:30003".to_string(),
+         target_addr: "captive.apple.com:80".to_string(),
+-        tls_addr: TlsAddrs::try_from("bing.com").unwrap(),
++        tls_addr: TlsAddrs::try_from("badssl.com").unwrap(),
+         password: "test".to_string(),
+         nodelay: true,
+         fastopen: true,
+@@ -58,7 +58,7 @@ fn tls12_v3_lossy() {
+     utils::test_ok(client, server, CAPTIVE_HTTP_REQUEST, CAPTIVE_HTTP_RESP);
+ }
+ 
+-// handshake: bing.com(tls1.2 only)
++// handshake: badssl.com(tls1.2 only)
+ // data: captive.apple.com:80
+ // protocol: v3 strict
+ // v3 strict cannot work with tls1.2, so it must fail
+@@ -68,7 +68,7 @@ fn tls12_v3_strict() {
+     let client = RunningArgs::Client {
+         listen_addr: "127.0.0.1:30004".to_string(),
+         target_addr: "127.0.0.1:30005".to_string(),
+-        tls_names: TlsNames::try_from("bing.com").unwrap(),
++        tls_names: TlsNames::try_from("badssl.com").unwrap(),
+         tls_ext: TlsExtConfig::new(None),
+         password: "test".to_string(),
+         nodelay: true,
+@@ -78,7 +78,7 @@ fn tls12_v3_strict() {
+     let server = RunningArgs::Server {
+         listen_addr: "127.0.0.1:30005".to_string(),
+         target_addr: "captive.apple.com:80".to_string(),
+-        tls_addr: TlsAddrs::try_from("bing.com").unwrap(),
++        tls_addr: TlsAddrs::try_from("badssl.com").unwrap(),
+         password: "test".to_string(),
+         nodelay: true,
+         fastopen: true,
+@@ -87,8 +87,8 @@ fn tls12_v3_strict() {
+     utils::test_ok(client, server, CAPTIVE_HTTP_REQUEST, CAPTIVE_HTTP_RESP);
+ }
+ 
+-// handshake: bing.com(tls1.2 only)
+-// data: bing.com:443
++// handshake: badssl.com(tls1.2 only)
++// data: badssl.com:443
+ // protocol: v2
+ // Note: v2 can not defend against hijack attack.
+ // Here hijack means directly connect to the handshake server.
+@@ -98,8 +98,8 @@ fn tls12_v3_strict() {
+ fn tls12_v2_hijack() {
+     let client = RunningArgs::Client {
+         listen_addr: "127.0.0.1:30006".to_string(),
+-        target_addr: "bing.com:443".to_string(),
+-        tls_names: TlsNames::try_from("bing.com").unwrap(),
++        target_addr: "badssl.com:443".to_string(),
++        tls_names: TlsNames::try_from("badssl.com").unwrap(),
+         tls_ext: TlsExtConfig::new(None),
+         password: "test".to_string(),
+         nodelay: true,
+@@ -109,7 +109,7 @@ fn tls12_v2_hijack() {
+     test_hijack(client);
+ }
+ 
+-// handshake: bing.com(tls1.2 only)
++// handshake: badssl.com(tls1.2 only)
+ // data: captive.apple.com:80
+ // protocol: v3 lossy
+ // (v3 strict can not work with tls1.2)
+@@ -121,8 +121,8 @@ fn tls12_v2_hijack() {
+ fn tls12_v3_lossy_hijack() {
+     let client = RunningArgs::Client {
+         listen_addr: "127.0.0.1:30007".to_string(),
+-        target_addr: "bing.com:443".to_string(),
+-        tls_names: TlsNames::try_from("bing.com").unwrap(),
++        target_addr: "badssl.com:443".to_string(),
++        tls_names: TlsNames::try_from("badssl.com").unwrap(),
+         tls_ext: TlsExtConfig::new(None),
+         password: "test".to_string(),
+         nodelay: true,

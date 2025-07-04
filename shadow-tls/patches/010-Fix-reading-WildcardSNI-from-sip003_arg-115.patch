@@ -1,0 +1,23 @@
+From 045014130570dd23d5a9cce124b78b2bb1ddaf5f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E1=A1=A0=E1=A0=B5=E1=A1=A0=E1=A1=B3=20=E1=A1=A0=E1=A0=B5?=
+ =?UTF-8?q?=E1=A1=A0=20=E1=A0=AE=E1=A0=A0=E1=A0=A8=E1=A1=A9=E1=A0=8B?=
+ =?UTF-8?q?=E1=A0=A0=E1=A0=A8?=
+ <125150101+UjuiUjuMandan@users.noreply.github.com>
+Date: Thu, 24 Apr 2025 22:39:07 +0000
+Subject: [PATCH] Fix reading WildcardSNI from sip003_arg (#115)
+
+---
+ src/main.rs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -269,7 +269,7 @@ pub(crate) fn get_sip003_arg() -> Option
+         let tls_addrs = parse_server_addrs(tls_addr)
+             .expect("tls param parse failed(like tls=xxx.com:443 or tls=yyy.com:1.2.3.4:443;zzz.com:443;xxx.com)");
+         let wildcard_sni =
+-            WildcardSNI::from_str(opts.get("tls").map(AsRef::as_ref).unwrap_or_default(), true)
++            WildcardSNI::from_str(opts.get("wildcard-sni").map(AsRef::as_ref).unwrap_or("off"), true)
+                 .expect("wildcard_sni format error");
+         Args {
+             cmd: crate::Commands::Server {
