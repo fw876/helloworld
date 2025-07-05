@@ -22,6 +22,22 @@ local function is_installed(e)
 	return luci.model.ipkg.installed(e)
 end
 
+local function showMsg_Redirect(redirectUrl, delay)
+	local redirectUrl = redirectUrl or ""
+	local delay = delay or 3000
+	luci.http.write([[
+		<script type="text/javascript">
+			document.addEventListener('DOMContentLoaded', function() {
+				setTimeout(function() {
+					if ("]] .. redirectUrl .. [[" !== "") {
+						window.location.href = "]] .. redirectUrl .. [[";
+					}
+				}, ]] .. delay .. [[);
+			});
+		</script>
+	]])
+end
+
 local has_ss_rust = is_finded("sslocal") or is_finded("ssserver")
 local has_ss_libev = is_finded("ss-redir") or is_finded("ss-local")
 
@@ -136,6 +152,11 @@ m.redirect = luci.dispatcher.build_url("admin/services/shadowsocksr/servers")
 if m.uci:get("shadowsocksr", sid) ~= "servers" then
 	luci.http.redirect(m.redirect)
 	return
+end
+-- 保存&应用成功后跳转到节点列表
+m.apply_on_parse = true
+m.on_after_apply = function(self)
+	showMsg_Redirect(self.redirect, 4500)
 end
 
 -- [[ Servers Setting ]]--
