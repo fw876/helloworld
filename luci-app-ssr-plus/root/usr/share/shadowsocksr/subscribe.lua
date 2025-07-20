@@ -32,7 +32,7 @@ local user_agent = ucic:get_first(name, 'server_subscribe', 'user_agent', 'v2ray
 -- 读取 ss_type 设置
 local ss_type = ucic:get_first(name, 'server_subscribe', 'ss_type', 'ss-rust')
 -- 根据 ss_type 选择对应的程序
-local ss_program = ""
+local ss_program = "sslocal"
 if ss_type == "ss-rust" then
     ss_program = "sslocal"  -- Rust 版本使用 sslocal
 elseif ss_type == "ss-libev" then
@@ -192,6 +192,11 @@ local function processData(szType, content)
 		-- for k,v in pairs(params) do
 		--	log(k.."="..v)
 		-- end
+
+		-- 如果 hy2 程序未安装则跳过订阅	
+		if not hy2_type then
+		 return nil
+		end
 
 		result.alias = url.fragment and UrlDecode(url.fragment) or nil
 		result.type = hy2_type
@@ -430,6 +435,11 @@ local function processData(szType, content)
 			log("SS 节点服务器信息格式错误:", host_port)
 			return nil
 		end
+		
+		-- 如果 SS 程序未安装则跳过订阅	
+		if not (v2_ss or has_ss_type) then
+		 return nil
+		end
 
 		-- 填充 result
 		result.alias = alias
@@ -608,6 +618,11 @@ local function processData(szType, content)
 			end
 		else
 			result.server_port = port
+		end
+		
+		-- 如果 Tojan 程序未安装则跳过订阅	
+		if not v2_tj then
+		 return nil
 		end
 
 		if v2_tj ~= "trojan" then
