@@ -118,6 +118,7 @@ o.inputstyle = "reload"
 o.description = translate("Update subscribe url list first")
 o.write = function()
 	uci:commit("shadowsocksr")
+	luci.sys.exec("rm -rf /tmp/sub_md5_*")
 	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr", "servers"))
 end
 
