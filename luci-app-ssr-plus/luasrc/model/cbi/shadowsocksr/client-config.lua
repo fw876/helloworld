@@ -1124,6 +1124,28 @@ if is_finded("xray") then
 	o:value("", translate("disable"))
 	o:depends({type = "v2ray", tls = true})
 	o:depends({type = "v2ray", reality = true})
+
+	o = s:option(Flag, "enable_mldsa65verify", translate("Enable ML-DSA-65(optional)"))
+	o.description = translate("This item might be an empty string.")
+	o.rmempty = true
+	o.default = "0"
+	o:depends({type = "v2ray", v2ray_protocol = "vless", reality = true})
+
+	o = s:option(Value, "reality_mldsa65verify", translate("ML-DSA-65 Public key"))
+	o.description = translate(
+    	"<font><b>" .. translate("The client has not configured mldsa65Verify, but it will not perform the \"additional verification\" step and can still connect normally, see:") .. "</b></font>" ..
+    	" <a href='https://github.com/XTLS/Xray-core/pull/4915' target='_blank'>" ..
+    	"<font style='color:green'><b>" .. translate("Click to the page") .. "</b></font></a>")
+	o:depends("enable_mldsa65verify", true)
+	o.rmempty = true
+	o.validate = function(self, value)
+    	-- 清理空行和多余换行
+    	value = value:gsub("\r\n", "\n"):gsub("^[ \t]*\n", ""):gsub("\n[ \t]*$", ""):gsub("\n[ \t]*\n", "\n")
+    	if value:sub(-1) == "\n" then
+        	value = value:sub(1, -2)
+    	end
+    		return value
+	end
 end
 
 o = s:option(Value, "tls_host", translate("TLS Host"))
