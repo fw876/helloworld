@@ -230,6 +230,7 @@ end
 					shortId = server.reality_shortid,
 					spiderX = server.reality_spiderx,
 					fingerprint = server.fingerprint,
+					mldsa65Verify = (server.enable_mldsa65verify == '1') and server.reality_mldsa65verify or nil,
 					serverName = server.tls_host
 				} or nil,
 				rawSettings = (server.transport == "raw" or server.transport == "tcp") and {

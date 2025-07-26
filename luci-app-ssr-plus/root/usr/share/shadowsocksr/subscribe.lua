@@ -710,6 +710,9 @@ local function processData(szType, content)
 		result.reality_publickey = params.pbk and UrlDecode(params.pbk) or nil
 		result.reality_shortid = params.sid
 		result.reality_spiderx = params.spx and UrlDecode(params.spx) or nil
+		-- 检查 pqv 参数是否存在且非空
+		result.enable_mldsa65verify = (params.pqv and params.pqv ~= "") and "1" or nil
+		result.reality_mldsa65verify = (params.pqv and params.pqv ~= "") and params.pqv or nil
 		if result.transport == "ws" then
 			result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
 			result.ws_path = params.path and UrlDecode(params.path) or "/"

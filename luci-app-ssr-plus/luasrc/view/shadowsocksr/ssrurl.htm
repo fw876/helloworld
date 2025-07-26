@@ -550,6 +550,11 @@ function import_ssr_url(btn, urlname, sid) {
 					setElementValue('cbid.shadowsocksr.' + sid + '.reality_publickey', params.get("pbk") ? decodeURIComponent(params.get("pbk")) : "");
 					setElementValue('cbid.shadowsocksr.' + sid + '.reality_shortid', params.get("sid") || "");
 					setElementValue('cbid.shadowsocksr.' + sid + '.reality_spiderx', params.get("spx") ? decodeURIComponent(params.get("spx")) : "");
+					if (params.get("pqv") && params.get("pqv").trim() !== "") {
+						setElementValue('cbid.shadowsocksr.' + sid + '.enable_mldsa65verify', true); // 设置 enable_mldsa65verify 为 true
+						dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.enable_mldsa65verify', event); // 触发事件
+						setElementValue('cbid.shadowsocksr.' + sid + '.reality_mldsa65verify', params.get("pqv") || "");
+					}
 				}
 				setElementValue('cbid.shadowsocksr.' + sid + '.tls_flow', params.get("flow") || "none");
 				dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.tls_flow', event);
