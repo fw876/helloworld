@@ -66,7 +66,7 @@ msgstr ""
 msgid "8 Threads"
 msgstr "8 线程"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:375
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:379
 msgid "<font style='color:red'>"
 msgstr ""
 
@@ -174,6 +174,10 @@ msgstr "Apple 域名解析优化"
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:224
 msgid "Apply"
 msgstr "应用"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:424
+msgid "ApplyTo (IP type)"
+msgstr "ApplyTo（IP 类型）"
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/backup_restore.htm:133
 msgid "Are you sure you want to restore the client to default settings?"
@@ -315,7 +319,7 @@ msgstr "清空日志"
 msgid "Click here to view or manage the DNS list file"
 msgstr "点击此处查看或管理 DNS 列表文件"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:378
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:382
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:833
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1138
 msgid "Click to the page"
@@ -487,7 +491,7 @@ msgstr ""
 "定义上游逻辑模式，可选择值：负载均衡、并行查询、最快响应（默认值：负载均"
 "衡）。"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:416
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:420
 msgid "Delay (ms)"
 msgstr "延迟（ms）"
 
@@ -552,7 +556,7 @@ msgstr "是否要恢复客户端默认配置？"
 msgid "DoT upstream (Need use wolfssl version)"
 msgstr "DoT 上游（需使用 wolfssl 版本）"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:403
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:407
 msgid "Domain Strategy"
 msgstr "域名解析策略"
 
@@ -578,7 +582,7 @@ msgid "Edit ShadowSocksR Server"
 msgstr "编辑服务器配置"
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:263
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:392
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:396
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/server-config.lua:82
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/server.lua:101
 msgid "Enable"
@@ -751,7 +755,7 @@ msgid ""
 "Chinese CDN IP addresses"
 msgstr "配备中国大陆 CDN 的 Apple 域名，始终应答中国大陆 CDN 地址"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:376
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:380
 msgid "For specific usage, see:"
 msgstr "具体使用方法，请参见："
 
@@ -781,9 +785,17 @@ msgstr "分片包长"
 msgid "Fragment Packets"
 msgstr "分片方式"
 
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:370
+msgid "Fragment maxSplit"
+msgstr "分片数据包拆分"
+
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:366
 msgid "Fragmentation interval (ms)"
 msgstr "分片间隔（ms）"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:370
+msgid "Fragmented maxSplit (byte)"
+msgstr "分片数据包的拆分数量 (byte)"
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:362
 msgid "Fragmented packet length (byte)"
@@ -1236,7 +1248,7 @@ msgstr "你已经是最新数据，无需更新！"
 msgid "No specify upload file."
 msgstr "没有上传证书。"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:370
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:374
 msgid "Noise"
 msgstr "噪声"
 
@@ -1336,7 +1348,7 @@ msgstr ""
 msgid "Oversea Mode DNS-2 (114.114.115.115)"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:412
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:416
 msgid "Packet"
 msgstr "数据包"
 
@@ -1873,7 +1885,7 @@ msgstr "连接超时时间（单位：秒）"
 msgid "Tips: Dnsproxy DNS Parse List Path:"
 msgstr "提示：Dnsproxy 的 DNS 解析列表路径："
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:375
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:379
 msgid "To send noise packets, select \"Noise\" in Xray Settings."
 msgstr "在 Xray 设置中勾选 “噪声” 以发送噪声包。"
 
@@ -1894,7 +1906,7 @@ msgstr "传输协议"
 msgid "Trojan"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:396
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:400
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:185
 msgid "Type"
 msgstr "类型"
@@ -1903,7 +1915,7 @@ msgstr "类型"
 msgid "UDP"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:370
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:374
 msgid ""
 "UDP noise, Under some circumstances it can bypass some UDP based protocol "
 "restrictions."
@@ -2178,7 +2190,7 @@ msgstr "XHTTP 路径"
 msgid "Xray Fragment Settings"
 msgstr "Xray 分片设置"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:373
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:377
 msgid "Xray Noise Packets"
 msgstr "Xray 噪声数据包"
 
