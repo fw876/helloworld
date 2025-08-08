@@ -64,7 +64,7 @@ msgstr ""
 msgid "8 Threads"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:375
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:379
 msgid "<font style='color:red'>"
 msgstr ""
 
@@ -171,6 +171,10 @@ msgstr ""
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:218
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:224
 msgid "Apply"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:424
+msgid "ApplyTo (IP type)"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/backup_restore.htm:133
@@ -313,7 +317,7 @@ msgstr ""
 msgid "Click here to view or manage the DNS list file"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:378
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:382
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:833
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1138
 msgid "Click to the page"
@@ -477,7 +481,7 @@ msgid ""
 "fastest_addr (default: load_balance)."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:416
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:420
 msgid "Delay (ms)"
 msgstr ""
 
@@ -542,7 +546,7 @@ msgstr ""
 msgid "DoT upstream (Need use wolfssl version)"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:403
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:407
 msgid "Domain Strategy"
 msgstr ""
 
@@ -568,7 +572,7 @@ msgid "Edit ShadowSocksR Server"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:263
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:392
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:396
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/server-config.lua:82
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/server.lua:101
 msgid "Enable"
@@ -741,7 +745,7 @@ msgid ""
 "Chinese CDN IP addresses"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:376
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:380
 msgid "For specific usage, see:"
 msgstr ""
 
@@ -771,8 +775,16 @@ msgstr ""
 msgid "Fragment Packets"
 msgstr ""
 
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:370
+msgid "Fragment maxSplit"
+msgstr ""
+
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:366
 msgid "Fragmentation interval (ms)"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:370
+msgid "Fragmented maxSplit (byte)"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:362
@@ -1223,7 +1235,7 @@ msgstr ""
 msgid "No specify upload file."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:370
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:374
 msgid "Noise"
 msgstr ""
 
@@ -1323,7 +1335,7 @@ msgstr ""
 msgid "Oversea Mode DNS-2 (114.114.115.115)"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:412
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:416
 msgid "Packet"
 msgstr ""
 
@@ -1857,7 +1869,7 @@ msgstr ""
 msgid "Tips: Dnsproxy DNS Parse List Path:"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:375
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:379
 msgid "To send noise packets, select \"Noise\" in Xray Settings."
 msgstr ""
 
@@ -1878,7 +1890,7 @@ msgstr ""
 msgid "Trojan"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:396
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:400
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:185
 msgid "Type"
 msgstr ""
@@ -1887,7 +1899,7 @@ msgstr ""
 msgid "UDP"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:370
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:374
 msgid ""
 "UDP noise, Under some circumstances it can bypass some UDP based protocol "
 "restrictions."
@@ -2160,7 +2172,7 @@ msgstr ""
 msgid "Xray Fragment Settings"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:373
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:377
 msgid "Xray Noise Packets"
 msgstr ""
 

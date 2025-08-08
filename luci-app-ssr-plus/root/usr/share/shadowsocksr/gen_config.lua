@@ -338,13 +338,15 @@ if xray_fragment.fragment ~= "0" or (xray_fragment.noise ~= "0" and xray_noise.e
 			fragment = (xray_fragment.fragment == "1") and {
 				packets = (xray_fragment.fragment_packets ~= "") and xray_fragment.fragment_packets or nil,
 				length = (xray_fragment.fragment_length ~= "") and xray_fragment.fragment_length or nil,
-				interval = (xray_fragment.fragment_interval ~= "") and xray_fragment.fragment_interval or nil
+				interval = (xray_fragment.fragment_interval ~= "") and xray_fragment.fragment_interval or nil,
+				maxSplit = (xray_fragment.fragment_maxsplit ~= "") and xray_fragment.fragment_maxsplit or nil
 			} or nil,
 			noises = (xray_fragment.noise == "1" and xray_noise.enabled == "1") and {
 				{
 					type = xray_noise.type,
 					packet = xray_noise.packet,
-					delay = xray_noise.delay:find("-") and xray_noise.delay or tonumber(xray_noise.delay)
+					delay = xray_noise.delay:find("-") and xray_noise.delay or tonumber(xray_noise.delay),
+					applyTo = xray_noise.applyto
 				}
 			} or nil
 		},
