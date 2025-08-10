@@ -195,7 +195,7 @@ local function processData(szType, content)
 
 		-- 如果 hy2 程序未安装则跳过订阅	
 		if not hy2_type then
-		 return nil
+			return nil
 		end
 
 		result.alias = url.fragment and UrlDecode(url.fragment) or nil
@@ -346,6 +346,10 @@ local function processData(szType, content)
 			elseif info.host then
 				result.tls_host = info.host
 			end
+			if info.ech and info.ech ~= "" then
+				result.enable_ech = "1"
+				result.ech_config = params.ech
+			end
 			result.insecure = allow_insecure
 		else
 			result.tls = "0"
@@ -435,10 +439,10 @@ local function processData(szType, content)
 			log("SS 节点服务器信息格式错误:", host_port)
 			return nil
 		end
-		
+
 		-- 如果 SS 程序未安装则跳过订阅	
 		if not (v2_ss or has_ss_type) then
-		 return nil
+			return nil
 		end
 
 		-- 填充 result
@@ -450,6 +454,14 @@ local function processData(szType, content)
 		result.password = password
 		result.server = server
 		result.server_port = port
+
+		-- 仅在 v2ray + shadowsocks 协议时处理 ECH
+		if v2_ss == "v2ray" and result.v2ray_protocol == "shadowsocks" then
+			if params.ech and params.ech ~= "" then
+				result.enable_ech = "1"
+				result.ech_config = ech
+			end
+		end
 
 		-- 插件处理
 		if params.plugin then
@@ -619,16 +631,21 @@ local function processData(szType, content)
 		else
 			result.server_port = port
 		end
-		
+
 		-- 如果 Tojan 程序未安装则跳过订阅	
 		if not v2_tj then
-		 return nil
+			return nil
 		end
 
 		if v2_tj ~= "trojan" then
 			if params.fp then
 				-- 处理 fingerprint 参数
 				result.fingerprint = params.fp
+			end
+			-- 处理 ech 参数
+			if params.ech then
+				result.enable_ech = "1"
+				result.ech_config = params.ech
 			end
 			-- 处理传输协议
 			result.transport = params.type or "tcp" -- 默认传输协议为 tcp
@@ -710,6 +727,9 @@ local function processData(szType, content)
 		result.reality_publickey = params.pbk and UrlDecode(params.pbk) or nil
 		result.reality_shortid = params.sid
 		result.reality_spiderx = params.spx and UrlDecode(params.spx) or nil
+		-- 检查 ech 参数是否存在且非空
+		result.enable_ech = (params.ech and params.ech ~= "") and "1" or nil
+		result.ech_config = (params.ech and params.ech ~= "") and params.ech or nil
 		-- 检查 pqv 参数是否存在且非空
 		result.enable_mldsa65verify = (params.pqv and params.pqv ~= "") and "1" or nil
 		result.reality_mldsa65verify = (params.pqv and params.pqv ~= "") and params.pqv or nil
@@ -1107,3 +1127,4 @@ if subscribe_url and #subscribe_url > 0 then
 		end
 	end)
 end
+
