@@ -184,14 +184,20 @@ function import_ssr_url(btn, urlname, sid) {
 			if (url0.indexOf("@") !== -1) {
 				// === SIP002 格式 ===
 				var sipIndex = url0.indexOf("@");
-				var userInfoB64 = url0.substring(0, sipIndex);
+				// 先 URL 解码 base64 再解码
+				var userInfoB64 = decodeURIComponent(url0.substring(0, sipIndex));
 				var userInfo = b64decsafe(userInfoB64);
 				var userInfoSplitIndex = userInfo.indexOf(":");
+				if(userInfoSplitIndex < 0) {
+					// 格式错误
+					s.innerHTML = "<font style='color:red'>Userinfo format error</font>";
+					break;
+				}
 				var method = userInfo.substring(0, userInfoSplitIndex);
 				var password = userInfo.substring(userInfoSplitIndex + 1);
-
-				var serverPart = url0.substring(url0.indexOf("@") + 1);
+				var serverPart = url0.substring(sipIndex + 1);
 				var serverInfo = serverPart.split(":");
+
 				var server = serverInfo[0];
 				var port = serverInfo[1];
 
@@ -203,7 +209,9 @@ function import_ssr_url(btn, urlname, sid) {
 				}
 			} else {
 				// === Base64 SS2022 / 普通格式 的整体编码格式 ===
-				var sstr = b64decsafe(url0);
+				// 先 URL 解码整个字符串
+				var decodedUrl0 = decodeURIComponent(url0);
+				var sstr = b64decsafe(decodedUrl0);
 				if (!sstr) {
 					s.innerHTML = "<font style='color:red'>Base64 sstr failed</font>";
 					break;
