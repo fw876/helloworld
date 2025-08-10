@@ -359,6 +359,12 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].checked = true; // 设置 insecure 为 true
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].dispatchEvent(event); // 触发事件
 			}
+			if (params.get("ech") && params.get("ech").trim() !== "") {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_ech')[0].checked = true; // 设置 enable_ech 为 true
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_ech')[0].dispatchEvent(event); // 触发事件
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.ech_config')[0].value = params.get("ech");
+				
+			}
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].value = 
 				params.get("type") == "http" ? "h2" : 
 				(["tcp", "raw"].includes(params.get("type")) ? "raw" : 
@@ -500,6 +506,11 @@ function import_ssr_url(btn, urlname, sid) {
 				}
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = ssm.sni || ssm.host;
 			}
+			if (ssm.tls == "tls") {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_ech')[0].checked = true;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_ech')[0].dispatchEvent(event);
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.ech_config')[0].value = ssm.ech;
+			}
 			if (ssm.mux !== undefined) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].checked = true;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].dispatchEvent(event);
@@ -554,6 +565,13 @@ function import_ssr_url(btn, urlname, sid) {
 				setElementValue('cbid.shadowsocksr.' + sid + '.' + params.get("security"), true);
 				dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.' + params.get("security"), event);
 
+				if (params.get("security") === "tls") {
+					if (params.get("ech") && params.get("ech").trim() !== "") {
+						setElementValue('cbid.shadowsocksr.' + sid + '.enable_ech', true); // 设置 enable_ech 为 true
+						dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.enable_ech', event); // 触发事件
+						setElementValue('cbid.shadowsocksr.' + sid + '.ech_config', params.get("ech") || "");
+					}
+				}
 				if (params.get("security") === "reality") {
 					setElementValue('cbid.shadowsocksr.' + sid + '.reality_publickey', params.get("pbk") ? decodeURIComponent(params.get("pbk")) : "");
 					setElementValue('cbid.shadowsocksr.' + sid + '.reality_shortid', params.get("sid") || "");
