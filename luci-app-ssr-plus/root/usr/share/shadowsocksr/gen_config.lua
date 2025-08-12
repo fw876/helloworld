@@ -17,6 +17,9 @@ local xray_fragment = ucursor:get_all("shadowsocksr", "@global_xray_fragment[0]"
 local xray_noise = ucursor:get_all("shadowsocksr", "@xray_noise_packets[0]") or {}
 local outbound_settings = nil
 
+local node_id = server_section
+local remarks = server.alias or ""
+
 function vmess_vless()
 	outbound_settings = {
 		vnext = {
@@ -238,7 +241,7 @@ end
 				rawSettings = (server.transport == "raw" or server.transport == "tcp") and {
 					-- tcp
 					header = {
-						type = server.tcp_guise or "none",
+						type = server.tcp_guise,
 						request = (server.tcp_guise == "http") and {
 							-- request
 							path = {server.http_path} or {"/"},
@@ -317,7 +320,8 @@ end
 					tcpMptcp = (server.mptcp == "1") and true or nil, -- MPTCP
 					Penetrate = (server.mptcp == "1") and true or nil, -- Penetrate MPTCP
 					tcpcongestion = server.custom_tcpcongestion, -- 连接服务器节点的 TCP 拥塞控制算法
-					dialerProxy = (xray_fragment.fragment == "1" or xray_fragment.noise == "1") and "dialerproxy" or nil
+					dialerProxy = (xray_fragment.fragment == "1" or xray_fragment.noise == "1") and
+					              ((remarks ~= nil and remarks ~= "") and (node_id .. "." .. remarks) or node_id) or nil
 				}
 			} or nil,
 			mux = (server.v2ray_protocol ~= "wireguard") and {
@@ -334,7 +338,7 @@ end
 if xray_fragment.fragment ~= "0" or (xray_fragment.noise ~= "0" and xray_noise.enabled ~= "0") then
 	table.insert(Xray.outbounds, {
 		protocol = "freedom",
-		tag = "dialerproxy",
+		tag = (remarks ~= nil and remarks ~= "") and (node_id .. "." .. remarks) or node_id,
 		settings = {
 			domainStrategy = (xray_fragment.noise == "1" and xray_noise.enabled == "1") and xray_noise.domainStrategy,
 			fragment = (xray_fragment.fragment == "1") and {
