@@ -5,61 +5,61 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=chinadns-ng
-PKG_VERSION:=2025.06.20
+PKG_VERSION:=2025.08.09
 PKG_RELEASE:=1
 
 ifeq ($(ARCH),aarch64)
   ifneq (,$(filter $(BOARD),rockchip qualcommax))
     PKG_ARCH:=$(PKG_NAME)+wolfssl@aarch64-linux-musl@generic+v8a@fast+lto
-    PKG_HASH:=224494b4505ac8dd347a70b298b853b677c0e247887d6edcf46b08bb153de017
+    PKG_HASH:=3fe0217615dd7060b7287d2b6b31d2a0b364137398bfb335a03bead322eac716
   else
     PKG_ARCH:=$(PKG_NAME)+wolfssl_noasm@aarch64-linux-musl@generic+v8a@fast+lto
-    PKG_HASH:=7639fae8e77ea36e377352179acb19e2fdf9010c2c373a9e02f03f637e99140c
+    PKG_HASH:=42ddd494200ec6d88b35902927688d316bc23e06e6c08d9e01eb2412196ab845
   endif
 else ifeq ($(ARCH),arm)
   # Referred to golang/golang-values.mk
   ARM_CPU_FEATURES:=$(word 2,$(subst +,$(space),$(call qstrip,$(CONFIG_CPU_TYPE))))
   ifeq ($(ARM_CPU_FEATURES),)
     PKG_ARCH:=$(PKG_NAME)+wolfssl@arm-linux-musleabi@generic+v5t+soft_float@fast+lto
-    PKG_HASH:=41af270fb2509aa011a75edaee57be5d9ebb543ec77615c6e7030ddeab8bbb9b
+    PKG_HASH:=46ce65b0e2342d4f8dac63f281a38a239d8de29d6c75f863c797b164ab8e72cc
   else ifneq ($(filter $(ARM_CPU_FEATURES),vfp vfpv2),)
     PKG_ARCH:=$(PKG_NAME)+wolfssl@arm-linux-musleabi@generic+v6+soft_float@fast+lto
-    PKG_HASH:=00fe09cf6309377a4bc90f3a5b909c5266c63181cc268912b4e32f92f58ec6cd
+    PKG_HASH:=0a401d1dc11129481b2baf86f847d55d66bd7e725cba4bf57875fdad27ef0052
   else
     PKG_ARCH:=$(PKG_NAME)+wolfssl@arm-linux-musleabihf@generic+v7a@fast+lto
-    PKG_HASH:=1acd9129d7efd99bf9952ac6dd932e10108fb27a2a059f03e80bf520300b3741
+    PKG_HASH:=dfa1f6ba80fb0925613822f4c4e00df8da68e7b8b772048d26a0d1a9d07d346b
   endif
 else ifeq ($(ARCH),mips)
   PKG_ARCH:=$(PKG_NAME)+wolfssl@mips-linux-musl@mips32+soft_float@fast+lto
-  PKG_HASH:=fa468c04e58b47d7f6bb893ed6bdc41f9929d5a2e500c768e82e0f4a459b047c
+  PKG_HASH:=b610821a8f61b0ed3c8c7e82e10d401348a9de17f900988589024a37c4099c8e
 else ifeq ($(ARCH),mipsel)
   ifeq ($(CONFIG_HAS_FPU),)
     PKG_ARCH:=$(PKG_NAME)+wolfssl@mipsel-linux-musl@mips32+soft_float@fast+lto
-    PKG_HASH:=294917a5009a315cf5ad04cdda8f66714c60c928e2186a6846323e04aa4a798f
+    PKG_HASH:=760544a88724e3b1b9eac79c9400231e81aa8786f8f00a979229e175811ffe6d
   else
     PKG_ARCH:=$(PKG_NAME)+wolfssl@mipsel-linux-musl@mips32@fast+lto
-    PKG_HASH:=23c40248c3aa301a26c37cdb66e2141d2d73d4f0c5c03c066324263510d959ac
+    PKG_HASH:=ec547c31a884e0967437ceb90a5c270864efe81b0e40939e0ec2810c7bfd6653
   endif
 else ifeq ($(ARCH),mips64)
   PKG_ARCH:=$(PKG_NAME)+wolfssl@mips64-linux-musl@mips64+soft_float@fast+lto
-  PKG_HASH:=f65bf9e495384afaf8aadd35395a2b9cdb2eedecb2602a0c522039dc4707350d
+  PKG_HASH:=2d0fce18a7ef1d74fdc12738767e66998a52c2b30d8790da760933853fe8726e
 else ifeq ($(ARCH),mips64el)
   PKG_ARCH:=$(PKG_NAME)+wolfssl@mips64el-linux-musl@mips64+soft_float@fast+lto
-  PKG_HASH:=44bd1a96d5a0ce02b8c5c5d941339958af2bf2d1c5e5d90ed87214ac0d900543
+  PKG_HASH:=a301d8d200d06582c60bbe0e487a28f5b41e6f0997a548cf882a7b078dab089c
 else ifeq ($(ARCH),i386)
   ifneq ($(CONFIG_TARGET_x86_geode)$(CONFIG_TARGET_x86_legacy),)
     PKG_ARCH:=$(PKG_NAME)+wolfssl@i386-linux-musl@i686@fast+lto
-    PKG_HASH:=25a215e1b5c18f8b4f0e7f0a0925fd1c959bbfdfeb3383830d2b645a94077fc6
+    PKG_HASH:=85e057dd0a0e8913b30471737436ab8b71834c494ed9f9e53544261b1ffdc8d6
   else
     PKG_ARCH:=$(PKG_NAME)+wolfssl@i386-linux-musl@pentium4@fast+lto
-    PKG_HASH:=e78feedf8fafc60749dfca576acd05b3df8e4b99912aa77a320971011ca77b1d
+    PKG_HASH:=2d0f1a05c82f2e21e71a6618c7f1d2e7f46aa6a21535d774d517e87ec00c989b
   endif
 else ifeq ($(ARCH),x86_64)
   PKG_ARCH:=$(PKG_NAME)+wolfssl@x86_64-linux-musl@x86_64@fast+lto
-  PKG_HASH:=9ad100ef18f7acaecad1aaa07b07029e9e50679fc8f119977878211b1ceb96f0
+  PKG_HASH:=842ea4e9816efd91d39bc76ead5c4a42e79011757e37c521b4270b675cfcb30c
 else ifeq ($(ARCH),riscv64)
   PKG_ARCH:=chinadns-ng+wolfssl@riscv64-linux-musl@baseline_rv64@fast+lto
-  PKG_HASH:=ed4d2cf72c2d48f19dd7678f419ce726bc2a793afc62afd6345e735dd262ca96
+  PKG_HASH:=7056f47f4d6b20109e007792694dc83e5eac44c9265d7be20f6dc10375b35a9b
 else
   PKG_ARCH:=dummy
   PKG_HASH:=dummy
