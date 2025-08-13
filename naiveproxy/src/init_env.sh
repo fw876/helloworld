@@ -19,6 +19,9 @@ case "${target_arch}" in
 "i386")
 	naive_arch="x86"
 	;;
+"loongarch64")
+	naive_arch="loong64"
+	;;
 "x86_64")
 	naive_arch="x64"
 	;;
@@ -51,13 +54,13 @@ treat_warnings_as_errors=false
 
 is_cronet_build=true
 
-enable_base_tracing=false
 use_udev=false
 use_aura=false
 use_ozone=false
 use_gio=false
 use_platform_icu_alternatives=true
 use_glib=false
+is_perfetto_embedder=true
 
 disable_file_support=true
 enable_websockets=false
@@ -70,6 +73,7 @@ include_transport_security_state_preload_list=false
 enable_device_bound_sessions=false
 enable_bracketed_proxy_uris=true
 enable_quic_proxy_support=true
+enable_disk_cache_sql_backend=false
 
 use_nss_certs=false
 
