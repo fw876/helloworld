@@ -1,0 +1,41 @@
+_ss_manager()
+{
+    local cur prev opts ciphers
+    opts='-s -b -p -k -f -t -m -c -a -n -u -U -v -h -A --mtu --help --mptcp -i -l --manager-address --executable'
+    ciphers='rc4-md5 table rc4 aes-128-cfb aes-192-cfb aes-256-cfb aes-128-ctr aes-192-ctr aes-256-ctr bf-cfb camellia-128-cfb camellia-192-cfb camellia-256-cfb cast5-cfb des-cfb idea-cfb rc2-cfb seed-cfb salsa20 chacha20 and chacha20-ietf'
+    cur=${COMP_WORDS[COMP_CWORD]}
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    case "$prev" in
+        -c|-f|--executable)
+            _filedir || COMPREPLY=( $(compgen -o plusdirs -f ${cur}) )
+            ;;
+        -s|-b)
+            _known_hosts_real -- "${cur}" || OMPREPLY=( $(compgen -A hostname -- ${cur}) )
+            ;;
+        -L)
+            compopt -o nospace
+            _known_hosts_real -c -- "${cur}" || OMPREPLY=( $(compgen -A hostname -S : -- ${cur}) )
+            ;;
+        -m)
+            COMPREPLY=( $(compgen -W "$ciphers" -- ${cur}) )
+            ;;
+        -a)
+            _allowed_users || COMPREPLY=( $(compgen -u -- ${cur}) )
+            ;;
+        -p|-k|-t|-n|--mtu|-l)
+            ;;
+        -i)
+            _available_interfaces -a || true
+            ;;
+        --manager-address)
+            _known_hosts_real -- "${cur}" || OMPREPLY=( $(compgen -A hostname -- ${cur}) )
+            _filedir || COMPREPLY+=( $(compgen -o plusdirs -f ${cur}) )
+            ;;
+        *)
+            COMPREPLY+=( $(compgen -W "${opts}" -- ${cur}) )
+            ;;
+    esac
+    return 0
+}
+
+complete -F _ss_manager ss-manager
