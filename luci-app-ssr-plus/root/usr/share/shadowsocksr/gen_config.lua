@@ -212,7 +212,19 @@ end
 				security = (server.xtls == '1') and "xtls" or (server.tls == '1') and "tls" or (server.reality == '1') and "reality" or nil,
 				tlsSettings = (server.tls == '1') and {
 					-- tls
-					alpn = (server.transport == "xhttp" and server.xhttp_alpn ~= "") and server.xhttp_alpn or server.tls_alpn,
+					alpn = (server.transport == "xhttp") and (function()
+						local alpn = {}
+						if server.xhttp_alpn and server.xhttp_alpn ~= "" then
+							string.gsub(server.xhttp_alpn, '[^,]+', function(w)
+								table.insert(alpn, w)
+							end)
+						end
+						if #alpn > 0 then
+							return alpn
+						else
+							return nil
+						end
+					end)() or nil,
 					fingerprint = server.fingerprint,
 					allowInsecure = (server.insecure == "1"),
 					serverName = server.tls_host,
@@ -580,7 +592,19 @@ local tuic = {
 			timeout = server.timeout and server.timeout .. "s" or nil,
 			gc_interval = server.gc_interval and server.gc_interval .. "s" or nil,
 			gc_lifetime = server.gc_lifetime and server.gc_lifetime .. "s" or nil,
-			alpn = server.tls_alpn,
+			alpn = (server.type == "tuic") and (function()
+				local alpn = {}
+				if server.tls_alpn and server.tls_alpn ~= "" then
+					string.gsub(server.tls_alpn, '[^,]+', function(w)
+						table.insert(alpn, w)
+					end)
+				end
+				if #alpn > 0 then
+					return alpn
+				else
+					return nil
+				end
+			end)() or nil,
 			disable_sni = (server.disable_sni == "1") and true or false,
 			zero_rtt_handshake = (server.zero_rtt_handshake == "1") and true or false,
 			send_window = tonumber(server.send_window),
