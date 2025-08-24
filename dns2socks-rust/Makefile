@@ -9,12 +9,10 @@ PKG_NAME:=dns2socks-rust
 PKG_VERSION:=0.2.1
 PKG_RELEASE:=1
 
-PKG_SOURCE_PROTO:=git
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://github.com/tun2proxy/dns2socks.git
-PKG_SOURCE_DATE:=2025-08-18
-PKG_SOURCE_VERSION:=a23fe67ff4e2a218fcd4726055514c8c2b5299c9
-PKG_MIRROR_HASH:=7d2829cc0da6e9eacc5ed97f51f37ee0ce1ea1a10f38f1e4d2a30ae80d237289
+PKG_SOURCE_URL:=https://codeload.github.com/tun2proxy/dns2socks/tar.gz/v$(PKG_VERSION)?
+PKG_HASH:=c7e9cc18f79edf421012dd9f7f915df8270be5b77dfd7ea8ac4513c32965ba4b
+PKG_BUILD_DIR:=$(BUILD_DIR)/dns2socks-$(PKG_VERSION)
 
 PKG_MAINTAINER:=Zxlhhyccc <zxlhhyccc@gmail.com>
 PKG_LICENSE:=MIT
