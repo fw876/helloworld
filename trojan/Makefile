@@ -23,6 +23,7 @@ PKG_MAINTAINER:=GreaterFire
 
 include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/cmake.mk
+include ./boost-version.mk
 
 TARGET_CXXFLAGS += -Wall -Wextra
 TARGET_CXXFLAGS += $(FPIC)
@@ -57,7 +58,8 @@ define Package/trojan
   URL:=https://github.com/trojan-gfw/trojan
   DEPENDS:= \
     +libpthread +libstdcpp +libopenssl \
-    +boost +boost-system +boost-program_options +boost-date_time
+    +boost +boost-program_options +boost-date_time \
+    $(if $(filter y,$(NEED_BOOST_SYSTEM)),,+boost-system)
 endef
 
 define Package/trojan/install
