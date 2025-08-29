@@ -264,6 +264,9 @@ local function processData(szType, content)
 		if info.net == "tcp" then
 			info.net = "raw"
 		end
+		if info.net == "splithttp" then
+			info.net = "xhttp"
+		end
 		result.transport = info.net
 		result.alter_id = info.aid
 		result.vmess_id = info.id
@@ -278,11 +281,7 @@ local function processData(szType, content)
 			result.httpupgrade_host = info.host
 			result.httpupgrade_path = info.path
 		end
-		if info.net == 'splithttp' then
-			result.splithttp_host = info.host
-			result.splithttp_path = info.path
-		end
-		if info.net == 'xhttp' then
+		if info.net == 'xhttp' or info.net == 'splithttp' then
 			result.xhttp_mode = info.mode
 			result.xhttp_host = info.host
 			result.xhttp_path = info.path
@@ -648,9 +647,12 @@ local function processData(szType, content)
 				result.ech_config = params.ech
 			end
 			-- 处理传输协议
-			result.transport = params.type or "tcp" -- 默认传输协议为 tcp
+			result.transport = params.type or "raw" -- 默认传输协议为 raw
 			if result.transport == "tcp" then
 				result.transport = "raw"
+			end
+			if result.transport == "splithttp" then
+				result.transport = "xhttp"
 			end
 			if result.transport == "ws" then
 				result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
@@ -658,10 +660,7 @@ local function processData(szType, content)
 			elseif result.transport == "httpupgrade" then
 				result.httpupgrade_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
 				result.httpupgrade_path = params.path and UrlDecode(params.path) or "/"
-			elseif result.transport == "splithttp" then
-				result.splithttp_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
-				result.splithttp_path = params.path and UrlDecode(params.path) or "/"
-			elseif result.transport == "xhttp" then
+			elseif result.transport == "xhttp" or result.transport == "splithttp" then
 				result.xhttp_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
 				result.xhttp_mode = params.mode or "auto"
 				result.xhttp_path = params.path and UrlDecode(params.path) or "/"
@@ -718,6 +717,12 @@ local function processData(szType, content)
 		result.vmess_id = url.user
 		result.vless_encryption = params.encryption or "none"
 		result.transport = params.type or "tcp"
+		if result.transport == "tcp" then
+			result.transport = "raw"
+		end
+		if result.transport == "splithttp" then
+			result.transport = "xhttp"
+		end
 		result.tls = (params.security == "tls" or params.security == "xtls") and "1" or "0"
 		result.xhttp_alpn = params.alpn or ""
 		result.tls_host = params.sni
@@ -739,10 +744,7 @@ local function processData(szType, content)
 		elseif result.transport == "httpupgrade" then
 			result.httpupgrade_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
 			result.httpupgrade_path = params.path and UrlDecode(params.path) or "/"
-		elseif result.transport == "splithttp" then
-			result.splithttp_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
-			result.splithttp_path = params.path and UrlDecode(params.path) or "/"
-		elseif result.transport == "xhttp" then
+		elseif result.transport == "xhttp" or result.transport == "splithttp" then
 			result.xhttp_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
 			result.xhttp_mode = params.mode or "auto"
 			result.xhttp_path = params.path and UrlDecode(params.path) or "/"

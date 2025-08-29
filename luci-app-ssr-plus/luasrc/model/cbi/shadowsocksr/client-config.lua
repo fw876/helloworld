@@ -714,8 +714,7 @@ o:value("raw", "RAW (TCP)")
 o:value("kcp", "mKCP")
 o:value("ws", "WebSocket")
 o:value("httpupgrade", "HTTPUpgrade")
-o:value("splithttp", "SplitHTTP")
-o:value("xhttp", "XHTTP")
+o:value("xhttp", "XHTTP (SplitHTTP)")
 o:value("h2", "HTTP/2")
 o:value("quic", "QUIC")
 o:value("grpc", "gRPC")
@@ -784,30 +783,9 @@ o = s:option(Value, "httpupgrade_path", translate("Httpupgrade Path"))
 o:depends("transport", "httpupgrade")
 o.rmempty = true
 
--- [[ splithttp部分 ]]--
-
--- splithttp域名
-o = s:option(Value, "splithttp_host", translate("Splithttp Host"))
-o:depends({transport = "splithttp", tls = false})
-o.rmempty = true
-
--- splithttp路径
-o = s:option(Value, "splithttp_path", translate("Splithttp Path"))
-o:depends("transport", "splithttp")
-o.rmempty = true
-
 -- [[ XHTTP部分 ]]--
-o = s:option(ListValue, "xhttp_alpn", translate("XHTTP ALPN"))
-o.default = ""
-o:value("", translate("Default"))
-o:value("h3")
-o:value("h2")
-o:value("h3,h2")
-o:value("http/1.1")
-o:value("h2,http/1.1")
-o:value("h3,h2,http/1.1")
-o:depends("transport", "xhttp")
 
+-- XHTTP 模式
 o = s:option(ListValue, "xhttp_mode", translate("XHTTP Mode"))
 o:depends("transport", "xhttp")
 o.default = "auto"
@@ -816,15 +794,19 @@ o:value("packet-up")
 o:value("stream-up")
 o:value("stream-one")
 
+-- XHTTP 主机
 o = s:option(Value, "xhttp_host", translate("XHTTP Host"))
-o:depends({transport = "xhttp", tls = false})
+o.datatype = "hostname"
+o:depends("transport", "xhttp")
 o.rmempty = true
 
+-- XHTTP 路径
 o = s:option(Value, "xhttp_path", translate("XHTTP Path"))
 o.placeholder = "/"
 o:depends("transport", "xhttp")
 o.rmempty = true
 
+-- XHTTP 附加项
 o = s:option(Flag, "enable_xhttp_extra", translate("XHTTP Extra"))
 o.description = translate("Enable this option to configure XHTTP Extra (JSON format).")
 o.rmempty = true
@@ -867,6 +849,18 @@ o.validate = function(self, value)
 
     return value
 end
+
+-- XHTTP ALPN
+o = s:option(ListValue, "xhttp_alpn", translate("XHTTP ALPN"))
+o.default = ""
+o:value("", translate("Default"))
+o:value("h3")
+o:value("h2")
+o:value("h3,h2")
+o:value("http/1.1")
+o:value("h2,http/1.1")
+o:value("h3,h2,http/1.1")
+o:depends({transport = "xhttp", tls = true})
 
 -- [[ H2部分 ]]--
 
