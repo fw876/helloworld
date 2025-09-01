@@ -31,7 +31,7 @@ function vmess_vless()
 						id = server.vmess_id,
 						alterId = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and tonumber(server.alter_id) or nil,
 						security = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and server.security or nil,
-						encryption = (server.v2ray_protocol == "vless") and server.vless_encryption or nil,
+						encryption = (server.v2ray_protocol == "vless") and server.vless_encryption or "none",
 						flow = (((server.xtls == '1') or (server.tls == '1') or (server.reality == '1')) and (((server.tls_flow ~= "none") and server.tls_flow) or ((server.xhttp_tls_flow ~= "none") and server.xhttp_tls_flow))) or nil
 					}
 				}
@@ -394,7 +394,7 @@ local trojan = {
 		cipher = cipher,
 		cipher_tls13 = cipher13,
 		sni = server.tls_host,
-		alpn = server.tls_alpn or {"h2", "http/1.1"},
+		alpn = {"h2", "http/1.1"},
 		curve = "",
 		reuse_session = true,
 		session_ticket = (server.tls_sessionTicket == "1") and true or false
