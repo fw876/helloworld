@@ -689,6 +689,7 @@ o:depends({type = "v2ray", v2ray_protocol = "vless"})
 o = s:option(Value, "vless_encryption", translate("VLESS Encryption"))
 o.rmempty = true
 o.default = "none"
+o:value("none")
 o:depends({type = "v2ray", v2ray_protocol = "vless"})
 
 -- 加密方式
