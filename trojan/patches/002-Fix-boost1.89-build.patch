@@ -1,6 +1,6 @@
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -21,7 +21,12 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
+@@ -36,7 +36,12 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
  find_package(Threads REQUIRED)
  target_link_libraries(trojan ${CMAKE_THREAD_LIBS_INIT})
  
@@ -11,6 +11,6 @@
 +else()
 +    find_package(Boost 1.66.0 REQUIRED COMPONENTS program_options)
 +endif()
- target_include_directories(trojan PRIVATE ${Boost_INCLUDE_DIR})
+ include_directories(${Boost_INCLUDE_DIR})
  target_link_libraries(trojan ${Boost_LIBRARIES})
  if(MSVC)
