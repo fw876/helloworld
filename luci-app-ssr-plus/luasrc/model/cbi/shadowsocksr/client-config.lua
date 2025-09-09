@@ -477,7 +477,7 @@ o.datatype = "uinteger"
 o.rmempty = true
 o.default = "8388608"
 
-o = s:option(Value, "maxstreamseceivewindow", translate("QUIC maxStreamReceiveWindow"))
+o = s:option(Value, "maxstreamreceivewindow", translate("QUIC maxStreamReceiveWindow"))
 o:depends({type = "hysteria2", flag_quicparam = "1"})
 o.datatype = "uinteger"
 o.rmempty = true
@@ -689,7 +689,7 @@ o:depends({type = "v2ray", v2ray_protocol = "vless"})
 o = s:option(Value, "vless_encryption", translate("VLESS Encryption"))
 o.rmempty = true
 o.default = "none"
-o:value("none")
+o:value("none") 
 o:depends({type = "v2ray", v2ray_protocol = "vless"})
 
 -- 加密方式
@@ -850,18 +850,6 @@ o.validate = function(self, value)
 
     return value
 end
-
--- XHTTP ALPN
-o = s:option(ListValue, "xhttp_alpn", translate("XHTTP ALPN"))
-o.default = ""
-o:value("", translate("Default"))
-o:value("h3")
-o:value("h2")
-o:value("h3,h2")
-o:value("http/1.1")
-o:value("h2,http/1.1")
-o:value("h3,h2,http/1.1")
-o:depends({transport = "xhttp", tls = true})
 
 -- [[ H2部分 ]]--
 
@@ -1179,7 +1167,21 @@ o:depends("xtls", true)
 o:depends("reality", true)
 o.rmempty = true
 
+-- TLS ALPN
 o = s:option(ListValue, "tls_alpn", translate("TLS ALPN"))
+o.default = ""
+o:value("", translate("Default"))
+o:value("h3")
+o:value("h2")
+o:value("h3,h2")
+o:value("http/1.1")
+o:value("h2,http/1.1")
+o:value("h3,h2,http/1.1")
+o:depends({type = "hysteria2", tls = true})
+o:depends({transport = "xhttp", tls = true})
+
+-- TUIC ALPN
+o = s:option(ListValue, "tuic_alpn", translate("TUIC ALPN"))
 o.default = ""
 o:value("", translate("Default"))
 o:value("h3")
@@ -1196,19 +1198,18 @@ o.description = translate("If true, allowss insecure connection at TLS client, e
 
 -- [[ Hysteria2 TLS pinSHA256 ]] --
 o = s:option(Value, "pinsha256", translate("Certificate fingerprint"))
-o:depends({type = "hysteria2", insecure = true })
+o:depends("type", "hysteria2")
 o.rmempty = true
-
 
 -- [[ Mux.Cool ]] --
 o = s:option(Flag, "mux", translate("Mux"), translate("Enable Mux.Cool"))
 o.rmempty = false
 o.default = false
-o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "raw"})
+o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "raw", tls_flow = "none"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "ws"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "kcp"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "httpupgrade"})
-o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "splithttp"})
+o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "xhttp"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "h2"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "quic"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "grpc"})
@@ -1222,6 +1223,8 @@ o:depends({type = "v2ray", v2ray_protocol = "http"})
 o = s:option(Flag, "xmux", translate("Xudp Mux"), translate("Enable Xudp Mux"))
 o.rmempty = false
 o.default = false
+o:depends({type = "v2ray", v2ray_protocol = "vless", tls_flow = "xtls-rprx-vision"})
+o:depends({type = "v2ray", v2ray_protocol = "vless", tls_flow = "xtls-rprx-vision-udp443"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "xhttp"})
 
 -- [[ TCP 最大并发连接数 ]]--
@@ -1392,4 +1395,3 @@ if is_finded("kcptun-client") then
 end
 
 return m
-

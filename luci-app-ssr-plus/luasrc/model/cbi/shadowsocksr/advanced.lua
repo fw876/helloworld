@@ -367,7 +367,7 @@ if is_finded("xray") then
 	o.default = "10-20"
 	o:depends("fragment", true)
 
-	o = s:option(Value, "fragment_maxsplit", translate("Fragment maxSplit"), translate("Fragmented maxSplit (byte)"))
+	o = s:option(Value, "fragment_maxsplit", translate("Max Split"), translate("Limit the maximum number of splits."))
 	o.default = "100-200"
 	o:depends("fragment", true)
 
@@ -421,9 +421,9 @@ if is_finded("xray") then
 	o.datatype = "or(uinteger,portrange)"
 	o.rmempty = false
 
-	o = s:option(Value, "applyto", translate("ApplyTo (IP type)"))
+	o = s:option(Value, "applyto", translate("IP Type"))
 	o.default = "IP"
-	o:value("IP", "IP")
+	o:value("IP", "ALL")
 	o:value("IPV4", "IPv4")
 	o:value("IPV6", "IPv6")
 	o.rmempty = false
