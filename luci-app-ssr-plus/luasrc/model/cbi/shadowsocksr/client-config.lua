@@ -1205,7 +1205,7 @@ o.rmempty = true
 o = s:option(Flag, "mux", translate("Mux"), translate("Enable Mux.Cool"))
 o.rmempty = false
 o.default = false
-o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "raw"})
+o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "raw", tls_flow = "none"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "ws"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "kcp"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "httpupgrade"})
@@ -1223,6 +1223,8 @@ o:depends({type = "v2ray", v2ray_protocol = "http"})
 o = s:option(Flag, "xmux", translate("Xudp Mux"), translate("Enable Xudp Mux"))
 o.rmempty = false
 o.default = false
+o:depends({type = "v2ray", v2ray_protocol = "vless", tls_flow = "xtls-rprx-vision"})
+o:depends({type = "v2ray", v2ray_protocol = "vless", tls_flow = "xtls-rprx-vision-udp443"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "xhttp"})
 
 -- [[ TCP 最大并发连接数 ]]--
