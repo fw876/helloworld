@@ -832,7 +832,7 @@ o:depends({type = "v2ray", v2ray_protocol = "http"})
 o = s:option(ListValue, "tcp_guise", translate("Camouflage Type"))
 o:depends("transport", "raw")
 o:value("none", translate("None"))
-o:value("http", "HTTP")
+o:value("http", translate("HTTP"))
 o.rmempty = true
 
 -- HTTP域名
@@ -1277,8 +1277,8 @@ o:value("h3,h2")
 o:value("http/1.1")
 o:value("h2,http/1.1")
 o:value("h3,h2,http/1.1")
+o:depends("tls", true)
 o:depends({type = "hysteria2", tls = true})
-o:depends({transport = "xhttp", tls = true})
 
 -- TUIC ALPN
 o = s:option(ListValue, "tuic_alpn", translate("TUIC ALPN"))
@@ -1309,7 +1309,6 @@ o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "raw", tls_flow
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "ws"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "kcp"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "httpupgrade"})
-o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "xhttp"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "h2"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "quic"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "grpc"})

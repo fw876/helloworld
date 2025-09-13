@@ -307,7 +307,7 @@ function import_ssr_url(btn, urlname, sid) {
 			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "ssr":
-			var sstr = b64decsafe(ssu[1]);
+			var sstr = b64decsafe((ssu[1] || "").replace(/#.*/, "").trim());
 			var ploc = sstr.indexOf("/?");
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = ssu[0];
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].dispatchEvent(event);
@@ -375,9 +375,7 @@ function import_ssr_url(btn, urlname, sid) {
 				(params.get("type") || "raw")));
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].dispatchEvent(event);
 			if (params.get("security") === "tls") {
-				if (params.get("type") == "xhttp" || params.get("type") == "splithttp") {
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_alpn')[0].value = params.get("alpn") || "";
-				}
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_alpn')[0].value = params.get("alpn") || "";
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.fingerprint')[0].value = params.get("fp") || "";
 			}
 			switch (params.get("type")) {
@@ -437,7 +435,7 @@ function import_ssr_url(btn, urlname, sid) {
 			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "vmess":
-			var sstr = b64DecodeUnicode(ssu[1]);
+			var sstr = b64DecodeUnicode((ssu[1] || "").replace(/#.*/, "").trim());
 			var ploc = sstr.indexOf("/?");
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = "v2ray";
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].dispatchEvent(event);
@@ -455,18 +453,17 @@ function import_ssr_url(btn, urlname, sid) {
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.alter_id')[0].value = ssm.aid;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.vmess_id')[0].value = ssm.id;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].value = 
-				(ssm.net === "raw" || ssm.net === "tcp") ? "raw" : 
-				(ssm.net === "xhttp" || ssm.net === "splithttp") ? "xhttp" : ssm.net;
+				(["xhttp", "splithttp"].includes(ssm.net) ? "xhttp" : 
+				(["tcp", "raw"].includes(ssm.net) ? "raw" : 
+				(ssm.net || "raw")));
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.transport')[0].dispatchEvent(event);
 			if (ssm.net === "raw" || ssm.net === "tcp") {
-				if (ssm.type && ssm.type != "http") {
-					ssm.type = "none";
-				} else {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tcp_guise')[0].value = ssm.type;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tcp_guise')[0].dispatchEvent(event);
+				if (ssm.type === "http") {
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_host')[0].value = ssm.host;
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.http_path')[0].value = ssm.path;
 				}
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tcp_guise')[0].value = ssm.type;
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tcp_guise')[0].dispatchEvent(event);
 			}
 			if (ssm.net == "ws") {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.ws_host')[0].value = ssm.host;
@@ -503,20 +500,20 @@ function import_ssr_url(btn, urlname, sid) {
 				if (ssm.fp !== "" && ssm.fp !== undefined) {
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.fingerprint')[0].value = ssm.fp;
 				}
-				if (ssm.net == "xhttp" || ssm.net == "splithttp") {
+				if (ssm.alpn !== "" && ssm.alpn !== undefined) {
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_alpn')[0].value = ssm.alpn;
 				}
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = ssm.sni || ssm.host;
+				if (ssm.host !== "" && ssm.host !== undefined) {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = ssm.sni || ssm.host;
+				}
 				if (ssm.ech !== "" && ssm.ech !== undefined) {
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_ech')[0].checked = true; // 设置 enable_ech 为 true
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_ech')[0].dispatchEvent(event); // 触发事件
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.ech_config')[0].value = ssm.ech;
 				}
-				if (((ssm.allowInsecure !== undefined) ? ssm.allowInsecure : ssm.allowlnsecure) === "true" ||
-				((ssm.allowInsecure !== undefined) ? ssm.allowInsecure : ssm.allowlnsecure) === "1") {
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].checked = true; // 设置 insecure 为 true
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].dispatchEvent(event); // 触发事件
-				}
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].checked =
+					!!(ssm.allowInsecure ?? ssm.allowlnsecure ?? ssm['skip-cert-verify']); // 设置 insecure 为 true
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].dispatchEvent(event); // 触发事件
 			}
 			if (ssm.mux !== undefined) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].checked = true;
