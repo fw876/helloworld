@@ -22,20 +22,123 @@ local function is_installed(e)
 	return luci.model.ipkg.installed(e)
 end
 
+-- 判断系统是否 JS 版 LuCI
+local function is_js_luci()
+    return luci.sys.call('[ -f "/www/luci-static/resources/uci.js" ]') == 0
+end
+
+-- 显示提示条
 local function showMsg_Redirect(redirectUrl, delay)
-	local redirectUrl = redirectUrl or ""
-	local delay = delay or 3000
+	local message = translate("Applying configuration changes… %ds")
 	luci.http.write([[
 		<script type="text/javascript">
 			document.addEventListener('DOMContentLoaded', function() {
+				// 创建遮罩层
+				var overlay = document.createElement('div');
+				overlay.style.position = 'fixed';
+				overlay.style.top = '0';
+				overlay.style.left = '0';
+				overlay.style.width = '100%';
+				overlay.style.height = '100%';
+				overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+				overlay.style.zIndex = '9999';
+				// 创建提示条
+				var messageDiv = document.createElement('div');
+				messageDiv.style.position = 'fixed';
+				messageDiv.style.top = '20%';
+				messageDiv.style.left = '50%';
+				messageDiv.style.transform = 'translateX(-50%)';
+				messageDiv.style.width = '81%';
+				//messageDiv.style.maxWidth = '1200px';
+				messageDiv.style.background = '#ffffff';
+				messageDiv.style.border = '1px solid #000000';
+				messageDiv.style.borderRadius = '5px';
+				messageDiv.style.padding = '18px 20px';
+				messageDiv.style.color = '#000000';
+				//messageDiv.style.fontWeight = 'bold';
+				messageDiv.style.fontFamily = 'Arial, Helvetica, sans-serif';
+				messageDiv.style.textAlign = 'left';
+				messageDiv.style.zIndex = '10000';
+				var spinner = document.createElement('span');
+				spinner.style.display = 'inline-block';
+				spinner.style.width = '20px';
+				spinner.style.height = '20px';
+				spinner.style.marginRight = '10px';
+				spinner.style.border = '3px solid #666';
+				spinner.style.borderTopColor = '#000';
+				spinner.style.borderRadius = '50%';
+				spinner.style.animation = 'spin 1s linear infinite';
+				messageDiv.appendChild(spinner);
+                var textSpan = document.createElement('span');
+                var remaining = Math.ceil(]] .. 90000 .. [[ / 1000);
+                function updateMessage() {
+                    textSpan.textContent = "]] .. message .. [[".replace("%ds", remaining + "s");
+                }
+                updateMessage();
+                messageDiv.appendChild(textSpan);
+				document.body.appendChild(messageDiv);
+				var style = document.createElement('style');
+				style.innerHTML = `
+				@keyframes spin {
+					0% { transform: rotate(0deg); }
+					100% { transform: rotate(360deg); }
+				}`;
+				document.head.appendChild(style);
+                var countdownInterval = setInterval(function() {
+                    remaining--;
+                    if (remaining < 0) remaining = 0;
+                    updateMessage();
+                    if (remaining <= 0) clearInterval(countdownInterval);
+                }, 1000);
+				// 将遮罩层和提示条添加到页面
+				document.body.appendChild(overlay);
+				document.body.appendChild(messageDiv);
+				// 重定向或隐藏提示条和遮罩层
+				var redirectUrl = ']] .. (redirectUrl or "") .. [[';
+				var delay = ]] .. (delay or 3000) .. [[;
 				setTimeout(function() {
-					if ("]] .. redirectUrl .. [[" !== "") {
-						window.location.href = "]] .. redirectUrl .. [[";
+					if (redirectUrl) {
+						window.location.href = redirectUrl;
+					} else {
+						if (messageDiv && messageDiv.parentNode) {
+							messageDiv.parentNode.removeChild(messageDiv);
+						}
+						if (overlay && overlay.parentNode) {
+							overlay.parentNode.removeChild(overlay);
+						}
+						window.location.href = window.location.href;
 					}
-				}, ]] .. delay .. [[);
+				}, delay);
 			});
 		</script>
 	]])
+end
+
+-- 兼容新旧版本 LuCI
+local function set_apply_on_parse(map)
+    if not map then
+        return
+    end
+
+    if is_js_luci() then
+        -- JS 版 LuCI：显示提示条并延迟跳转
+        map.apply_on_parse = false
+        map.on_after_apply = function(self)
+            luci.http.prepare_content("text/html")
+			showMsg_Redirect(self.redirect or luci.dispatcher.build_url() , 3000)
+        end
+    else
+        -- Lua 版 LuCI：直接跳转
+        map.apply_on_parse = true
+        map.on_after_apply = function(self)
+            luci.http.redirect(self.redirect)
+        end
+    end
+    
+    -- 保持原渲染流程
+    map.render = function(self, ...)
+        getmetatable(self).__index.render(self, ...) -- 保持原渲染流程
+    end
 end
 
 local has_ss_rust = is_finded("sslocal") or is_finded("ssserver")
@@ -154,10 +257,7 @@ if m.uci:get("shadowsocksr", sid) ~= "servers" then
 	return
 end
 -- 保存&应用成功后跳转到节点列表
-m.apply_on_parse = true
-m.on_after_apply = function(self)
-	showMsg_Redirect(self.redirect, 4500)
-end
+set_apply_on_parse(m)
 
 -- [[ Servers Setting ]]--
 s = m:section(NamedSection, sid, "servers")
