@@ -519,10 +519,6 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].checked = true;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.mux')[0].dispatchEvent(event);
 			}
-			if (ssm.xmux !== undefined) {
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.xmux')[0].checked = true;
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.xmux')[0].dispatchEvent(event);
-			}
 			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "vless":

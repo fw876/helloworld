@@ -330,10 +330,10 @@ end
 			} or nil,
 			mux = (server.v2ray_protocol ~= "wireguard") and {
 				-- mux
-				enabled = (server.mux == "1" or server.xmux == "1") and true or false, -- Mux
-				concurrency = (server.mux == "1" and ((server.concurrency ~= "0") and tonumber(server.concurrency) or 8)) or (server.xmux == "1" and -1) or nil, -- TCP 最大并发连接数
-				xudpConcurrency = ((server.xudpConcurrency ~= "0") and tonumber(server.xudpConcurrency)) or nil, -- UDP 最大并发连接数
-				xudpProxyUDP443 = (server.mux == "1") and server.xudpProxyUDP443 or nil -- 对被代理的 UDP/443 流量处理方式
+				enabled = (server.mux == "1"), -- Mux
+				concurrency = (server.mux == "1" and (tonumber(server.concurrency) or -1)) or nil, -- TCP 最大并发
+				xudpConcurrency = (server.mux == "1" and (tonumber(server.xudpConcurrency) or 16)) or nil, -- UDP 最大并发
+				xudpProxyUDP443 = (server.mux == "1" and (server.xudpProxyUDP443 or "reject")) or nil -- 对被代理的 UDP/443 流量处理方式
 			} or nil
 		}
 	}
