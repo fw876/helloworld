@@ -212,13 +212,11 @@ end
 				security = (server.xtls == '1') and "xtls" or (server.tls == '1') and "tls" or (server.reality == '1') and "reality" or nil,
 				tlsSettings = (server.tls == '1') and {
 					-- tls
-					alpn = (server.transport == "xhttp") and (function()
+					alpn = (server.tls_alpn and server.tls_alpn ~= "") and (function()
 						local alpn = {}
-						if server.tls_alpn and server.tls_alpn ~= "" then
-							string.gsub(server.tls_alpn, '[^,]+', function(w)
-								table.insert(alpn, w)
-							end)
-						end
+						string.gsub(server.tls_alpn, '[^,]+', function(w)
+							table.insert(alpn, w)
+						end)
 						if #alpn > 0 then
 							return alpn
 						else
@@ -226,7 +224,7 @@ end
 						end
 					end)() or nil,
 					fingerprint = server.fingerprint,
-					allowInsecure = (server.insecure == "1"),
+					allowInsecure = (server.insecure == "1" or server.insecure == true or server.insecure == "true"),
 					serverName = server.tls_host,
 					certificates = server.certificate and {
 						usage = "verify",
@@ -394,12 +392,23 @@ local trojan = {
 		cipher = cipher,
 		cipher_tls13 = cipher13,
 		sni = server.tls_host,
-		alpn = {"h2", "http/1.1"},
+		alpn = (server.tls == "1") and (function()
+			local alpn = {}
+			if server.tls_alpn and server.tls_alpn ~= "" then
+				string.gsub(server.tls_alpn, '[^,]+', function(w)
+					table.insert(alpn, w)
+				end)
+			end
+			if #alpn > 0 then
+				return alpn
+			else
+				return nil
+			end
+		end)() or {"h2", "http/1.1"},
 		curve = "",
 		reuse_session = true,
 		session_ticket = (server.tls_sessionTicket == "1") and true or false
 	},
-	udp_timeout = 60,
 	tcp = {
 		-- tcp
 		no_delay = true,
@@ -484,13 +493,11 @@ local hysteria2 = {
 	auth = server.hy2_auth,
 	tls = (server.tls_host and server.tls_host ~= "") and {
 		sni = server.tls_host,
-		alpn = (server.type == "hysteria2") and (function()
+		alpn = (server.tls_alpn and server.tls_alpn ~= "") and (function()
 			local alpn = {}
-			if server.tls_alpn and server.tls_alpn ~= "" then
-				string.gsub(server.tls_alpn, '[^,]+', function(w)
-					table.insert(alpn, w)
-				end)
-			end
+			string.gsub(server.tls_alpn, '[^,]+', function(w)
+				table.insert(alpn, w)
+			end)
 			if #alpn > 0 then
 				return alpn
 			else
@@ -613,13 +620,11 @@ local tuic = {
 			timeout = server.timeout and server.timeout .. "s" or nil,
 			gc_interval = server.gc_interval and server.gc_interval .. "s" or nil,
 			gc_lifetime = server.gc_lifetime and server.gc_lifetime .. "s" or nil,
-			alpn = (server.type == "tuic") and (function()
+			alpn = (server.tuic_alpn and server.tuic_alpn ~= "") and (function()
 				local alpn = {}
-				if server.tuic_alpn and server.tuic_alpn ~= "" then
-					string.gsub(server.tuic_alpn, '[^,]+', function(w)
-						table.insert(alpn, w)
-					end)
-				end
+				string.gsub(server.tuic_alpn, '[^,]+', function(w)
+					table.insert(alpn, w)
+				end)
 				if #alpn > 0 then
 					return alpn
 				else
