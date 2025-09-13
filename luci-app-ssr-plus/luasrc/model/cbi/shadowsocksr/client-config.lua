@@ -1305,7 +1305,7 @@ o.rmempty = true
 o = s:option(Flag, "mux", translate("Mux"), translate("Enable Mux.Cool"))
 o.rmempty = false
 o.default = false
-o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "raw", tls_flow = "none"})
+o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "raw"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "ws"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "kcp"})
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "httpupgrade"})
@@ -1317,14 +1317,6 @@ o:depends({type = "v2ray", v2ray_protocol = "trojan"})
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o:depends({type = "v2ray", v2ray_protocol = "http"})
-
--- [[ XUDP Mux ]] --
-o = s:option(Flag, "xmux", translate("Xudp Mux"), translate("Enable Xudp Mux"))
-o.rmempty = false
-o.default = false
-o:depends({type = "v2ray", v2ray_protocol = "vless", tls_flow = "xtls-rprx-vision"})
-o:depends({type = "v2ray", v2ray_protocol = "vless", tls_flow = "xtls-rprx-vision-udp443"})
-o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "xhttp"})
 
 -- [[ TCP 最大并发连接数 ]]--
 o = s:option(Value, "concurrency", translate("concurrency"))
@@ -1351,7 +1343,6 @@ o.default = "16"
 o:value("-1", translate("disable"))
 o:value("16", translate("16"))
 o:depends("mux", true)
-o:depends("xmux", true)
 
 -- [[ 对被代理的 UDP/443 流量处理方式 ]]--
 o = s:option(ListValue, "xudpProxyUDP443", translate("xudpProxyUDP443"))
