@@ -46,7 +46,7 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
@@ -80,7 +80,7 @@ jobs:
           echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
 
       - name: Build
-        uses: immortalwrt/gh-action-sdk@v5
+        uses: immortalwrt/gh-action-sdk@v4
         env:
           ARCH: ${{ matrix.arch }}
           FEEDNAME: packages_ci
@@ -126,7 +126,7 @@ jobs:
           cat PKG-INFO
 
       - name: Store packages
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: ${{env.ARCHIVE_NAME}}-packages
           path: |
@@ -136,7 +136,7 @@ jobs:
             PKG-INFO
 
       - name: Store logs
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: ${{env.ARCHIVE_NAME}}-logs
           path: |
