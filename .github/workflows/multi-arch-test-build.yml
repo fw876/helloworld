@@ -46,7 +46,7 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
@@ -80,14 +80,14 @@ jobs:
           echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
 
       - name: Build
-        uses: immortalwrt/gh-action-sdk@v5
+        uses: immortalwrt/gh-action-sdk@v4
         env:
           ARCH: ${{ matrix.arch }}
           FEEDNAME: packages_ci
           V: s
 
       - name: Move created packages to project dir
-        run: cp bin/packages/${{ matrix.arch }}/packages_ci/*.apk . || true
+        run: cp bin/packages/${{ matrix.arch }}/packages_ci/*.ipk . || true
 
       - name: Collect metadata
         run: |
@@ -122,21 +122,21 @@ jobs:
           done
           echo >> PKG-INFO
           echo Full file listing: >> PKG-INFO
-          ls -al *.apk >> PKG-INFO || true
+          ls -al *.ipk >> PKG-INFO || true
           cat PKG-INFO
 
       - name: Store packages
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: ${{env.ARCHIVE_NAME}}-packages
           path: |
             Packages
             Packages.*
-            *.apk
+            *.ipk
             PKG-INFO
 
       - name: Store logs
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: ${{env.ARCHIVE_NAME}}-logs
           path: |
