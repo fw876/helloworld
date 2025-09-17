@@ -1,6 +1,10 @@
 name: Test Build
 
 on:
+  push:
+    branches:
+      - master
+      - main
   pull_request:
     paths-ignore:
       - '**.md'
@@ -15,16 +19,22 @@ jobs:
         include:
           - arch: arm_cortex-a9_vfpv3-d16
             target: mvebu-cortexa9
+
           - arch: mips_24kc
             target: ath79-generic
+
           - arch: mipsel_24kc
             target: mt7621
+
           - arch: aarch64_cortex-a53
             target: mvebu-cortexa53
+
           - arch: arm_cortex-a15_neon-vfpv4
             target: armvirt-32
+
           - arch: i386_pentium-mmx
             target: x86-geode
+
           - arch: x86_64
             target: x86-64
 
@@ -39,17 +49,14 @@ jobs:
           large-packages: true
           docker-images: true
           swap-storage: true
-          apt: true
-          brew: true
-          port: true
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Determine branch name
         run: |
-          if [ -n "$GITHUB_BASE_REF" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             BRANCH="${GITHUB_BASE_REF#refs/heads/}"
           else
             BRANCH="${GITHUB_REF#refs/heads/}"
@@ -59,111 +66,122 @@ jobs:
 
       - name: Determine changed packages
         run: |
-          if [ -n "$GITHUB_BASE_REF" ]; then
-            BASE_REF="origin/$GITHUB_BASE_REF"
+          # only detect packages with changes
+          PKG_ROOTS=$(find . -name Makefile | \
+            grep -v ".*/src/Makefile" | \
+            sed -e 's@./\(.*\)/Makefile@\1/@')
+          
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BASE_REF="origin/${BRANCH}"
           else
             BASE_REF="HEAD^"
           fi
           
-          PKG_ROOTS=$(find . -name Makefile | \
-            grep -E "/(src)?/Makefile" | \
-            sed -e 's@/Makefile@@' -e 's@^\./@@' | \
-            sort -u)
-          
-          CHANGES=$(git diff --diff-filter=d --name-only $BASE_REF..HEAD)
-          
+          CHANGES=$(git diff --diff-filter=d --name-only $BASE_REF HEAD)
+
           PACKAGES=""
           for ROOT in $PKG_ROOTS; do
             for CHANGE in $CHANGES; do
-              if [[ "$CHANGE" == "$ROOT/"* ]] || [[ "$CHANGE" == "$ROOT/Makefile" ]]; then
-                PACKAGE_NAME=$(echo "$ROOT" | awk -F/ '{print $NF}')
-                PACKAGES+="$PACKAGE_NAME "
+              if [[ "$CHANGE" == "$ROOT"* ]]; then
+                PACKAGE_NAME=$(echo "$ROOT" | sed -e 's@\(.*\)/@\1@')
+                PACKAGES="$PACKAGES $PACKAGE_NAME"
                 break
               fi
             done
           done
           
+          # fallback to test packages if nothing explicitly changes
           PACKAGES="${PACKAGES:-luci-app-ssr-plus}"
-          
-          echo "Building packages: $PACKAGES"
+          # clear spaces
+          PACKAGES=$(echo $PACKAGES | xargs)
+
+          echo "Building $PACKAGES"
           echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
 
       - name: Build
-        uses: immortalwrt/gh-action-sdk@v5
+        uses: immortalwrt/gh-action-sdk@v7
         env:
           ARCH: ${{ matrix.arch }}
           FEEDNAME: packages_ci
           V: s
-        with:
           target: ${{ matrix.target }}
           packages: ${{ env.PACKAGES }}
 
       - name: Move created packages to project dir
-        run: |
-          mkdir -p artifacts/packages
-          cp -f bin/packages/${{ matrix.arch }}/packages_ci/*.ipk artifacts/packages/ 2>/dev/null || true
-          cp -f bin/packages/${{ matrix.arch }}/packages_ci/Packages* artifacts/ 2>/dev/null || true
-
-      - name: Collect build logs
-        run: |
-          mkdir -p artifacts/logs
-          cp -f logs/* artifacts/logs/ 2>/dev/null || true
-          cp -f .config artifacts/ 2>/dev/null || true
-          cp -f tmp/.config* artifacts/ 2>/dev/null || true
+        run: cp bin/packages/${{ matrix.arch }}/packages_ci/*.ipk . || true
 
       - name: Collect metadata
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-            PRNUMBER=$(echo $GITHUB_REF | awk -F/ '{print $3}')
+          MERGE_ID=$(git rev-parse --short HEAD)
+          
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BASE_ID=$(git rev-parse --short origin/$BRANCH)
+            HEAD_ID=$(git rev-parse --short HEAD)
+            PRNUMBER=${GITHUB_REF_NAME%/merge}
           else
-            PRNUMBER=""
+            BASE_ID=$(git rev-parse --short HEAD^)
+            HEAD_ID=$MERGE_ID
+            PRNUMBER="push-$MERGE_ID"
           fi
           
-          MERGE_ID=$(git rev-parse --short HEAD)
           echo "MERGE_ID=$MERGE_ID" >> $GITHUB_ENV
+          echo "BASE_ID=$BASE_ID" >> $GITHUB_ENV
+          echo "HEAD_ID=$HEAD_ID" >> $GITHUB_ENV
           echo "PRNUMBER=$PRNUMBER" >> $GITHUB_ENV
-          echo "ARCHIVE_NAME=${{matrix.arch}}-PR${PRNUMBER}-$MERGE_ID" >> $GITHUB_ENV
+          echo "ARCHIVE_NAME=${{ matrix.arch }}-$PRNUMBER" >> $GITHUB_ENV
 
       - name: Generate metadata
         run: |
-          cat << _EOF_ > PKG-INFO
-Metadata-Version: 2.1
-Name: ${{env.ARCHIVE_NAME}}
-Version: $BRANCH
-Author: $GITHUB_ACTOR
-Home-page: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/$PRNUMBER
-Download-URL: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
-Summary: $PACKAGES
-Platform: ${{ matrix.arch }}
+          shopt -s nullglob
+          IPKS=( *.ipk )
+          
+          cat << EOF > PKG-INFO
+          Metadata-Version: 2.1
+          Name: ${{ env.ARCHIVE_NAME }}
+          Version: $BRANCH
+          Author: $GITHUB_ACTOR
+          Home-page: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY
+          Download-URL: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          Summary: $PACKAGES
+          Platform: ${{ matrix.arch }}
 
-Packages for ImmortalWrt $BRANCH running on ${{matrix.arch}}, built from PR $PRNUMBER
-at commit $HEAD_ID, against $BRANCH at commit $BASE_ID, with merge SHA $MERGE_ID.
+          Packages for ImmortalWrt $BRANCH running on ${{ matrix.arch }}, built from $PRNUMBER
+          at commit $HEAD_ID, against $BRANCH at commit $BASE_ID.
 
-Modified packages:
-_EOF_
-          for p in $PACKAGES
-          do
+          Modified packages:
+          EOF
+          
+          for p in $PACKAGES; do
             echo "  $p" >> PKG-INFO
           done
+
           echo >> PKG-INFO
-          echo "Full file listing:" >> PKG-INFO
-          ls -al artifacts/packages/*.ipk 2>/dev/null || echo "No packages built" >> PKG-INFO
+          echo "Package count: ${#IPKS[@]}" >> PKG-INFO
+          echo "Package size summary:" >> PKG-INFO
+          for f in "${IPKS[@]}"; do
+            du -sh "$f" >> PKG-INFO
+          done
+
+          if [ ${#IPKS[@]} -eq 0 ]; then
+            echo "No packages built." >> PKG-INFO
+          fi
+
           cat PKG-INFO
 
       - name: Store packages
         uses: actions/upload-artifact@v4
         with:
-          name: ${{env.ARCHIVE_NAME}}-packages
+          name: ${{ env.ARCHIVE_NAME }}-packages
           path: |
-            artifacts/packages/
-            artifacts/Packages*
+            Packages
+            Packages.*
+            *.ipk
             PKG-INFO
 
       - name: Store logs
         uses: actions/upload-artifact@v4
         with:
-          name: ${{env.ARCHIVE_NAME}}-logs
+          name: ${{ env.ARCHIVE_NAME }}-logs
           path: |
-            artifacts/logs/
-            artifacts/.config*
+            logs/
             PKG-INFO

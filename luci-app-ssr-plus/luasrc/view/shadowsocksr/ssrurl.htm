@@ -96,6 +96,19 @@ function import_ssr_url(btn, urlname, sid) {
 		//var ssu = ssrurl.match(/ssr:\/\/([A-Za-z0-9_-]+)/i);
 		var ssu = ssrurl.split('://');
 		//console.log(ssu.length);
+		if (ssu[0] === "ss") {
+		    var queryStr = "";
+			if (ssu[1].indexOf("?") > -1) {
+			    queryStr = ssu[1].split("?")[1]; // 提取 ? 后面的参数
+				queryStr = queryStr.replace(/&([a-zA-Z]+);/g, '&'); // 转义 &amp; 为 &
+			}
+			var params = new URLSearchParams(queryStr);
+			if (params.get("type")) {
+			    // 替换协议头
+				ssrurl = ssrurl.replace(/^ss:\/\//i, "shadowsocks://");
+				var ssu = ssrurl.split('://');
+			}
+		}
 		var event = document.createEvent("HTMLEvents");
 		event.initEvent("change", true, true);
 		switch (ssu[0]) {
@@ -164,7 +177,7 @@ function import_ssr_url(btn, urlname, sid) {
 			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "ss":
-			var url0 = ssu[1] || "";
+			var url0 = ((ssu[1] || "").replace(/&([a-zA-Z]+);/g, '&').replace(/\s*#\s*/, '#').trim());
 			var param = "";
 
 			// 先分离 #（alias）
@@ -194,7 +207,7 @@ function import_ssr_url(btn, urlname, sid) {
 				var userInfoSplitIndex = userInfo.indexOf(":");
 				if(userInfoSplitIndex < 0) {
 					// 格式错误
-					s.innerHTML = "<font style='color:red'>Userinfo format error</font>";
+					s.innerHTML = "<font style='color:red'><%:Userinfo format error.%></font>";
 					break;
 				}
 				var method = userInfo.substring(0, userInfoSplitIndex);
@@ -217,7 +230,7 @@ function import_ssr_url(btn, urlname, sid) {
 				var decodedUrl0 = decodeURIComponent(url0);
 				var sstr = b64decsafe(decodedUrl0);
 				if (!sstr) {
-					s.innerHTML = "<font style='color:red'>Base64 sstr failed</font>";
+					s.innerHTML = "<font style='color:red'><%:Base64 sstr failed.%></font>";
 					break;
 				}
 
@@ -239,7 +252,7 @@ function import_ssr_url(btn, urlname, sid) {
 					var server = mNormal[3];
 					var port = mNormal[4];
 				} else {
-					s.innerHTML = "<font style='color:red'>SS URL base64 sstr format not recognized</font>";
+					s.innerHTML = "<font style='color:red'><%:SS URL base64 sstr format not recognized.%></font>";
 					break;
 				}
 
@@ -562,6 +575,151 @@ function import_ssr_url(btn, urlname, sid) {
 			);
 			dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.transport', event);
 			setElementValue('cbid.shadowsocksr.' + sid + '.vless_encryption', params.get("encryption") || "none");
+			if ([ "tls", "xtls", "reality" ].includes(params.get("security"))) {
+				setElementValue('cbid.shadowsocksr.' + sid + '.' + params.get("security"), true);
+				dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.' + params.get("security"), event);
+
+				if (params.get("security") === "tls") {
+					if (params.get("ech") && params.get("ech").trim() !== "") {
+						setElementValue('cbid.shadowsocksr.' + sid + '.enable_ech', true); // 设置 enable_ech 为 true
+						dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.enable_ech', event); // 触发事件
+						setElementValue('cbid.shadowsocksr.' + sid + '.ech_config', params.get("ech") || "");
+					}
+					if (params.get("allowInsecure") === "1") {
+						setElementValue('cbid.shadowsocksr.' + sid + '.insecure', true); // 设置 insecure 为 true
+						dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.insecure', event); // 触发事件
+					}
+				}
+				if (params.get("security") === "reality") {
+					setElementValue('cbid.shadowsocksr.' + sid + '.reality_publickey', params.get("pbk") ? decodeURIComponent(params.get("pbk")) : "");
+					setElementValue('cbid.shadowsocksr.' + sid + '.reality_shortid', params.get("sid") || "");
+					setElementValue('cbid.shadowsocksr.' + sid + '.reality_spiderx', params.get("spx") ? decodeURIComponent(params.get("spx")) : "");
+					if (params.get("pqv") && params.get("pqv").trim() !== "") {
+						setElementValue('cbid.shadowsocksr.' + sid + '.enable_mldsa65verify', true); // 设置 enable_mldsa65verify 为 true
+						dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.enable_mldsa65verify', event); // 触发事件
+						setElementValue('cbid.shadowsocksr.' + sid + '.reality_mldsa65verify', params.get("pqv") || "");
+					}
+				}
+				setElementValue('cbid.shadowsocksr.' + sid + '.tls_flow', params.get("flow") || "none");
+				dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.tls_flow', event);
+
+				setElementValue('cbid.shadowsocksr.' + sid + '.tls_alpn', params.get("alpn") || "");
+				setElementValue('cbid.shadowsocksr.' + sid + '.fingerprint', params.get("fp") || "");
+				setElementValue('cbid.shadowsocksr.' + sid + '.tls_host', params.get("sni") || "");
+			}
+			switch (params.get("type")) {
+			case "ws":
+				if (params.get("security") !== "tls") {
+					setElementValue('cbid.shadowsocksr.' + sid + '.ws_host', params.get("host") ? decodeURIComponent(params.get("host")) : "");
+				}
+				setElementValue('cbid.shadowsocksr.' + sid + '.ws_path', params.get("path") ? decodeURIComponent(params.get("path")) : "/");
+				break;
+			case "httpupgrade":
+				if (params.get("security") !== "tls") {
+					setElementValue('cbid.shadowsocksr.' + sid + '.httpupgrade_host', params.get("host") ? decodeURIComponent(params.get("host")) : "");
+				}
+				setElementValue('cbid.shadowsocksr.' + sid + '.httpupgrade_path', params.get("path") ? decodeURIComponent(params.get("path")) : "/");
+				break;
+			case "xhttp":
+			case "splithttp":
+				if (params.get("security") !== "tls") {
+					setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_host', params.get("host") ? decodeURIComponent(params.get("host")) : "");
+				}
+				setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_mode', params.get("mode") || "auto");
+				setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_path', params.get("path") ? decodeURIComponent(params.get("path")) : "/");
+				if (params.get("extra") && params.get("extra").trim() !== "") {
+					setElementValue('cbid.shadowsocksr.' + sid + '.enable_xhttp_extra', true); // 设置 enable_xhttp_extra 为 true
+					dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.enable_xhttp_extra', event); // 触发事件
+					setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_extra', params.get("extra") || "");
+				}
+				break;
+			case "kcp":
+				setElementValue('cbid.shadowsocksr.' + sid + '.kcp_guise', params.get("headerType") || "none");
+				setElementValue('cbid.shadowsocksr.' + sid + '.seed', params.get("seed") || "");
+				break;
+			case "http":
+			/* this is non-standard, bullshit */
+			case "h2":
+				setElementValue('cbid.shadowsocksr.' + sid + '.h2_host', params.get("host") ? decodeURIComponent(params.get("host")) : "");
+				setElementValue('cbid.shadowsocksr.' + sid + '.h2_path', params.get("path") ? decodeURIComponent(params.get("path")) : "");
+				break;
+			case "quic":
+				setElementValue('cbid.shadowsocksr.' + sid + '.quic_guise', params.get("headerType") || "none");
+				setElementValue('cbid.shadowsocksr.' + sid + '.quic_security', params.get("quicSecurity") || "none");
+				setElementValue('cbid.shadowsocksr.' + sid + '.quic_key', params.get("key") || "");
+				break;
+			case "grpc":
+				setElementValue('cbid.shadowsocksr.' + sid + '.serviceName', params.get("serviceName") || "");
+				setElementValue('cbid.shadowsocksr.' + sid + '.grpc_mode', params.get("mode") || "gun");
+				break;
+			case "tcp":
+			case "raw":
+				setElementValue('cbid.shadowsocksr.' + sid + '.tcp_guise', params.get("headerType") || "none");
+				dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.tcp_guise', event);
+				if (params.get("headerType") === "http") {
+					setElementValue('cbid.shadowsocksr.' + sid + '.http_host', params.get("host") ? decodeURIComponent(params.get("host")) : "");
+					setElementValue('cbid.shadowsocksr.' + sid + '.http_path', params.get("path") ? decodeURIComponent(params.get("path")) : "");
+				}
+				break;
+			}
+			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
+			return false;
+		case "shadowsocks":
+			try {
+				// 处理完整 ss:// 链接
+				var urlinfo = ssu[1].replace(/&([a-zA-Z]+);/g, '&').replace(/\s*#\s*/, '#').trim();
+				// 拆分 @，判断是否是 base64 userinfo 的格式
+				var parts = urlinfo.split("@");
+				if (parts.length > 1) {
+					// @ 前是 base64(method:password)，后面是 server:port?params
+					var userinfo = b64decsafe(parts[0]);
+					var sepIndex = userinfo.indexOf(":");
+					if (sepIndex > -1) {
+						method = userinfo.slice(0, sepIndex);
+						password = userinfo.slice(sepIndex + 1); 
+					}
+				}
+				var url = new URL("http://" + urlinfo);
+
+				var params = url.searchParams;
+
+			} catch(e) {
+				alert(e);
+				return false;
+			}
+			// Check if the elements exist before trying to modify them
+			function setElementValue(name, value) {
+				const element = document.getElementsByName(name)[0];
+				if (element) {
+					if (typeof value === 'boolean') {
+						element.checked = value;
+					} else {
+						element.value = value;
+					}
+				}
+			}
+			function dispatchEventIfExists(name, event) {
+				const element = document.getElementsByName(name)[0];
+				if (element) {
+					element.dispatchEvent(event);
+				}
+			}
+			setElementValue('cbid.shadowsocksr.' + sid + '.alias', url.hash ? decodeURIComponent(url.hash.slice(1)) : "");
+			setElementValue('cbid.shadowsocksr.' + sid + '.type', "v2ray");
+			dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.type', event);
+			setElementValue('cbid.shadowsocksr.' + sid + '.v2ray_protocol', "shadowsocks");
+			dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.v2ray_protocol', event);
+			setElementValue('cbid.shadowsocksr.' + sid + '.server', url.hostname);
+			setElementValue('cbid.shadowsocksr.' + sid + '.server_port', url.port || "80");
+			setElementValue('cbid.shadowsocksr.' + sid + '.password', password || url.username);
+			setElementValue('cbid.shadowsocksr.' + sid + '.transport', 
+				params.get("type") === "http" ? "h2" : 
+				(["xhttp", "splithttp"].includes(params.get("type")) ? "xhttp" :
+				(["tcp", "raw"].includes(params.get("type")) ? "raw" : 
+				(params.get("type") || "raw")))
+			);
+			dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.transport', event);
+			setElementValue('cbid.shadowsocksr.' + sid + '.encrypt_method_ss', method || params.get("encryption") || "none");
 			if ([ "tls", "xtls", "reality" ].includes(params.get("security"))) {
 				setElementValue('cbid.shadowsocksr.' + sid + '.' + params.get("security"), true);
 				dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.' + params.get("security"), event);
