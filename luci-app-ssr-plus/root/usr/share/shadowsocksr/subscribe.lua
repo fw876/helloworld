@@ -173,6 +173,34 @@ local function isCompleteJSON(str)
 	local success, _ = pcall(jsonParse, str)
 	return success
 end
+local function detectNodeType(rawContent)
+    -- 去掉 # 前后空格，处理 HTML 转义 &amp;
+    local content = trim(rawContent:gsub("&[a-zA-Z]+;", "&"):gsub("%s*#%s*", "#"))
+
+    -- 找到 # 分隔位置
+    local idx_sp = content:find("#") or 0
+    local info = content:sub(1, idx_sp > 0 and idx_sp - 1 or #content):gsub("/%?", "?")
+
+    -- 拆 base64 主体和 ? 参数部分
+    local uri_main, query_str = info:match("^([^?]+)%??(.*)$")
+
+    local params = {}
+    if query_str and query_str ~= "" then
+        for _, v in ipairs(split(query_str, '&')) do
+            local t = split(v, '=')
+            if #t >= 2 then
+                params[t[1]] = UrlDecode(t[2])
+            end
+        end
+    end
+
+    -- 判断是否是 Xray-SS 节点
+    if params["type"] then
+        return "shadowsocks"
+    else
+        return "ss"
+    end
+end
 -- 处理数据
 local function processData(szType, content)
 	local result = {type = szType, local_port = 1234, kcp_param = '--nocomp'}
@@ -180,6 +208,14 @@ local function processData(szType, content)
 	if not (szType == "sip008" or szType == "ssd") then
 		if not isCompleteJSON(content) then
 			return nil
+		end
+	end
+
+	-- 协议头识别
+	if szType == "ss" then
+		local nodeType = detectNodeType(content)
+		if nodeType == "shadowsocks" then
+			szType = "shadowsocks"  -- 替换类型
 		end
 	end
 
@@ -399,6 +435,7 @@ local function processData(szType, content)
 			result.security = info.security
 		end
 	elseif szType == "ss" then
+		local content = trim(content:gsub("&[a-zA-Z]+;", "&"):gsub("%s*#%s*", "#"))
 		local idx_sp = content:find("#") or 0
 		local alias = ""
 		if idx_sp > 0 then
@@ -761,6 +798,113 @@ local function processData(szType, content)
 		result.server_port = url.port
 		result.vmess_id = url.user
 		result.vless_encryption = params.encryption or "none"
+		result.transport = params.type or "raw"
+		if result.transport == "tcp" then
+			result.transport = "raw"
+		end
+		if result.transport == "splithttp" then
+			result.transport = "xhttp"
+		end
+		result.tls = (params.security == "tls" or params.security == "xtls") and "1" or "0"
+		if params.alpn and params.alpn ~= "" then
+			local alpn = {}
+			for v in params.alpn:gmatch("[^,]+") do
+				table.insert(alpn, v)
+			end
+			result.tls_alpn = alpn
+		end
+		result.tls_host = params.sni
+		result.tls_flow = (params.security == "tls" or params.security == "reality") and params.flow or nil
+		result.fingerprint = params.fp
+		result.reality = (params.security == "reality") and "1" or "0"
+		result.reality_publickey = params.pbk and UrlDecode(params.pbk) or nil
+		result.reality_shortid = params.sid
+		result.reality_spiderx = params.spx and UrlDecode(params.spx) or nil
+		-- 检查 ech 参数是否存在且非空
+		result.enable_ech = (params.ech and params.ech ~= "") and "1" or nil
+		result.ech_config = (params.ech and params.ech ~= "") and params.ech or nil
+		-- 检查 pqv 参数是否存在且非空
+		result.enable_mldsa65verify = (params.pqv and params.pqv ~= "") and "1" or nil
+		result.reality_mldsa65verify = (params.pqv and params.pqv ~= "") and params.pqv or nil
+		if result.transport == "ws" then
+			result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+			result.ws_path = params.path and UrlDecode(params.path) or "/"
+		elseif result.transport == "httpupgrade" then
+			result.httpupgrade_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+			result.httpupgrade_path = params.path and UrlDecode(params.path) or "/"
+		elseif result.transport == "xhttp" or result.transport == "splithttp" then
+			result.xhttp_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+			result.xhttp_mode = params.mode or "auto"
+			result.xhttp_path = params.path and UrlDecode(params.path) or "/"
+			-- 检查 extra 参数是否存在且非空
+			result.enable_xhttp_extra = (params.extra and params.extra ~= "") and "1" or nil
+			result.xhttp_extra = (params.extra and params.extra ~= "") and params.extra or nil
+			-- 尝试解析 JSON 数据
+			local success, Data = pcall(jsonParse, params.extra or "")
+			if success and type(Data) == "table" then
+				local address = (Data.extra and Data.extra.downloadSettings and Data.extra.downloadSettings.address)
+					or (Data.downloadSettings and Data.downloadSettings.address)
+				result.download_address = address and address ~= "" and address or nil
+			else
+				-- 如果解析失败，清空下载地址
+				result.download_address = nil
+			end
+		-- make it compatible with bullshit, "h2" transport is non-existent at all
+		elseif result.transport == "http" or result.transport == "h2" then
+			result.transport = "h2"
+			result.h2_host = params.host and UrlDecode(params.host) or nil
+			result.h2_path = params.path and UrlDecode(params.path) or nil
+		elseif result.transport == "kcp" then
+			result.kcp_guise = params.headerType or "none"
+			result.seed = params.seed
+			result.mtu = 1350
+			result.tti = 50
+			result.uplink_capacity = 5
+			result.downlink_capacity = 20
+			result.read_buffer_size = 2
+			result.write_buffer_size = 2
+		elseif result.transport == "quic" then
+			result.quic_guise = params.headerType or "none"
+			result.quic_security = params.quicSecurity or "none"
+			result.quic_key = params.key
+		elseif result.transport == "grpc" then
+			result.serviceName = params.serviceName
+			result.grpc_mode = params.mode or "gun"
+		elseif result.transport == "tcp" or result.transport == "raw" then
+			result.tcp_guise = params.headerType or "none"
+			if result.tcp_guise == "http" then
+				result.tcp_host = params.host and UrlDecode(params.host) or nil
+				result.tcp_path = params.path and UrlDecode(params.path) or nil
+			end
+		end
+	elseif szType == "shadowsocks" then
+		local content = trim(content:gsub("&[a-zA-Z]+;", "&"):gsub("%s*#%s*", "#"))
+		local idx_sp = content:find("#") or 0
+		local alias = ""
+		if idx_sp > 0 then
+        	alias = UrlDecode(content:sub(idx_sp + 1))
+		end
+		local info = content:sub(1, idx_sp > 0 and idx_sp - 1 or #content)
+		local url = URL.parse("http://" .. info)
+		local params = url.query
+
+		result.alias = alias
+		result.type = "v2ray"
+		result.v2ray_protocol = "shadowsocks"
+		result.server = url.host
+		result.server_port = url.port
+
+		-- 判断 @ 前部分是否为 Base64
+		local is_base64_decoded = base64Decode(UrlDecode(url.user))
+		if is_base64_decoded:find(":") then
+        	-- 新格式：method:password
+        	result.encrypt_method_ss, result.password = is_base64_decoded:match("^(.-):(.*)$")
+		else
+        	-- 旧格式：UUID 直接作为密码
+        	result.password = url.user
+        	result.encrypt_method_ss = params.encryption or "none"
+		end
+
 		result.transport = params.type or "raw"
 		if result.transport == "tcp" then
 			result.transport = "raw"
