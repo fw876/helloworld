@@ -221,6 +221,10 @@ msgstr "【百度】连通性检查"
 msgid "Baidu Public DNS (180.76.76.76)"
 msgstr ""
 
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:233
+msgid "Base64 sstr failed."
+msgstr "Base64 解码失败。"
+
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1034
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1044
 msgid "BitTorrent (uTP)"
@@ -980,16 +984,17 @@ msgstr ""
 msgid "If you have a self-signed certificate,please check the box"
 msgstr "如果你使用自签证书，请选择"
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:661
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:819
 msgid "Import"
 msgstr "导入配置信息"
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:164
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:307
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:339
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:435
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:522
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:652
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:177
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:320
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:352
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:448
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:535
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:665
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:810
 msgid "Import configuration information successfully."
 msgstr "导入配置信息成功。"
 
@@ -1009,7 +1014,7 @@ msgstr "接口控制"
 msgid "Invalid JSON format"
 msgstr "无效的 JSON 格式"
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:655
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:813
 msgid "Invalid format."
 msgstr "无效的格式。"
 
@@ -1598,6 +1603,10 @@ msgstr "运行中"
 msgid "Running Mode"
 msgstr "运行模式"
 
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:255
+msgid "SS URL base64 sstr format not recognized."
+msgstr "无法识别 SS URL 的 Base64 格式。"
+
 #: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:13
 msgid "SSR Client"
 msgstr "客户端"
@@ -2069,6 +2078,10 @@ msgstr "用户已取消。"
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:188
 msgid "User-Agent"
 msgstr "用户代理(User-Agent)"
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:210
+msgid "Userinfo format error."
+msgstr "用户信息格式错误。"
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:402
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/server-config.lua:110

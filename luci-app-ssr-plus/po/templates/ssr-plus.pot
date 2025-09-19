@@ -219,6 +219,10 @@ msgstr ""
 msgid "Baidu Public DNS (180.76.76.76)"
 msgstr ""
 
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:233
+msgid "Base64 sstr failed."
+msgstr ""
+
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1034
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1044
 msgid "BitTorrent (uTP)"
@@ -969,16 +973,17 @@ msgstr ""
 msgid "If you have a self-signed certificate,please check the box"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:661
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:819
 msgid "Import"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:164
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:307
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:339
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:435
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:522
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:652
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:177
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:320
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:352
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:448
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:535
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:665
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:810
 msgid "Import configuration information successfully."
 msgstr ""
 
@@ -998,7 +1003,7 @@ msgstr ""
 msgid "Invalid JSON format"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:655
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:813
 msgid "Invalid format."
 msgstr ""
 
@@ -1585,6 +1590,10 @@ msgstr ""
 msgid "Running Mode"
 msgstr ""
 
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:255
+msgid "SS URL base64 sstr format not recognized."
+msgstr ""
+
 #: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:13
 msgid "SSR Client"
 msgstr ""
@@ -2052,6 +2061,10 @@ msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:188
 msgid "User-Agent"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/ssrurl.htm:210
+msgid "Userinfo format error."
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:402
