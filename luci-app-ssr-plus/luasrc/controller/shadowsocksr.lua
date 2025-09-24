@@ -69,6 +69,10 @@ function act_ping()
 		e.ping = luci.sys.exec(string.format("echo -n $(tcping -q -c 1 -i 1 -t 2 -p %s %s 2>&1 | grep -o 'time=[0-9]*' | awk -F '=' '{print $2}') 2>/dev/null", port, domain))
 		if (e.ping == "") then
 			e.ping = luci.sys.exec("echo -n $(ping -c 1 -W 1 %q 2>&1 | grep -o 'time=[0-9]*' | awk -F '=' '{print $2}') 2>/dev/null" % domain)
+			if (e.ping == "") then
+				-- UDP ping test using nping
+				e.ping = luci.sys.exec(string.format("echo -n $(nping --udp -c 1 -p %s %s 2>/dev/null | grep -o 'Avg rtt: [0-9.]*ms' | awk '{print $3}' | sed 's/ms//' | head -1) 2>/dev/null", port, domain))
+			end
 		end
 	end
 	if (iret == 0) then
