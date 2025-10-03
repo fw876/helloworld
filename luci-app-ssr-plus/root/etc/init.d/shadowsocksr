@@ -50,6 +50,7 @@ tmp_shunt_port="303"       #shunt temporary port
 tmp_shunt_local_port="304" #shunt socks temporary port
 tmp_shunt_dns_port="305"   #shunt dns2socks temporary port
 tmp_tcp_local_port="306"   #tcp socks temporary port
+mosdns_config_file=
 
 server_count=0
 redir_tcp=0
@@ -66,7 +67,7 @@ PS="/bin/busybox ps"
 
 uci_get_by_name() {
 	local ret=$(uci get $NAME.$1.$2 2>/dev/null)
-	echo ${ret:=$3}
+	echo "${ret:=$3}"
 }
 
 uci_get_by_type() {
@@ -86,7 +87,7 @@ uci_set_by_type() {
 
 uci_get_by_cfgid() {
 	local ret=$(uci show $NAME.@$1[0].$2 | awk -F '.' '{print $2}' 2>/dev/null)
-	echo ${ret:=$3}
+	echo "${ret:=$3}"
 }
 
 get_host_ip() {
@@ -108,6 +109,12 @@ get_host_ip() {
 	fi
 
 	echo $ip
+}
+
+jq_ssr() {
+	temp_file="$(echo "$2" | awk -F '.' '{print $1"-temp."$2}')"
+	cat $2 | jq "$1" > "$temp_file"
+	mv "$temp_file" "$2"
 }
 
 clean_log() {
@@ -203,12 +210,51 @@ start_dns() {
 	local dnsproxy_dnsserver="$(uci_get_by_type global parse_method)"
 	if [ -n "$dnsproxy_dnsserver" ] && [ "$dnsproxy_dnsserver" != "parse_file" ]; then
 		dnsserver="$(uci_get_by_type global dnsproxy_tunnel_forward 8.8.4.4:53)"
-	elif [ -n "$ssrplus_dns" ] && [ "$ssrplus_dns" = "6" ]; then
+	elif [ -n "$ssrplus_dns" ] && [ "$ssrplus_dns" = "7" ]; then
 		dnsserver="$(uci_get_by_type global chinadns_ng_tunnel_forward 8.8.4.4:53)"
 	else
 		dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
 	fi
 	local run_mode="$(uci_get_by_type global run_mode)"
+
+	start_pdnsd() {
+		local usr_dns="$1"
+		local usr_port="$2"
+		if [ ! -f "$TMP_PATH/pdnsd/pdnsd.cache" ]; then
+			mkdir -p $TMP_PATH/pdnsd
+			touch $TMP_PATH/pdnsd/pdnsd.cache
+			chown -R nobody:nogroup $TMP_PATH/pdnsd
+		fi
+		cat <<-EOF >$TMP_PATH/pdnsd.conf
+			global{
+			perm_cache=1024;
+			cache_dir="$TMP_PATH/pdnsd";
+			pid_file="/var/run/pdnsd.pid";
+			run_as="nobody";
+			server_ip=127.0.0.1;
+			server_port=$dns_port;
+			status_ctl=on;
+			query_method=tcp_only;
+			min_ttl=1h;
+			max_ttl=1w;
+			timeout=10;
+			neg_domain_pol=on;
+			proc_limit=2;
+			procq_limit=8;
+			par_queries=1;
+			}
+			server{
+			label="ssr-usrdns";
+			ip=$usr_dns;
+			port=$usr_port;
+			timeout=6;
+			uptest=none;
+			interval=10m;
+			purge_cache=off;
+			}
+		EOF
+		ln_start_bin $(first_type pdnsd) pdnsd -c $TMP_PATH/pdnsd.conf
+	}
 
 	if [ "$ssrplus_dns" != "0" ]; then
 		if [ -n "$dnsserver" ]; then
@@ -231,26 +277,88 @@ start_dns() {
 			pdnsd_enable_flag=3
 			;;
 		4)
-			local mosdns_ipv6="$(uci_get_by_type global mosdns_ipv6)"
-			local mosdns_dnsserver="$(uci_get_by_type global tunnel_forward_mosdns)"
-			output=$(for i in $(echo $mosdns_dnsserver | sed "s/,/ /g"); do
-				dnsserver=${i%:*}
-				dnsserver=${i##*/}
-				add_dns_into_ipset $run_mode $dnsserver
-				echo "            - addr: $i"
-				echo "              enable_pipeline: true"
-			done)
-
-			awk -v line=14 -v text="$output" 'NR == line+1 {print text} 1' /etc/ssrplus/mosdns-config.yaml | sed "s/DNS_PORT/$dns_port/g" > $TMP_PATH/mosdns-config.yaml
-			if [ "$mosdns_ipv6" == "0" ]; then
-				sed -i "s/DNS_MODE/main_sequence_with_IPv6/g" $TMP_PATH/mosdns-config.yaml
-			else
-				sed -i "s/DNS_MODE/main_sequence_disable_IPv6/g" $TMP_PATH/mosdns-config.yaml
-			fi
-			ln_start_bin $(first_type mosdns) mosdns start -c $TMP_PATH/mosdns-config.yaml
+			local dns_server=$(echo "$dnsserver" | awk -F ':' '{print $1}')
+			local dnsport=$(echo "$dnsserver" | awk -F ':' '{print $2}')
+			start_pdnsd $dns_server $dnsport
 			pdnsd_enable_flag=4
 			;;
+			
 		5)
+			local mosdns_disable_ipv6="$(uci_get_by_type global mosdns_disable_ipv6)"
+			local mosdns_dnsserver="$(uci_get_by_type global tunnel_forward_mosdns)"
+			local chinadns_mosdns="$(uci_get_by_type global chinadns_forward_mosdns)"
+			local mosdns_dnsleak="$(uci_get_by_type global mosdns_dnsleak)"
+			local netflix_enable="$(uci_get_by_type global netflix_enable)"
+			if [ "$run_mode" = "router" ] && [ -n "$chinadns_mosdns" ]; then
+				mosdns_config_file="$TMP_PATH/mosdns-config-chinadns.json"
+				cp /etc/ssrplus/mosdns-config-chinadns.json $mosdns_config_file
+				tmp=$(for i in $(echo $mosdns_dnsserver | sed "s/,/ /g"); do
+					dnsserver=${i%:*}
+					dnsserver=${i##*/}
+					add_dns_into_ipset $run_mode $dnsserver
+					jq_ssr '.plugins[4].args.upstreams += [{"addr":"'"${i}"'","enable_pipeline":"true"}]' $mosdns_config_file
+				done)
+
+				if [ "$chinadns_mosdns" = "wan" ]; then
+					wandns=$(ifstatus wan | jsonfilter -e '@["dns-server"]' | sed 's/\[//g; s/\]//g' | sed 's/"//g' | sed 's/ //g' | sed 's/,/ /g')
+					tmp=$(for i in $(echo $wandns); do
+						i="udp://$i:53"
+						jq_ssr '.plugins[5].args.upstreams += [{"addr":"'"${i}"'"}]' $mosdns_config_file
+					done)
+				else
+					tmp=$(for i in $(echo $chinadns_mosdns | sed "s/,/ /g"); do
+						jq_ssr '.plugins[5].args.upstreams += [{"addr":"'"${i}"'"}]' $mosdns_config_file
+					done)
+				fi
+
+				if [ "$mosdns_disable_ipv6" == "0" ]; then
+					jq_ssr '.plugins[10].args[0].exec="$remote_sequence_with_IPv6" | .plugins[12].args[0].exec="$remote_sequence_with_IPv6"' $mosdns_config_file
+				else
+					jq_ssr '.plugins[10].args[0].exec="$remote_sequence_disable_IPv6" | .plugins[12].args[0].exec="$remote_sequence_disable_IPv6"' $mosdns_config_file
+				fi
+
+				if [ "$mosdns_dnsleak" != "0" ]; then
+					jq_ssr '.plugins[13].args.primary="query_is_remote_ip"' $mosdns_config_file
+				fi
+
+				jq_ssr '.plugins[16].args.listen="0.0.0.0:'${dns_port}'" | .plugins[17].args.listen="0.0.0.0:'${dns_port}'"' $mosdns_config_file
+				
+				if [ "$netflix_enable" == 1 ]; then
+					jq_ssr '.plugins |= (.[:4] + [{"tag": "netflix_domain", "type": "domain_set", "args": {"files": ["/etc/ssrplus/netflix.list"]}}] + .[4:])' $mosdns_config_file
+					jq_ssr '.plugins |= (.[:7] + [{"tag": "forward_netflix", "type": "forward", "args": {"upstreams": [{"addr":"udp://127.0.0.1:'"${tmp_shunt_dns_port}"'"}]}}] + .[7:])' $mosdns_config_file
+					jq_ssr '.plugins |= (.[:11] + [{"tag": "netflix_sequence", "type": "sequence", "args": [{"exec": "$forward_netflix"}]}] + .[11:])' $mosdns_config_file
+					jq_ssr '.plugins |= (.[:14] + [{"tag": "query_is_netflix_domain", "type": "sequence", "args": [{"matches": "qname $netflix_domain", "exec": "$netflix_sequence"}, {"exec": "ipset netflix,inet,24"}]}] + .[14:])' $mosdns_config_file
+					jq_ssr '.plugins[19].args |= (.[:3] + [{"exec": "$query_is_netflix_domain"}, {"exec": "jump has_resp_sequence"}] + .[3:])' $mosdns_config_file
+				fi
+
+				pdnsd_enable_flag=5
+				ln_start_bin $(first_type mosdns) mosdns start -c $mosdns_config_file
+				cat <<-EOF >> "$TMP_DNSMASQ_PATH/chinadns_fixed_server.conf"
+					no-poll
+					no-resolv
+					server=127.0.0.1#$dns_port
+				EOF
+			else
+				mosdns_config_file="$TMP_PATH/mosdns-config.json"
+				cp /etc/ssrplus/mosdns-config.json $mosdns_config_file
+				tmp=$(for i in $(echo $mosdns_dnsserver | sed "s/,/ /g"); do
+					dnsserver=${i%:*}
+					dnsserver=${i##*/}
+					add_dns_into_ipset $run_mode $dnsserver
+					jq_ssr '.plugins[1].args.upstreams += [{"addr":"'"${i}"'","enable_pipeline":"true"}]' $mosdns_config_file
+				done)
+
+				if [ "$mosdns_disable_ipv6" == "0" ]; then
+					jq_ssr '.plugins[4].args.entry="main_sequence_with_IPv6" | .plugins[5].args.entry="main_sequence_with_IPv6"' $mosdns_config_file
+				else
+					jq_ssr '.plugins[4].args.entry="main_sequence_disable_IPv6" | .plugins[5].args.entry="main_sequence_disable_IPv6"' $mosdns_config_file
+				fi
+				jq_ssr '.plugins[4].args.listen="0.0.0.0:'${dns_port}'" | .plugins[5].args.listen="0.0.0.0:'${dns_port}'"' $mosdns_config_file
+				pdnsd_enable_flag=5
+				ln_start_bin $(first_type mosdns) mosdns start -c $mosdns_config_file
+			fi
+			;;
+		6)
 			dnsproxy_ipv6="$(uci_get_by_type global dnsproxy_ipv6)"
 			if [ "$dnsproxy_ipv6" -eq "1" ]; then
 				disabled_ipv6="--ipv6-disabled"
@@ -303,13 +411,13 @@ start_dns() {
 
 				if [ -n "$dnsproxy_dnsserver_file" ] && [ -s "$dnsproxy_dnsserver_file" ]; then
 					local upstreams_logic_mode="$(uci_get_by_type global upstreams_logic_mode)"
-					ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port  -p $dns_port -u $dnsproxy_dnsserver_file $disabled_ipv6 --cache --cache-min-ttl=3600 --upstream-mode=$upstreams_logic_mode
+					ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_dns_port -p $dns_port -u $dnsproxy_dnsserver_file $disabled_ipv6 --cache --cache-min-ttl=3600 --upstream-mode=$upstreams_logic_mode
 				fi
 			fi
 			echolog "DNSPROXY query and cache Started!"
-			pdnsd_enable_flag=5
+			pdnsd_enable_flag=6
 			;;
-		6)
+		7)
 			local chinadns_ng_proto="$(uci_get_by_type global chinadns_ng_proto)"
 			local chinadns_ng_dns=""
 			# 遍历每个 DNS 服务器
@@ -323,14 +431,14 @@ start_dns() {
 				# 根据协议类型格式化服务器地址
 				case "$chinadns_ng_proto" in
 					"none")
-            					chinadns_ng_server="${chinadns_ng_ip}#${chinadns_ng_port}"
-            					;;
+						chinadns_ng_server="${chinadns_ng_ip}#${chinadns_ng_port}"
+						;;
 					"tls")
-            					chinadns_ng_server="${chinadns_ng_proto}://${chinadns_ng_ip}#${chinadns_ng_tls_port}"
-            					;;
+						chinadns_ng_server="${chinadns_ng_proto}://${chinadns_ng_ip}#${chinadns_ng_tls_port}"
+						;;
 					*)
-            					chinadns_ng_server="${chinadns_ng_proto}://${chinadns_ng_ip}#${chinadns_ng_port}"
-            					;;
+						chinadns_ng_server="${chinadns_ng_proto}://${chinadns_ng_ip}#${chinadns_ng_port}"
+						;;
 				esac
 				# 添加到参数列表
 				chinadns_ng_dns="${chinadns_ng_dns} -t ${chinadns_ng_server}"
@@ -339,7 +447,7 @@ start_dns() {
 			dnsserver="$chinadns_ng_dns"
 			ln_start_bin $(first_type chinadns-ng) chinadns-ng -b 127.0.0.1 -l $tmp_dns_port -l $dns_port -p 3 -d gfw $dnsserver -N --filter-qtype 64,65 -f -r --cache 4096 --cache-stale 86400 --cache-refresh 20
 			echolog "ChinaDNS-NG query and cache Started!"
-			pdnsd_enable_flag=6
+			pdnsd_enable_flag=7
 			;;
 		esac
 
@@ -575,6 +683,8 @@ start_udp() {
 	hysteria2)
 		gen_config_file $UDP_RELAY_SERVER $type 2 $tmp_udp_port
 		ln_start_bin $(first_type hysteria) hysteria client --config $udp_config_file
+		# echolog "UDP TPROXY Relay:$($(first_type "hysteria") version | awk '{print $1,$2}') Started!"
+		# echolog "UDP TPROXY Relay:$($(first_type "hysteria") version | awk '{print "Hhysteria2: " $2}' | head -9 | tail +9) Started!"
 		echolog "UDP TPROXY Relay:$($(first_type "hysteria") version | grep Version | awk '{print "Hysteria2: " $2}') Started!"
 		;;
 	tuic)
@@ -641,21 +751,21 @@ shunt_dns_command() {
 		echolog "DNS2SOCKS Rust Shunt query Started!"
 		;;
 	3)
-		local shunt_mosdns_ipv6="$(uci_get_by_type global shunt_mosdns_ipv6)"
+		local shunt_mosdns_disable_ipv6="$(uci_get_by_type global shunt_mosdns_disable_ipv6)"
 		local shunt_mosdns_dnsserver="$(uci_get_by_type global shunt_mosdns_dnsserver)"
-		output=$(for i in $(echo $shunt_mosdns_dnsserver | sed "s/,/ /g"); do
-			echo "            - addr: $i"
-			echo "              socks5: \"127.0.0.1:$tmp_port\""
-			echo "              enable_pipeline: true"
+		mosdns_shunt_config_file="$TMP_PATH/mosdns-config-shunt.json"
+		cp /etc/ssrplus/mosdns-config.json $mosdns_shunt_config_file
+		tmp=$(for i in $(echo $shunt_mosdns_dnsserver | sed "s/,/ /g"); do
+			jq_ssr '.plugins[1].args.upstreams += [{"addr":"'"${i}"'","socks5":"127.0.0.1:'"${tmp_port}"'","enable_pipeline":"true"}]' $mosdns_shunt_config_file
 		done)
-		awk -v line=14 -v text="$output" 'NR == line+1 {print text} 1' /etc/ssrplus/mosdns-config.yaml | sed "s/DNS_PORT/$tmp_shunt_dns_port/g" > $TMP_PATH/mosdns-config-shunt.yaml
 
-		if [ "$shunt_mosdns_ipv6" == "0" ]; then
-			sed -i "s/DNS_MODE/main_sequence_with_IPv6/g" $TMP_PATH/mosdns-config-shunt.yaml
+		if [ "$shunt_mosdns_disable_ipv6" == "0" ]; then
+			jq_ssr '.plugins[4].args.entry="main_sequence_with_IPv6" | .plugins[5].args.entry="main_sequence_with_IPv6"' $mosdns_shunt_config_file
 		else
-			sed -i "s/DNS_MODE/main_sequence_disable_IPv6/g" $TMP_PATH/mosdns-config-shunt.yaml
+			jq_ssr '.plugins[4].args.entry="main_sequence_disable_IPv6" | .plugins[5].args.entry="main_sequence_disable_IPv6"' $mosdns_shunt_config_file
 		fi
-		ln_start_bin $(first_type mosdns) mosdns start -c $TMP_PATH/mosdns-config-shunt.yaml
+		jq_ssr '.plugins[4].args.listen="0.0.0.0:'${tmp_shunt_dns_port}'" | .plugins[5].args.listen="0.0.0.0:'${tmp_shunt_dns_port}'"' $mosdns_shunt_config_file
+		ln_start_bin $(first_type mosdns) mosdns start -c $mosdns_shunt_config_file
 		;;
 	4)
 		shunt_dnsproxy_ipv6="$(uci_get_by_type global shunt_dnsproxy_ipv6)"
@@ -729,14 +839,14 @@ shunt_dns_command() {
 			# 根据协议类型格式化服务器地址
 			case "$chinadns_ng_shunt_proto" in
 				"none")
-            				chinadns_ng_shunt_server="${chinadns_ng_shunt_ip}#${chinadns_ng_shunt_port}"
-            				;;
+					chinadns_ng_shunt_server="${chinadns_ng_shunt_ip}#${chinadns_ng_shunt_port}"
+					;;
 				"tls")
-            				chinadns_ng_shunt_server="${chinadns_ng_shunt_proto}://${chinadns_ng_shunt_ip}#${chinadns_ng_shunt_tls_port}"
-            				;;
+					chinadns_ng_shunt_server="${chinadns_ng_shunt_proto}://${chinadns_ng_shunt_ip}#${chinadns_ng_shunt_tls_port}"
+					;;
 				*)
-            				chinadns_ng_shunt_server="${chinadns_ng_shunt_proto}://${chinadns_ng_shunt_ip}#${chinadns_ng_shunt_port}"
-            				;;
+					chinadns_ng_shunt_server="${chinadns_ng_shunt_proto}://${chinadns_ng_shunt_ip}#${chinadns_ng_shunt_port}"
+					;;
 			esac
 			# 添加到参数列表
 			chinadns_ng_shunt_dns="${chinadns_ng_shunt_dns} -t ${chinadns_ng_shunt_server}"
@@ -863,6 +973,8 @@ start_shunt() {
 		fi
 		ln_start_bin $(first_type hysteria) hysteria client --config $shunt_config_file
 		shunt_dns_command $tmp_port
+		# echolog "shunt:$($(first_type hysteria) version | awk '{print $1,$2}') Started!"
+		# echolog "shunt:$($(first_type hysteria) version | awk '{print "Hhysteria2: " $2}' | head -9 | tail +9) Started!"
 		echolog "shunt:$($(first_type hysteria) version | grep Version | awk '{print "Hysteria2: " $2}') Started!"
 		;;
 	tuic)
@@ -974,6 +1086,8 @@ start_local() {
 		if [ "$_local" == "2" ]; then
 			gen_config_file $LOCAL_SERVER $type 4 0 $local_port
 			ln_start_bin $(first_type hysteria) hysteria client --config $local_config_file
+			# echolog "Global_Socks5:$($(first_type hysteria) version | awk '{print $1,$2}') Started!"
+			# echolog "Global_Socks5:$($(first_type hysteria) version | awk '{print "Hhysteria2: " $2}' | head -9 | tail +9) Started!"
 			echolog "Global_Socks5:$($(first_type hysteria) version | grep Version | awk '{print "Hysteria2: " $2}') Started!"
 		fi
 		;;
@@ -1081,6 +1195,8 @@ Start_Run() {
 	hysteria2)
 		gen_config_file $GLOBAL_SERVER $type 1 $tcp_port $socks_port
 		ln_start_bin $(first_type hysteria) hysteria client --config $tcp_config_file
+		# echolog "Main node:$($(first_type hysteria) version | awk '{print $1,$2}') Started!"
+		# echolog "Main node:$($(first_type hysteria) version | awk '{print "Hhysteria2: " $2}' | head -9 | tail +9) Started!"
 		echolog "Main node:$($(first_type hysteria) version | grep Version | awk '{print "Hysteria2: " $2}') Started!"
 		;;
 	tuic)
@@ -1258,8 +1374,18 @@ start_server() {
 		[ "$(uci_get_by_name $1 enable 0)" == "0" ] && return 1
 		let server_count=server_count+1
 		if [ "$server_count" == "1" ]; then
-			if ! (iptables-save -t filter | grep SSR-SERVER-RULE >/dev/null); then
-				iptables -N SSR-SERVER-RULE && iptables -t filter -I INPUT -j SSR-SERVER-RULE
+			if command -v nft >/dev/null 2>&1; then
+				# nftables / fw4
+				if ! nft list chain inet fw4 SSR-SERVER-RULE >/dev/null 2>&1; then
+					nft add chain inet fw4 SSR-SERVER-RULE
+					nft insert rule inet fw4 input jump SSR-SERVER-RULE
+				fi
+			else
+				# iptables / fw3
+				if ! (iptables-save -t filter | grep -q "SSR-SERVER-RULE"); then
+					iptables -N SSR-SERVER-RULE
+					iptables -t filter -I INPUT -j SSR-SERVER-RULE
+				fi
 			fi
 		fi
 		local type=$(uci_get_by_name $1 type)
@@ -1287,8 +1413,16 @@ start_server() {
 			echolog "Server:Socks5 Server$server_count Started!"
 			;;
 		esac
-		iptables -t filter -A SSR-SERVER-RULE -p tcp --dport $(uci_get_by_name $1 server_port) -j ACCEPT
-		iptables -t filter -A SSR-SERVER-RULE -p udp --dport $(uci_get_by_name $1 server_port) -j ACCEPT
+		server_port=$(uci_get_by_name $1 server_port)
+		if command -v nft >/dev/null 2>&1; then
+			# nftables / fw4
+			nft add rule inet fw4 SSR-SERVER-RULE tcp dport $server_port accept
+			nft add rule inet fw4 SSR-SERVER-RULE udp dport $server_port accept
+		else
+			# iptables / fw3
+			iptables -t filter -A SSR-SERVER-RULE -p tcp --dport $server_port -j ACCEPT
+			iptables -t filter -A SSR-SERVER-RULE -p udp --dport $server_port -j ACCEPT
+		fi
 		return 0
 	}
 	gen_serv_include() {
@@ -1297,17 +1431,37 @@ start_server() {
 		if [ ! -f $FWI ]; then
 			echo '#!/bin/sh' >$FWI
 		fi
-		extract_rules() {
-			echo "*filter"
-			iptables-save -t filter | grep SSR-SERVER-RULE | sed -e "s/^-A INPUT/-I INPUT/"
-			echo 'COMMIT'
-		}
-		cat <<-EOF >>$FWI
-			iptables-save -c | grep -v "SSR-SERVER" | iptables-restore -c
-			iptables-restore -n <<-EOT
-			$(extract_rules)
-			EOT
-		EOF
+		if command -v nft >/dev/null 2>&1; then
+			# nftables / fw4
+			extract_rules() {
+				nft list chain inet fw4 SSR-SERVER-RULE 2>/dev/null | \
+					grep -v 'chain SSR-SERVER-RULE' | grep -v '^\s*{' | grep -v '^\s*}' | sed 's/ counter//g'
+			}
+			cat <<-EOF >>$FWI
+				nft flush chain inet fw4 SSR-SERVER-RULE 2>/dev/null || true
+				nft -f - <<-EOT
+				table inet fw4 {
+					chain SSR-SERVER-RULE {
+						type filter hook input priority 0; policy accept;
+						$(extract_rules)
+					}
+				}
+				EOT
+			EOF
+		else
+			# iptables / fw3
+			extract_rules() {
+				echo "*filter"
+				iptables-save -t filter | grep SSR-SERVER-RULE | sed -e "s/^-A INPUT/-I INPUT/"
+				echo 'COMMIT'
+			}
+			cat <<-EOF >>$FWI
+				iptables-save -c | grep -v "SSR-SERVER" | iptables-restore -c
+				iptables-restore -n <<-EOT
+				$(extract_rules)
+				EOT
+			EOF
+		fi
 	}
 
 	config_load $NAME
@@ -1447,9 +1601,17 @@ stop() {
 	/usr/bin/ssr-rules -f
 	local srulecount=$(iptables -L | grep SSR-SERVER-RULE | wc -l)
 	if [ $srulecount -gt 0 ]; then
-		iptables -F SSR-SERVER-RULE
-		iptables -t filter -D INPUT -j SSR-SERVER-RULE
-		iptables -X SSR-SERVER-RULE 2>/dev/null
+		if command -v nft >/dev/null 2>&1; then
+			# nftables / fw4
+			nft flush chain inet fw4 SSR-SERVER-RULE 2>/dev/null || true
+			nft delete rule inet fw4 input jump SSR-SERVER-RULE 2>/dev/null || true
+			nft delete chain inet fw4 SSR-SERVER-RULE 2>/dev/null || true
+		else
+			# iptables / fw3
+			iptables -F SSR-SERVER-RULE
+			iptables -t filter -D INPUT -j SSR-SERVER-RULE
+			iptables -X SSR-SERVER-RULE 2>/dev/null
+		fi
 	fi
 	if [ -z "$switch_server" ]; then
 		$PS -w | grep -v "grep" | grep ssr-switch | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 &
@@ -1496,4 +1658,5 @@ reset() {
 	cp /usr/share/shadowsocksr/shadowsocksr.config /etc/config/shadowsocksr
 	unset_lock
 }
+
 
