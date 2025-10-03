@@ -94,13 +94,13 @@ function import_ssr_url(btn, urlname, sid) {
 		}
 		s.innerHTML = "";
 		//var ssu = ssrurl.match(/ssr:\/\/([A-Za-z0-9_-]+)/i);
+		ssrurl = ssrurl.replace(/&([a-zA-Z]+);/g, '&').replace(/\s*#\s*/, '#').trim();  //一些奇葩的链接用"&amp;"当做"&"，"#"前后带空格
 		var ssu = ssrurl.split('://');
 		//console.log(ssu.length);
 		if (ssu[0] === "ss") {
 		    var queryStr = "";
 			if (ssu[1].indexOf("?") > -1) {
 			    queryStr = ssu[1].split("?")[1]; // 提取 ? 后面的参数
-				queryStr = queryStr.replace(/&([a-zA-Z]+);/g, '&'); // 转义 &amp; 为 &
 			}
 			var params = new URLSearchParams(queryStr);
 			if (params.get("type")) {
@@ -177,7 +177,7 @@ function import_ssr_url(btn, urlname, sid) {
 			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "ss":
-			var url0 = ((ssu[1] || "").replace(/&([a-zA-Z]+);/g, '&').replace(/\s*#\s*/, '#').trim());
+			var url0 = (ssu[1] || "");
 			var param = "";
 
 			// 先分离 #（alias）
@@ -667,7 +667,7 @@ function import_ssr_url(btn, urlname, sid) {
 		case "shadowsocks":
 			try {
 				// 处理完整 ss:// 链接
-				var urlinfo = ssu[1].replace(/&([a-zA-Z]+);/g, '&').replace(/\s*#\s*/, '#').trim();
+				var urlinfo = ssu[1];
 				// 拆分 @，判断是否是 base64 userinfo 的格式
 				var parts = urlinfo.split("@");
 				if (parts.length > 1) {
@@ -676,7 +676,7 @@ function import_ssr_url(btn, urlname, sid) {
 					var sepIndex = userinfo.indexOf(":");
 					if (sepIndex > -1) {
 						method = userinfo.slice(0, sepIndex);
-						password = userinfo.slice(sepIndex + 1); 
+						password = userinfo.slice(sepIndex + 1);  //一些链接用明文uuid做密码
 					}
 				}
 				var url = new URL("http://" + urlinfo);
