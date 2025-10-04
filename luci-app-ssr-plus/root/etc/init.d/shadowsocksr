@@ -1258,8 +1258,18 @@ start_server() {
 		[ "$(uci_get_by_name $1 enable 0)" == "0" ] && return 1
 		let server_count=server_count+1
 		if [ "$server_count" == "1" ]; then
-			if ! (iptables-save -t filter | grep SSR-SERVER-RULE >/dev/null); then
-				iptables -N SSR-SERVER-RULE && iptables -t filter -I INPUT -j SSR-SERVER-RULE
+			if command -v nft >/dev/null 2>&1; then
+				# nftables / fw4
+				if ! nft list chain inet fw4 SSR-SERVER-RULE >/dev/null 2>&1; then
+					nft add chain inet fw4 SSR-SERVER-RULE
+					nft insert rule inet fw4 input jump SSR-SERVER-RULE
+				fi
+			else
+				# iptables / fw3
+				if ! (iptables-save -t filter | grep -q "SSR-SERVER-RULE"); then
+					iptables -N SSR-SERVER-RULE
+					iptables -t filter -I INPUT -j SSR-SERVER-RULE
+				fi
 			fi
 		fi
 		local type=$(uci_get_by_name $1 type)
@@ -1287,8 +1297,16 @@ start_server() {
 			echolog "Server:Socks5 Server$server_count Started!"
 			;;
 		esac
-		iptables -t filter -A SSR-SERVER-RULE -p tcp --dport $(uci_get_by_name $1 server_port) -j ACCEPT
-		iptables -t filter -A SSR-SERVER-RULE -p udp --dport $(uci_get_by_name $1 server_port) -j ACCEPT
+		server_port=$(uci_get_by_name $1 server_port)
+		if command -v nft >/dev/null 2>&1; then
+			# nftables / fw4
+			nft add rule inet fw4 SSR-SERVER-RULE tcp dport $server_port accept
+			nft add rule inet fw4 SSR-SERVER-RULE udp dport $server_port accept
+		else
+			# iptables / fw3
+			iptables -t filter -A SSR-SERVER-RULE -p tcp --dport $server_port -j ACCEPT
+			iptables -t filter -A SSR-SERVER-RULE -p udp --dport $server_port -j ACCEPT
+		fi
 		return 0
 	}
 	gen_serv_include() {
@@ -1297,17 +1315,37 @@ start_server() {
 		if [ ! -f $FWI ]; then
 			echo '#!/bin/sh' >$FWI
 		fi
-		extract_rules() {
-			echo "*filter"
-			iptables-save -t filter | grep SSR-SERVER-RULE | sed -e "s/^-A INPUT/-I INPUT/"
-			echo 'COMMIT'
-		}
-		cat <<-EOF >>$FWI
-			iptables-save -c | grep -v "SSR-SERVER" | iptables-restore -c
-			iptables-restore -n <<-EOT
-			$(extract_rules)
-			EOT
-		EOF
+		if command -v nft >/dev/null 2>&1; then
+			# nftables / fw4
+			extract_rules() {
+				nft list chain inet fw4 SSR-SERVER-RULE 2>/dev/null | \
+					grep -v 'chain SSR-SERVER-RULE' | grep -v '^\s*{' | grep -v '^\s*}' | sed 's/ counter//g'
+			}
+			cat <<-EOF >>$FWI
+				nft flush chain inet fw4 SSR-SERVER-RULE 2>/dev/null || true
+				nft -f - <<-EOT
+				table inet fw4 {
+					chain SSR-SERVER-RULE {
+						type filter hook input priority 0; policy accept;
+						$(extract_rules)
+					}
+				}
+				EOT
+			EOF
+		else
+			# iptables / fw3
+			extract_rules() {
+				echo "*filter"
+				iptables-save -t filter | grep SSR-SERVER-RULE | sed -e "s/^-A INPUT/-I INPUT/"
+				echo 'COMMIT'
+			}
+			cat <<-EOF >>$FWI
+				iptables-save -c | grep -v "SSR-SERVER" | iptables-restore -c
+				iptables-restore -n <<-EOT
+				$(extract_rules)
+				EOT
+			EOF
+		fi
 	}
 
 	config_load $NAME
@@ -1447,9 +1485,17 @@ stop() {
 	/usr/bin/ssr-rules -f
 	local srulecount=$(iptables -L | grep SSR-SERVER-RULE | wc -l)
 	if [ $srulecount -gt 0 ]; then
-		iptables -F SSR-SERVER-RULE
-		iptables -t filter -D INPUT -j SSR-SERVER-RULE
-		iptables -X SSR-SERVER-RULE 2>/dev/null
+		if command -v nft >/dev/null 2>&1; then
+			# nftables / fw4
+			nft flush chain inet fw4 SSR-SERVER-RULE 2>/dev/null || true
+			nft delete rule inet fw4 input jump SSR-SERVER-RULE 2>/dev/null || true
+			nft delete chain inet fw4 SSR-SERVER-RULE 2>/dev/null || true
+		else
+			# iptables / fw3
+			iptables -F SSR-SERVER-RULE
+			iptables -t filter -D INPUT -j SSR-SERVER-RULE
+			iptables -X SSR-SERVER-RULE 2>/dev/null
+		fi
 	fi
 	if [ -z "$switch_server" ]; then
 		$PS -w | grep -v "grep" | grep ssr-switch | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 &
