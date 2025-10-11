@@ -1187,26 +1187,36 @@ local execute = function()
 										log('丢弃无效节点: ' .. result.alias)
 									else
 										-- log('成功解析: ' .. result.type ..' 节点, ' .. result.alias)
+										-- 统一标记 grouphashkey
 										result.grouphashkey = groupHash
+										-- 初始化缓存
 										cache[groupHash] = cache[groupHash] or {}
+										-- 初始化 hashkey 对应的节点数组
 										cache[groupHash][result.hashkey] = cache[groupHash][result.hashkey] or {}
 
-										-- 去重逻辑：hashkey 和 alias 都相同丢弃
-										local exists = false
-										for _, r in ipairs(cache[groupHash][result.hashkey]) do
+										-- 初始化 nodeResult[index]
+										nodeResult[index] = nodeResult[index] or {}
+
+										-- 检查是否有完全重复（hashkey + alias）节点
+										local is_duplicate = nil
+										for i, r in ipairs(cache[groupHash][result.hashkey]) do
 											if r.alias == result.alias then
-									       		exists = true
+									       		is_duplicate = i
 										   		break
 											end
 										end
 
-										if exists then
+										if is_duplicate then
+											-- 已经存在完全重复节点，直接丢弃其他重复节点
 											log('丢弃重复节点: ' .. result.alias)
+											return
 										else
-											-- 保存节点
-											nodeResult[index] = nodeResult[index] or {}
+											-- **直接覆盖缓存中同 hashkey 的节点**
+											cache[groupHash][result.hashkey] = {result} 
+											-- 将节点加入 nodeResult
 											table.insert(nodeResult[index], result)
-											table.insert(cache[groupHash][result.hashkey], result)
+											-- 更新 hashkey 对应的节点数量
+											cache_count[groupHash][result.hashkey] = #cache[groupHash][result.hashkey]
 										end
 									end
 								end
