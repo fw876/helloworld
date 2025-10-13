@@ -42,6 +42,7 @@ local v2_ss = luci.sys.exec('type -t -p ' .. ss_program .. ' 2>/dev/null') ~= ""
 local has_ss_type = luci.sys.exec('type -t -p ' .. ss_program .. ' 2>/dev/null') ~= "" and ss_type
 local v2_tj = luci.sys.exec('type -t -p trojan') ~= "" and "trojan" or "v2ray"
 local hy2_type = luci.sys.exec('type -t -p hysteria') ~= "" and "hysteria2"
+local tuic_type = luci.sys.exec('type -t -p tuic-client') ~= "" and "tuic"
 local log = function(...)
 	print(os.date("%Y-%m-%d %H:%M:%S ") .. table.concat({...}, " "))
 end
@@ -711,7 +712,19 @@ local function processData(szType, content)
 			idx_sp = content:find("#")
 			alias = content:sub(idx_sp + 1, -1)
 		end
-		local info = content:sub(1, idx_sp > 0 and idx_sp - 1 or #content)
+		local info = content:sub(1, idx_sp > 0 and idx_sp - 1 or #content):gsub("/%?", "?")
+		local paramStr = ""
+
+		if info:find("?") then
+			paramStr = info:match("%?(.*)$") or ""
+			info = info:gsub("%?.*$", "") -- 去掉 ? 后的参数部分
+		end
+
+		-- 解析 query 参数（key=value&key2=value2）
+		for k, v in paramStr:gmatch("([^&=?]+)=([^&=?]+)") do
+			params[k] = UrlDecode(v)
+		end
+
 		local hostInfo = split(info, "@")
 
 		-- 基础验证
@@ -951,6 +964,77 @@ local function processData(szType, content)
 				result.tcp_path = params.path and UrlDecode(params.path) or nil
 			end
 		end
+	elseif szType == "tuic" then
+		local params = {}
+		local idx_sp = 0
+		local alias = ""
+
+		-- 提取别名（如果存在）
+		if content:find("#") then
+			idx_sp = content:find("#")
+			alias = content:sub(idx_sp + 1, -1)
+		end
+		local info = content:sub(1, idx_sp > 0 and idx_sp - 1 or #content):gsub("/%?", "?")
+		local paramStr = ""
+
+		if info:find("?") then
+			paramStr = info:match("%?(.*)$") or ""
+			info = info:gsub("%?.*$", "") -- 去掉 ? 后的参数部分
+		end
+
+		-- 解析 query 参数（key=value&key2=value2）
+		for k, v in paramStr:gmatch("([^&=?]+)=([^&=?]+)") do
+			params[k] = UrlDecode(v)
+		end
+
+		local hostInfo = split(info, "@")
+		-- 基础验证
+		if #hostInfo < 2 then
+			log("TUIC 节点格式错误: 缺少 @")
+			return nil
+		end
+
+		local userinfo = hostInfo[1]
+		local hostPort = hostInfo[2]
+
+		-- 分离 uuid 和 password
+		local userInfoSplit = split(userinfo, ":")
+		if #userInfoSplit < 2 then
+			log("TUIC 节点格式错误: 用户信息不完整")
+			return nil
+		end
+		local uuid = userInfoSplit[1]
+		local password = userInfoSplit[2]
+	
+		-- 分离服务器地址和端口
+		local hostParts = split(hostPort, ":")
+		-- 验证服务器地址和端口
+		if #hostParts < 2 then
+			log("TUIC 节点格式错误: 缺少端口号")
+			return nil
+		end
+		local server = hostParts[1]
+		local port = hostParts[2]
+
+		result.type = tuic_type
+		result.alias = UrlDecode(alias)
+		result.server = server
+		result.server_port = port
+		result.tuic_uuid = uuid
+		result.tuic_passwd = password
+
+		result.tuic_ip = params.sni or ""
+		result.udp_relay_mode = params.udp_relay_mode or "native"
+		result.congestion_control = params.congestion_control or "cubic"
+
+		-- alpn 支持逗号或分号分隔
+		if params.alpn and params.alpn ~= "" then
+			local alpn = {}
+			for v in params.alpn:gmatch("[^,;|%s]+") do
+				table.insert(alpn, v)
+			end
+			result.tuic_alpn = alpn
+		end
 	end
 	if not result.alias then
 		if result.server and result.server_port then
@@ -1166,7 +1250,7 @@ local execute = function()
 										if dat[3] then
 											dat3 = "://" .. dat[3]
 										end
-										if dat[1] == 'ss' or dat[1] == 'trojan' then
+										if dat[1] == 'ss' or dat[1] == 'trojan' or dat[1] == 'tuic' then
 											result = processData(dat[1], dat[2] .. dat3)
 										else
 											result = processData(dat[1], base64Decode(dat[2]))
