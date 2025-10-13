@@ -821,6 +821,58 @@ function import_ssr_url(btn, urlname, sid) {
 			}
 			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
+		case "tuic":
+			var url0 = (ssu[1] || "");
+			var param = "";
+
+			// 先分离 #（alias）
+			var hashIndex = url0.indexOf("#");
+			if (hashIndex >= 0) {
+				param = url0.substring(hashIndex + 1);
+				url0 = url0.substring(0, hashIndex);
+			}
+
+			// 再分离 ? 或 /?（参数）
+			var queryIndex = (url0 = url0.replace('/?', '?')).indexOf("?");
+			var queryStr = "";
+			if (queryIndex >= 0) {
+				queryStr = url0.substring(queryIndex + 1);
+				url0 = url0.substring(0, queryIndex);
+			}
+
+			var params = Object.fromEntries(new URLSearchParams(queryStr));
+
+			var sipIndex = url0.indexOf("@");
+			var userInfo = url0.substring(0, sipIndex);      // 格式：uuid:password
+			var hostPart = url0.substring(sipIndex + 1);     // 格式：hostname:port
+			var userInfoSplitIndex = userInfo.indexOf(":");
+			if(userInfoSplitIndex < 0) {
+				// 格式错误
+				s.innerHTML = "<font style='color:red'><%:Userinfo format error.%></font>";
+				break;
+			}
+
+			var method = userInfo.substring(0, userInfoSplitIndex);
+			var password = userInfo.substring(userInfoSplitIndex + 1);
+
+			var url = new URL("http://" + hostPart); // 用 URL 提取 host 与 port
+
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = ssu[0];
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].dispatchEvent(event);
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = url.hostname;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = url.port;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_uuid')[0].value = method;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_ip')[0].value = params.sni || "";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_passwd')[0].value = password;
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.udp_relay_mode')[0].value = params.udp_relay_mode || "native";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.congestion_control')[0].value = params.congestion_control || "cubic";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_alpn')[0].value = params.alpn || "";
+
+			if (param != undefined) {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = decodeURIComponent(param);
+			}
+			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
+			return false;
 		default:
 			s.innerHTML = "<font style=\'color:red\'><%:Invalid format.%></font>";
 			return false;
