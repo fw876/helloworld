@@ -177,13 +177,13 @@ function import_ssr_url(btn, urlname, sid) {
 
 			// 再分离 ? 或 /?（参数）
 			var queryIndex = (url0 = url0.replace('/?', '?')).indexOf("?");
-			var queryStr = "";
+			var query = "";
 			if (queryIndex >= 0) {
-				queryStr = url0.substring(queryIndex + 1);
+				query = url0.substring(queryIndex + 1);
 				url0 = url0.substring(0, queryIndex);
 			}
 
-			var params = Object.fromEntries(new URLSearchParams(queryStr));
+			var params = Object.fromEntries(new URLSearchParams(query));
 
 			if ( ! params.type) {
 				// 普通 SS 导入逻辑
@@ -503,7 +503,7 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.password')[0].value = decodeURIComponent(url.username);
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].checked = true;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls')[0].dispatchEvent(event);
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = params.get("sni");
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_host')[0].value = params.get("peer") || params.get("sni");
 				if (params.get("allowInsecure") === "1") {
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].checked = true; // 设置 insecure 为 true
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].dispatchEvent(event); // 触发事件
@@ -834,13 +834,13 @@ function import_ssr_url(btn, urlname, sid) {
 
 			// 再分离 ? 或 /?（参数）
 			var queryIndex = (url0 = url0.replace('/?', '?')).indexOf("?");
-			var queryStr = "";
+			var query = "";
 			if (queryIndex >= 0) {
-				queryStr = url0.substring(queryIndex + 1);
+				query = url0.substring(queryIndex + 1);
 				url0 = url0.substring(0, queryIndex);
 			}
 
-			var params = Object.fromEntries(new URLSearchParams(queryStr));
+			var params = Object.fromEntries(new URLSearchParams(query));
 
 			var sipIndex = url0.indexOf("@");
 			var userInfo = url0.substring(0, sipIndex);      // 格式：uuid:password
