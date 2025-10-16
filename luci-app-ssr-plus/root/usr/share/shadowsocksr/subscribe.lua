@@ -1017,7 +1017,7 @@ local function processData(szType, content)
 	result.alias = nil
 	local switch_enable = result.switch_enable
 	result.switch_enable = nil
-	result.hashkey = md5(jsonStringify(result))
+	result.hashkey = md5(jsonStringify(result) .. "_" .. (alias or ""))
 	result.alias = alias
 	result.switch_enable = switch_enable
 	return result
@@ -1236,26 +1236,14 @@ local execute = function()
 										or result.alias == "NULL"
 										or check_filer(result)
 										or result.server:match("[^0-9a-zA-Z%-_%.%s]")
+										or cache[groupHash][result.hashkey]
 									then
 										log('丢弃无效节点: ' .. result.alias)
 									else
 										-- log('成功解析: ' .. result.type ..' 节点, ' .. result.alias)
-										-- 检查重复（hashkey + alias）节点
-										cache[groupHash][result.hashkey] = cache[groupHash][result.hashkey] or {}
-										local is_duplicate = false
-										for _, r in ipairs(cache[groupHash][result.hashkey]) do
-											if r.alias == result.alias then
-									       		is_duplicate = true
-										   		break
-											end
-										end
-										if not is_duplicate then
-											result.grouphashkey = groupHash
-											tinsert(nodeResult[index], result)
-											cache[groupHash][result.hashkey] = nodeResult[index][#nodeResult[index]]
-										else
-											log('丢弃重复节点: ' .. result.alias)
-										end
+										result.grouphashkey = groupHash
+										tinsert(nodeResult[index], result)
+										cache[groupHash][result.hashkey] = nodeResult[index][#nodeResult[index]]
 									end
 								end
 							end, function(err)
