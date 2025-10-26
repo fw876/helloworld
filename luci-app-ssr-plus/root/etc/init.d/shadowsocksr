@@ -1483,7 +1483,15 @@ stop() {
 	unlock
 	set_lock
 	/usr/bin/ssr-rules -f
-	local srulecount=$(iptables -L | grep SSR-SERVER-RULE | wc -l)
+	if command -v nft >/dev/null 2>&1; then
+		# nftables / fw4
+		#local srulecount=$(nft list ruleset 2>/dev/null | grep -c 'SSR-SERVER-RULE')
+		#local srulecount=$(nft list chain inet fw4 SSR-SERVER-RULE 2>/dev/null | grep -c 'dport')
+		local srulecount=$(nft list chain inet fw4 SSR-SERVER-RULE | grep -vE '^\s*(chain|{|})' | wc -l)
+	else
+		# iptables / fw3
+		local srulecount=$(iptables -L | grep SSR-SERVER-RULE | wc -l)
+	fi
 	if [ $srulecount -gt 0 ]; then
 		if command -v nft >/dev/null 2>&1; then
 			# nftables / fw4
