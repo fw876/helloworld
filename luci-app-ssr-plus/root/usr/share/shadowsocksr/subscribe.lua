@@ -864,14 +864,28 @@ local function processData(szType, content)
 		result.server_port = url.port
 		result.vmess_id = url.user
 		result.vless_encryption = params.encryption or "none"
+
+		-- 处理传输类型
 		result.transport = params.type or "raw"
 		if result.transport == "tcp" then
 			result.transport = "raw"
-		end
-		if result.transport == "splithttp" then
+		elseif result.transport == "splithttp" then
 			result.transport = "xhttp"
+		elseif result.transport == "http" then
+			result.transport = "h2"
 		end
-		result.tls = (params.security == "tls" or params.security == "xtls") and "1" or "0"
+
+		-- TLS / Reality 标志
+		local security = params.security or ""
+		result.tls = (params.security == "tls" or security == "xtls") and "1" or "0"
+		result.reality = (security == "reality") and "1" or "0"
+
+		-- 统一 TLS / Reality 公共字段
+		result.tls_host = params.sni
+		result.fingerprint = params.fp
+		result.tls_flow = (security == "tls" or security == "reality") and params.flow or nil
+
+		-- 处理 alpn 列表
 		if params.alpn and params.alpn ~= "" then
 			local alpn = {}
 			for v in params.alpn:gmatch("[^,;|%s]+") do
@@ -879,53 +893,56 @@ local function processData(szType, content)
 			end
 			result.tls_alpn = alpn
 		end
-		result.tls_host = params.sni
-		result.tls_flow = (params.security == "tls" or params.security == "reality") and params.flow or nil
-		result.fingerprint = params.fp
-		result.reality = (params.security == "reality") and "1" or "0"
-		result.reality_publickey = params.pbk and UrlDecode(params.pbk) or nil
-		result.reality_shortid = params.sid
-		result.reality_spiderx = params.spx and UrlDecode(params.spx) or nil
-		-- 检查 ech 参数是否存在且非空
-		if params.ech and params.ech ~= "" then
+
+		-- Reality 参数
+		if security == "reality" then
+			result.reality_publickey = params.pbk and UrlDecode(params.pbk) or nil
+			result.reality_shortid = params.sid
+			result.reality_spiderx = params.spx and UrlDecode(params.spx) or nil
+
+			-- PQ 验证参数
+			if params.pqv and params.pqv ~= "" then
+				result.enable_mldsa65verify = "1"
+				result.reality_mldsa65verify = params.pqv
+			end
+		end
+
+		-- ECH 参数（TLS 才有）
+		if security == "tls" and params.ech and params.ech ~= "" then
 			result.enable_ech = "1"
 			result.ech_config = params.ech
 		end
-		-- 检查 pqv 参数是否存在且非空
-		if params.pqv and params.pqv ~= "" then
-			result.enable_mldsa65verify = "1"
-			result.reality_mldsa65verify = params.pqv
-		end
+
+		-- 各种传输类型
 		if result.transport == "ws" then
-			result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+			result.ws_host = (result.tls ~= "1" and result.reality ~= "1") and (params.host and UrlDecode(params.host)) or nil
 			result.ws_path = params.path and UrlDecode(params.path) or "/"
+
 		elseif result.transport == "httpupgrade" then
-			result.httpupgrade_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+			result.httpupgrade_host = (result.tls ~= "1" and result.reality ~= "1") and (params.host and UrlDecode(params.host)) or nil
 			result.httpupgrade_path = params.path and UrlDecode(params.path) or "/"
-		elseif result.transport == "xhttp" or result.transport == "splithttp" then
-			result.xhttp_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+
+		elseif result.transport == "xhttp" then
+			result.xhttp_host = (result.tls ~= "1" and result.reality ~= "1") and (params.host and UrlDecode(params.host)) or nil
 			result.xhttp_mode = params.mode or "auto"
 			result.xhttp_path = params.path and UrlDecode(params.path) or "/"
-			-- 检查 extra 参数是否存在且非空
 			if params.extra and params.extra ~= "" then
 				result.enable_xhttp_extra = "1"
 				result.xhttp_extra = params.extra
 			end
-			-- 尝试解析 JSON 数据
 			local success, Data = pcall(jsonParse, params.extra or "")
 			if success and type(Data) == "table" then
 				local address = (Data.extra and Data.extra.downloadSettings and Data.extra.downloadSettings.address)
 					or (Data.downloadSettings and Data.downloadSettings.address)
 				result.download_address = address and address ~= "" and address or nil
 			else
-				-- 如果解析失败，清空下载地址
 				result.download_address = nil
 			end
-		-- make it compatible with bullshit, "h2" transport is non-existent at all
-		elseif result.transport == "http" or result.transport == "h2" then
-			result.transport = "h2"
+
+		elseif result.transport == "h2" then
 			result.h2_host = params.host and UrlDecode(params.host) or nil
 			result.h2_path = params.path and UrlDecode(params.path) or nil
+
 		elseif result.transport == "kcp" then
 			result.kcp_guise = params.headerType or "none"
 			result.seed = params.seed
@@ -935,14 +952,17 @@ local function processData(szType, content)
 			result.downlink_capacity = 20
 			result.read_buffer_size = 2
 			result.write_buffer_size = 2
+
 		elseif result.transport == "quic" then
 			result.quic_guise = params.headerType or "none"
 			result.quic_security = params.quicSecurity or "none"
 			result.quic_key = params.key
+
 		elseif result.transport == "grpc" then
 			result.serviceName = params.serviceName
 			result.grpc_mode = params.mode or "gun"
-		elseif result.transport == "tcp" or result.transport == "raw" then
+
+		elseif result.transport == "raw" then
 			result.tcp_guise = params.headerType or "none"
 			if result.tcp_guise == "http" then
 				result.tcp_host = params.host and UrlDecode(params.host) or nil
