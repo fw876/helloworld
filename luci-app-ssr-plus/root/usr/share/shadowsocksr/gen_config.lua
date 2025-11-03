@@ -331,8 +331,8 @@ end
 			mux = (server.v2ray_protocol ~= "wireguard") and {
 				-- mux
 				enabled = (server.mux == "1"), -- Mux
-				concurrency = (server.mux == "1" and (tonumber(server.concurrency) or -1)) or nil, -- TCP 最大并发
-				xudpConcurrency = (server.mux == "1" and (tonumber(server.xudpConcurrency) or 16)) or nil, -- UDP 最大并发
+				concurrency = (server.mux == "1" and (tonumber(server.concurrency) or -1)) or nil, -- TCP 最大并发连接数
+				xudpConcurrency = (server.mux == "1" and (tonumber(server.xudpConcurrency) or 16)) or nil, -- UDP 最大并发连接数
 				xudpProxyUDP443 = (server.mux == "1" and (server.xudpProxyUDP443 or "reject")) or nil -- 对被代理的 UDP/443 流量处理方式
 			} or nil
 		}
@@ -631,6 +631,8 @@ local tuic = {
 					return nil
 				end
 			end)() or nil,
+			ipstack_prefer = (server.tuic_dual_stack == "1") and server.ipstack_prefer or nil,
+			skip_cert_verify = (server.insecure == "1" or server.insecure == true or server.insecure == "true"),
 			disable_sni = (server.disable_sni == "1") and true or false,
 			zero_rtt_handshake = (server.zero_rtt_handshake == "1") and true or false,
 			send_window = tonumber(server.send_window),
@@ -715,3 +717,4 @@ function config:handleIndex(index)
 end
 local f = config:new()
 f:handleIndex(server.type)
+

@@ -862,12 +862,37 @@ function import_ssr_url(btn, urlname, sid) {
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = url.hostname;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = url.port;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_uuid')[0].value = method;
-			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_ip')[0].value = params.sni || "";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_ip')[0].value = params.ip || "";
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_passwd')[0].value = password;
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.udp_relay_mode')[0].value = params.udp_relay_mode || "native";
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.congestion_control')[0].value = params.congestion_control || "cubic";
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_alpn')[0].value = params.alpn || "";
-
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.heartbeat')[0].value = params.heartbeat || "3";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.timeout')[0].value = params.timeout || "8";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.gc_interval')[0].value = params.gc_interval || "3";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.gc_lifetime')[0].value = params.gc_lifetime || "15";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.send_window')[0].value = params.send_window || "20971520";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.receive_window')[0].value = params.receive_window || "10485760";
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_max_package_size')[0].value = params.max_packet_size || "1500";
+			if (params["disable_sni"] === "1" || params["disable_sni"] === "true") { 
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.disable_sni')[0].checked = true;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.disable_sni')[0].dispatchEvent(event);
+			}
+			if (params["zero_rtt_handshake"] === "1" || params["zero_rtt_handshake"] === "true") { 
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.zero_rtt_handshake')[0].checked = true;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.zero_rtt_handshake')[0].dispatchEvent(event);
+			}
+			if (params["dual_stack"] === "1" || params["dual_stack"] === "true") { 
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_dual_stack')[0].checked = true;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_dual_stack')[0].dispatchEvent(event);
+				if (params.ipstack_prefer && params.ipstack_prefer.trim() !== "") {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.ipstack_prefer')[0].value = params.ipstack_prefer;
+				}
+			}
+			if (params["allowInsecure"] === "1" || params["allowInsecure"] === "true") {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].checked = true;
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].dispatchEvent(event);
+			}
 			if (param != undefined) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = decodeURIComponent(param);
 			}
