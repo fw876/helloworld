@@ -877,7 +877,7 @@ local function processData(szType, content)
 
 		-- TLS / Reality 标志
 		local security = params.security or ""
-		result.tls = (params.security == "tls" or security == "xtls") and "1" or "0"
+		result.tls = (security == "tls" or security == "xtls") and "1" or "0"
 		result.reality = (security == "reality") and "1" or "0"
 
 		-- 统一 TLS / Reality 公共字段
@@ -1012,9 +1012,16 @@ local function processData(szType, content)
 		end
 
 		result.type = tuic_type
-		result.tuic_ip = params.sni or ""
+		result.tuic_ip = params.ip or ""
 		result.udp_relay_mode = params.udp_relay_mode or "native"
 		result.congestion_control = params.congestion_control or "cubic"
+		result.heartbeat = params.heartbeat or "3"
+		result.timeout = params.timeout or "8"
+		result.gc_interval = params.gc_interval or "3"
+		result.gc_lifetime = params.gc_lifetime or "15"
+		result.send_window = params.send_window or "20971520"
+		result.receive_window = params.receive_window or "10485760"
+		result.tuic_max_package_size = params.max_packet_size or "1500"
 
 		-- alpn 支持逗号或分号分隔
 		if params.alpn and params.alpn ~= "" then
@@ -1023,6 +1030,46 @@ local function processData(szType, content)
 				table.insert(alpn, v)
 			end
 			result.tuic_alpn = alpn
+		end
+
+		-- 处理 disable_sni 参数
+		if params.disable_sni then
+			if params.disable_sni == "1" or params.disable_sni == "0" then
+				result.disable_sni = params.disable_sni
+		else
+				result.disable_sni = string.lower(params.disable_sni) == "true" and "1" or "0"
+			end
+		end
+
+		-- 处理 zero_rtt_handshake 参数
+		if params.zero_rtt_handshake then
+			if params.zero_rtt_handshake == "1" or params.zero_rtt_handshake == "0" then
+				result.zero_rtt_handshake = params.zero_rtt_handshake
+		else
+				result.zero_rtt_handshake = string.lower(params.zero_rtt_handshake) == "true" and "1" or "0"
+			end
+		end
+
+		-- 处理 dual_stack 参数
+		if params.dual_stack then
+			if params.dual_stack == "1" or params.dual_stack == "0" then
+				result.dual_stack = params.dual_stack
+		else
+				result.dual_stack = string.lower(params.dual_stack) == "true" and "1" or "0"
+			end
+			-- 处理 ipstack_prefer 参数
+			if params.ipstack_prefer and params.ipstack_prefer ~= "" then
+				result.ipstack_prefer = params.ipstack_prefer
+			end
+		end
+
+		-- 处理 insecure 参数
+		if params.allowInsecure then
+			if params.allowinsecure == "1" or params.allowinsecure == "0" then
+				result.insecure = params.allowInsecure
+		else
+				result.insecure = string.lower(params.allowinsecure) == "true" and "1" or "0"
+			end
 		end
 	end
 	if not result.alias then
