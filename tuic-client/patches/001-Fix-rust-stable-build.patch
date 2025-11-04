@@ -1,0 +1,8 @@
+--- a/tuic-client/src/main.rs
++++ b/tuic-client/src/main.rs
+@@ -1,5 +1,3 @@
+-#![feature(ip)]
+-
+ use std::{process, str::FromStr};
+ 
+ use chrono::{Offset, TimeZone};
