@@ -1260,9 +1260,14 @@ start_server() {
 		if [ "$server_count" == "1" ]; then
 			if command -v nft >/dev/null 2>&1; then
 				# nftables / fw4
-				if ! nft list chain inet fw4 SSR-SERVER-RULE >/dev/null 2>&1; then
-					nft add chain inet fw4 SSR-SERVER-RULE
-					nft insert rule inet fw4 input jump SSR-SERVER-RULE
+				if nft list table inet fw4 >/dev/null 2>&1; then
+					if ! nft list chain inet fw4 SSR-SERVER-RULE >/dev/null 2>&1; then
+						nft add chain inet fw4 SSR-SERVER-RULE 2>/dev/null
+					fi
+					if ! nft list chain inet fw4 input 2>/dev/null | grep -q "jump SSR-SERVER-RULE"; then
+						nft insert rule inet fw4 input jump SSR-SERVER-RULE comment \"SSR Server Input Hook\" 2>/dev/null
+					fi
+					nft flush chain inet fw4 SSR-SERVER-RULE 2>/dev/null
 				fi
 			else
 				# iptables / fw3
@@ -1317,20 +1322,19 @@ start_server() {
 		fi
 		if command -v nft >/dev/null 2>&1; then
 			# nftables / fw4
-			extract_rules() {
-				nft list chain inet fw4 SSR-SERVER-RULE 2>/dev/null | \
-					grep -v 'chain SSR-SERVER-RULE' | grep -v '^\s*{' | grep -v '^\s*}' | sed 's/ counter//g'
-			}
-			cat <<-EOF >>$FWI
-				nft flush chain inet fw4 SSR-SERVER-RULE 2>/dev/null || true
-				nft -f - <<-EOT
-				table inet fw4 {
-					chain SSR-SERVER-RULE {
-						type filter hook input priority 0; policy accept;
-						$(extract_rules)
-					}
-				}
-				EOT
+			cat <<-'EOF' >>"$FWI"
+				# 确保表存在
+				if nft list table inet fw4 >/dev/null 2>&1; then
+					# 如果不存在 SSR-SERVER-RULE 链，则创建
+					if ! nft list chain inet fw4 SSR-SERVER-RULE >/dev/null 2>&1; then
+						nft add chain inet fw4 SSR-SERVER-RULE 2>/dev/null
+					# 从 input 链跳转到 SSR-SERVER-RULE（如果未添加）
+					if ! nft list chain inet fw4 input | grep -q 'jump SSR-SERVER-RULE'; then
+						nft insert rule inet fw4 input jump SSR-SERVER-RULE comment \"SSR Server Input Hook\" 2>/dev/null
+					fi
+					# 已存在则清空链
+					nft flush chain inet fw4 SSR-SERVER-RULE 2>/dev/null
+				fi
 			EOF
 		else
 			# iptables / fw3
@@ -1483,26 +1487,38 @@ stop() {
 	unlock
 	set_lock
 	/usr/bin/ssr-rules -f
+	local srulecount=0
 	if command -v nft >/dev/null 2>&1; then
 		# nftables / fw4
 		#local srulecount=$(nft list ruleset 2>/dev/null | grep -c 'SSR-SERVER-RULE')
-		#local srulecount=$(nft list chain inet fw4 SSR-SERVER-RULE 2>/dev/null | grep -c 'dport')
-		local srulecount=$(nft list chain inet fw4 SSR-SERVER-RULE | grep -vE '^\s*(chain|{|})' | wc -l)
+		if nft list chain inet fw4 SSR-SERVER-RULE >/dev/null 2>&1; then
+			srulecount=$(nft list chain inet fw4 SSR-SERVER-RULE | grep SSR-SERVER-RULE | wc -l)
+		fi
 	else
 		# iptables / fw3
-		local srulecount=$(iptables -L | grep SSR-SERVER-RULE | wc -l)
+		srulecount=$(iptables -L | grep SSR-SERVER-RULE | wc -l)
 	fi
 	if [ $srulecount -gt 0 ]; then
 		if command -v nft >/dev/null 2>&1; then
 			# nftables / fw4
-			nft flush chain inet fw4 SSR-SERVER-RULE 2>/dev/null || true
-			nft delete rule inet fw4 input jump SSR-SERVER-RULE 2>/dev/null || true
-			nft delete chain inet fw4 SSR-SERVER-RULE 2>/dev/null || true
+			if nft list table inet fw4 >/dev/null 2>&1; then
+				if nft list chain inet fw4 SSR-SERVER-RULE >/dev/null 2>&1; then
+					for handle in $(nft --handle list chain inet fw4 input 2>/dev/null | \
+						grep 'jump SSR-SERVER-RULE' | awk '{for(i=1;i<=NF;i++) if($i=="handle") print $(i+1)}'); do
+						nft delete rule inet fw4 input handle $handle 2>/dev/null || true
+					done
+					nft flush chain inet fw4 SSR-SERVER-RULE 2>/dev/null || true
+					nft delete chain inet fw4 SSR-SERVER-RULE 2>/dev/null || true
+				fi
+			fi
 		else
 			# iptables / fw3
-			iptables -F SSR-SERVER-RULE
-			iptables -t filter -D INPUT -j SSR-SERVER-RULE
-			iptables -X SSR-SERVER-RULE 2>/dev/null
+			if iptables-save -t filter | grep -q "SSR-SERVER-RULE"; then
+				logger -t ssr-rules "Flushing and deleting SSR-SERVER-RULE chain (iptables)"
+				iptables -F SSR-SERVER-RULE 2>/dev/null || true
+				iptables -t filter -D INPUT -j SSR-SERVER-RULE 2>/dev/null || true
+				iptables -X SSR-SERVER-RULE 2>/dev/null || true
+			fi
 		fi
 	fi
 	if [ -z "$switch_server" ]; then
@@ -1550,4 +1566,3 @@ reset() {
 	cp /usr/share/shadowsocksr/shadowsocksr.config /etc/config/shadowsocksr
 	unset_lock
 }
-
