@@ -2,14 +2,18 @@
 
 . $IPKG_INSTROOT/etc/init.d/shadowsocksr
 
+if command -v nft >/dev/null 2>&1; then
+    nft_support=1
+fi
+
 netflix() {
 	if [ -f "$TMP_DNSMASQ_PATH/gfw_list.conf" ]; then
 		for line in $(cat /etc/ssrplus/netflix.list); do sed -i "/$line/d" $TMP_DNSMASQ_PATH/gfw_list.conf; done
 		for line in $(cat /etc/ssrplus/netflix.list); do sed -i "/$line/d" $TMP_DNSMASQ_PATH/gfw_base.conf; done
 	fi
-	if command -v nft >/dev/null 2>&1; then
+	if [ "$nft_support" = "1" ]; then
 		# 移除 ipset
-		cat /etc/ssrplus/netflix.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$1/" >$TMP_DNSMASQ_PATH/netflix_forward.conf
+		cat /etc/ssrplus/netflix.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$1\nnftset=\/&\/4#inet#ss_spec#netflix/" >$TMP_DNSMASQ_PATH/netflix_forward.conf
 	else
 		cat /etc/ssrplus/netflix.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$1\nipset=\/&\/netflix/" >$TMP_DNSMASQ_PATH/netflix_forward.conf
 	fi
@@ -22,11 +26,11 @@ else
 	cp -rf /etc/ssrplus/gfw_base.conf $TMP_DNSMASQ_PATH/
 fi
 
-if command -v nft >/dev/null 2>&1; then
+if [ "$nft_support" = "1" ]; then
     # 移除 ipset 指令
     for conf_file in gfw_base.conf gfw_list.conf; do
         if [ -f "$TMP_DNSMASQ_PATH/$conf_file" ]; then
-            sed -i '/ipset=/d' "$TMP_DNSMASQ_PATH/$conf_file"
+            sed -i 's|ipset=/\([^/]*\)/\([^[:space:]]*\)|nftset=/\1/4#inet#ss_spec#\2|g' "$TMP_DNSMASQ_PATH/$conf_file"
         fi
     done
 fi
@@ -59,9 +63,9 @@ while read line; do sed -i "/$line/d" $TMP_DNSMASQ_PATH/gfw_list.conf; done < /e
 while read line; do sed -i "/$line/d" $TMP_DNSMASQ_PATH/gfw_base.conf; done < /etc/ssrplus/deny.list
 
 # 此处直接使用 cat 因为有 sed '/#/d' 删除了 数据
-if command -v nft >/dev/null 2>&1; then
-	cat /etc/ssrplus/black.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$dns_port/" >$TMP_DNSMASQ_PATH/blacklist_forward.conf
-	cat /etc/ssrplus/white.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1/" >$TMP_DNSMASQ_PATH/whitelist_forward.conf
+if [ "$nft_support" = "1" ]; then
+	cat /etc/ssrplus/black.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$dns_port\nnftset=\/&\/4#inet#ss_spec#blacklist/" >$TMP_DNSMASQ_PATH/blacklist_forward.conf
+	cat /etc/ssrplus/white.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1\nnftset=\/&\/4#inet#ss_spec#whitelist/" >$TMP_DNSMASQ_PATH/whitelist_forward.conf
 else
 	cat /etc/ssrplus/black.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$dns_port\nipset=\/&\/blacklist/" >$TMP_DNSMASQ_PATH/blacklist_forward.conf
 	cat /etc/ssrplus/white.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1\nipset=\/&\/whitelist/" >$TMP_DNSMASQ_PATH/whitelist_forward.conf
