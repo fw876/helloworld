@@ -736,15 +736,16 @@ function import_ssr_url(btn, urlname, sid) {
 				setElementValue('cbid.shadowsocksr.' + sid + '.' + params.get("security"), true);
 				dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.' + params.get("security"), event);
 
+				if (params.get("allowInsecure") === "1") {
+					setElementValue('cbid.shadowsocksr.' + sid + '.insecure', true); // 设置 insecure 为 true
+					dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.insecure', event); // 触发事件
+				}
+
 				if (params.get("security") === "tls") {
 					if (params.get("ech") && params.get("ech").trim() !== "") {
 						setElementValue('cbid.shadowsocksr.' + sid + '.enable_ech', true); // 设置 enable_ech 为 true
 						dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.enable_ech', event); // 触发事件
 						setElementValue('cbid.shadowsocksr.' + sid + '.ech_config', params.get("ech") || "");
-					}
-					if (params.get("allowInsecure") === "1") {
-						setElementValue('cbid.shadowsocksr.' + sid + '.insecure', true); // 设置 insecure 为 true
-						dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.insecure', event); // 触发事件
 					}
 				}
 				if (params.get("security") === "reality") {

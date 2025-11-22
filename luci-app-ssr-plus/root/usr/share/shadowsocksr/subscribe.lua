@@ -276,12 +276,18 @@ local function processData(szType, content)
 		alias = alias .. remarks
 		result.alias = alias
 	elseif szType == "vmess" then
-		-- 去掉前后空白和#注释
+		-- 去掉前后空白和注释
 		local link = trim(content:gsub("#.*$", ""))
 
-		-- 解析正常节点
-		local success, info = pcall(jsonParse, link)
-		if not success or type(info) ~= "table" then
+		-- Base64 解码
+		local decoded = base64Decode(link)
+		if not decoded or decoded == "" then
+			return nil
+		end
+
+		-- 解析 JSON
+		local ok, info = pcall(jsonParse, decoded)
+		if not ok or type(info) ~= "table" then
 			return nil
 		end
 
@@ -318,9 +324,9 @@ local function processData(szType, content)
 			result.xhttp_host = info.host
 			result.xhttp_path = info.path
 			-- 检查 extra 参数是否存在且非空
-			if params.extra and params.extra ~= "" then
+			if info.extra and info.extra ~= "" then
 				result.enable_xhttp_extra = "1"
-				result.xhttp_extra = params.extra
+				result.xhttp_extra = info.extra
 			end
 			-- 尝试解析 JSON 数据
 			local success, Data = pcall(jsonParse, info.extra or "")
@@ -892,6 +898,11 @@ local function processData(szType, content)
 				table.insert(alpn, v)
 			end
 			result.tls_alpn = alpn
+		end
+
+		-- 处理 insecure 参数
+		if params.allowInsecure and params.allowInsecure ~= "" then
+			result.insecure = "1"
 		end
 
 		-- Reality 参数
