@@ -241,7 +241,7 @@ start_dns() {
 				echo "              enable_pipeline: true"
 			done)
 
-			awk -v line=14 -v text="$output" 'NR == line+1 {print text} 1' /etc/ssrplus/mosdns-config.yaml | sed "s/DNS_PORT/$dns_port/g" > $TMP_PATH/mosdns-config.yaml
+			awk -v line=14 -v text="$output" 'NR == line+1 {print text} 1' /etc/ssrplus/mosdns-config.yaml | sed "s/DNS_PORT/$dns_port/g" | sed "s/\(concurrent:\).*/\1 $(echo "$mosdns_dnsserver" | sed 's/,/ /g' | wc -w)/g"> $TMP_PATH/mosdns-config.yaml
 			if [ "$mosdns_ipv6" == "0" ]; then
 				sed -i "s/DNS_MODE/main_sequence_with_IPv6/g" $TMP_PATH/mosdns-config.yaml
 			else
@@ -648,7 +648,7 @@ shunt_dns_command() {
 			echo "              socks5: \"127.0.0.1:$tmp_port\""
 			echo "              enable_pipeline: true"
 		done)
-		awk -v line=14 -v text="$output" 'NR == line+1 {print text} 1' /etc/ssrplus/mosdns-config.yaml | sed "s/DNS_PORT/$tmp_shunt_dns_port/g" > $TMP_PATH/mosdns-config-shunt.yaml
+		awk -v line=14 -v text="$output" 'NR == line+1 {print text} 1' /etc/ssrplus/mosdns-config.yaml | sed "s/DNS_PORT/$tmp_shunt_dns_port/g" | sed "s/\(concurrent:\).*/\1 $(echo "$mosdns_dnsserver" | sed 's/,/ /g' | wc -w)/g" > $TMP_PATH/mosdns-config-shunt.yaml
 
 		if [ "$shunt_mosdns_ipv6" == "0" ]; then
 			sed -i "s/DNS_MODE/main_sequence_with_IPv6/g" $TMP_PATH/mosdns-config-shunt.yaml
