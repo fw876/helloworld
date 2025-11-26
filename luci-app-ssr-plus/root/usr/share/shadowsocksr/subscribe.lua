@@ -760,13 +760,16 @@ local function processData(szType, content)
 				-- 未指定peer（sni）默认使用remote addr
 				result.tls_host = params.peer or params.sni
 			end
-			if params.allowInsecure then
+			params.allowinsecure = params.allowinsecure or params.insecure
+			if params.allowinsecure then
 				-- 处理 insecure 参数
 				if params.allowinsecure == "1" or params.allowinsecure == "0" then
-					result.insecure = params.allowInsecure
+					result.insecure = params.allowinsecure
 				else
 					result.insecure = string.lower(params.allowinsecure) == "true" and "1" or "0"
 				end
+			else
+				result.insecure = "0"
 			end
 			if params.tfo then
 				-- 处理 fast open 参数
