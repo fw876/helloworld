@@ -161,7 +161,7 @@ o.description = translate("Custom DNS Server format as IP:PORT (default: 8.8.4.4
 o.datatype = "ip4addrport"
 o.default = "8.8.4.4:53"
 
-o = s:option(ListValue, "tunnel_forward_mosdns", translate("Anti-pollution DNS Server"))
+o = s:option(Value, "tunnel_forward_mosdns", translate("Anti-pollution DNS Server"))
 o:value("tcp://8.8.4.4:53,tcp://8.8.8.8:53", translate("Google Public DNS"))
 o:value("tcp://208.67.222.222:53,tcp://208.67.220.220:53", translate("OpenDNS"))
 o:value("tcp://209.244.0.3:53,tcp://209.244.0.4:53", translate("Level 3 Public DNS-1 (209.244.0.3-4)"))
@@ -169,7 +169,7 @@ o:value("tcp://4.2.2.1:53,tcp://4.2.2.2:53", translate("Level 3 Public DNS-2 (4.
 o:value("tcp://4.2.2.3:53,tcp://4.2.2.4:53", translate("Level 3 Public DNS-3 (4.2.2.3-4)"))
 o:value("tcp://1.1.1.1:53,tcp://1.0.0.1:53", translate("Cloudflare DNS"))
 o:depends("pdnsd_enable", "4")
-o.description = translate("Custom DNS Server for MosDNS")
+o.description = translate("Custom DNS Server format as tcp://IP:PORT or tls://DOMAIN:PORT (tcp://8.8.8.8 or tls://dns.google:853)")
 
 o = s:option(Flag, "mosdns_ipv6", translate("Disable IPv6 in MOSDNS query mode"))
 o:depends("pdnsd_enable", "4")
