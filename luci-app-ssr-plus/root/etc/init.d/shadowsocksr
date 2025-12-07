@@ -1514,10 +1514,10 @@ stop() {
 	set_lock
 	if command -v nft >/dev/null 2>&1; then
 		/usr/bin/ssr-rules -K
-		local CLEANUP_PERSISTENCE="$(uci_get_by_type global global_server nil)"
-		if [ "$CLEANUP_PERSISTENCE" == "nil" ]; then
-			/usr/bin/ssr-rules -X
-		fi
+		#local CLEANUP_PERSISTENCE="$(uci_get_by_type global global_server nil)"
+		#if [ "$CLEANUP_PERSISTENCE" == "nil" ]; then
+		#	/usr/bin/ssr-rules -X
+		#fi
 	fi
 	/usr/bin/ssr-rules -f
 	local srulecount=0
