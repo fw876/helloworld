@@ -28,6 +28,24 @@ detect_firewall
 
 TAG="_SS_SPEC_RULE_"                                  # comment tag
 
+# 这些变量将在后续的 getopts 参数解析中被赋值
+ENABLE_AUTO_UPDATE=0
+STOP_AUTO_UPDATE=0
+FORCE_UPDATE=0
+CHECK_STATUS=0
+RESTORE_RULES=0
+FLUSH_RULES=0
+CLEANUP_PERSISTENCE=0 
+
+if [ "$USE_NFT" = "1" ]; then
+	# NFTables persistence directory
+	NFTABLES_RULES_DIR="/usr/share/nftables.d/ruleset-post"
+	NFTABLES_RULES_FILE="$NFTABLES_RULES_DIR/99-shadowsocksr.nft"
+	# Auto-update configuration
+	AUTO_UPDATE_INTERVAL=300  # 自动更新检查间隔（秒），0表示禁用自动更新
+fi
+
+# 修改 usage 函数
 usage() {
 	cat <<-EOF
 		Usage: ssr-rules [options]
@@ -63,6 +81,15 @@ usage() {
 		    -r                      router mode
 		    -c                      oversea mode
 		    -z                      all mode
+		    
+		    # 新增持久化管理选项 (使用不同的字母避免冲突)
+		    -A                      enable auto-update daemon
+		    -K                      stop auto-update daemon  
+		    -P                      force update persistence
+		    -C                      check rules status
+		    -R                      restore rules from persistence file
+		    -X                      cleanup persistence files on stop
+		    
 		    -h                      show this help message and exit
 	EOF
 	exit $1
@@ -71,6 +98,40 @@ usage() {
 loger() {
 	# 1.alert 2.crit 3.err 4.warn 5.notice 6.info 7.debug
 	logger -st ssr-rules[$$] -p$1 $2
+}
+
+# 清理持久化和运行模块文件等
+cleanup_persistence_files() {
+	if [ "$USE_NFT" != "1" ]; then
+		return 0
+	fi
+
+	# 删除持久化规则文件
+	if [ -f "$NFTABLES_RULES_FILE" ]; then
+		rm -f "$NFTABLES_RULES_FILE" 2>/dev/null
+		loger 5 "Removed persistence file: $NFTABLES_RULES_FILE"
+	fi
+
+	# 删除运行模块文件
+	if [ -f "/tmp/.ssr_run_mode" ]; then
+		rm -f "/tmp/.ssr_run_mode" 2>/dev/null
+		loger 5 "Removed run mode file: /tmp/.ssr_run_mode"
+	fi
+
+	# 删除 TPROXY 文件
+	if [ -f "/tmp/.last_tproxy" ]; then
+		rm -f "/tmp/.last_tproxy" 2>/dev/null
+		loger 5 "Removed run mode file: /tmp/.last_tproxy"
+	fi
+
+	# 删除 PROXY_PORTS 文件
+	if [ -f "/tmp/.last_proxy_ports" ]; then
+		rm -f "/tmp/.last_proxy_ports" 2>/dev/null
+		loger 5 "Removed run mode file: /tmp/.last_proxy_ports"
+	fi
+
+	loger 5 "Persistence cleanup completed"
+	return 0
 }
 
 flush_r() {
@@ -136,6 +197,13 @@ flush_nftables() {
 	# 重置防火墙 include 文件
 	[ -n "$FWI" ] && echo '#!/bin/sh' >"$FWI"
 
+	# 清理持久化和运行模块文件
+	if [ "$CLEANUP_PERSISTENCE" = "1" ]; then
+		cleanup_persistence_files
+	fi
+
+	loger 6 "Memory rules flushed successfully"
+
 	return 0
 }
 
@@ -182,7 +250,7 @@ ipset_nft() {
 	fi
 
 	# Create necessary collections
-	for setname in china gmlan fplan bplan whitelist blacklist netflix; do
+	for setname in china gmlan fplan bplan whitelist blacklist netflix music; do
 		if ! $NFT list set inet ss_spec $setname >/dev/null 2>&1; then
 			$NFT add set inet ss_spec $setname '{ type ipv4_addr; flags interval; auto-merge; }' 2>/dev/null
 		else
@@ -190,7 +258,7 @@ ipset_nft() {
 		fi
 	done
 
-	# 批量导入中国IP列表
+	# Bulk import china ip list safely (avoid huge single element limitation)
 	if [ -f "${china_ip:=/etc/ssrplus/china_ssr.txt}" ]; then
 		$NFT add element inet ss_spec china "{ $(tr '\n' ',' < "${china_ip}" | sed 's/,$//') }" 2>/dev/null
 	fi
@@ -212,109 +280,111 @@ ipset_nft() {
 		[ -n "$ip" ] && $NFT add element inet ss_spec blacklist "{ $ip }" 2>/dev/null
 	done
 
-	# Create main chain for WAN access control
-	if ! $NFT list chain inet ss_spec ss_spec_wan_ac >/dev/null 2>&1; then
-		$NFT add chain inet ss_spec ss_spec_wan_ac 2>/dev/null
-	fi
-	$NFT flush chain inet ss_spec ss_spec_wan_ac 2>/dev/null
-
-	# Create forward chain with better error handling
-	if ! $NFT list chain inet ss_spec ss_spec_wan_fw >/dev/null 2>&1; then
-		$NFT add chain inet ss_spec ss_spec_wan_fw 2>/dev/null || {
-		loger 3 "Failed to create forward chain"
-		return 1
-		}
-	fi
-	# Clear existing rules
-	$NFT flush chain inet ss_spec ss_spec_wan_fw 2>/dev/null
-
-	EXT_ARGS=""
-	if [ -n "$PROXY_PORTS" ]; then
-		PORTS_ARGS=$(echo "$PROXY_PORTS" | sed 's/-m multiport --dports //')
-		if [ -n "$PORTS_ARGS" ]; then
-			EXT_ARGS="th dport { $PORTS_ARGS }"
+	# Create main chains for WAN access control
+	for chain in ss_spec_wan_fw_tcp ss_spec_wan_fw_udp ss_spec_wan_ac_tcp ss_spec_wan_ac_udp; do
+		if ! $NFT list chain inet ss_spec $chain >/dev/null 2>&1; then
+			$NFT add chain inet ss_spec $chain
 		fi
-	fi
+		$NFT flush chain inet ss_spec $chain
+	done
 
 	# Add basic rules
-	# ========== 按照正确顺序添加规则 ==========
+	# BASIC RULES (exceptions first) — TCP
+	$NFT add rule inet ss_spec ss_spec_wan_ac_tcp meta l4proto tcp tcp dport 53 ip daddr 127.0.0.0/8 return
+	[ -n "$server" ] && $NFT add rule inet ss_spec ss_spec_wan_ac_tcp meta l4proto tcp tcp dport != 53 ip daddr "$server" return
 
-	# 1. 基础例外规则（最高优先级）
-	$NFT add rule inet ss_spec ss_spec_wan_ac tcp dport 53 ip daddr 127.0.0.0/8 return
-	[ -n "$server" ] && $NFT add rule inet ss_spec ss_spec_wan_ac tcp dport != 53 ip daddr "$server" return
+	# Access control: blacklist -> whitelist -> fplan/bplan — TCP
+	$NFT add rule inet ss_spec ss_spec_wan_ac_tcp ip daddr @blacklist jump ss_spec_wan_fw_tcp
+	$NFT add rule inet ss_spec ss_spec_wan_ac_tcp ip daddr @whitelist return
+	$NFT add rule inet ss_spec ss_spec_wan_ac_tcp ip saddr @fplan jump ss_spec_wan_fw_tcp
+	$NFT add rule inet ss_spec ss_spec_wan_ac_tcp ip saddr @bplan return
 
-	# 2. 强制访问控制
-	$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @blacklist jump ss_spec_wan_fw
-	$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @whitelist return
-	$NFT add rule inet ss_spec ss_spec_wan_ac ip saddr @fplan jump ss_spec_wan_fw
-	$NFT add rule inet ss_spec ss_spec_wan_ac ip saddr @bplan return
+	# BASIC RULES (exceptions first) — UDP
+	$NFT add rule inet ss_spec ss_spec_wan_ac_udp meta l4proto udp udp dport 53 ip daddr 127.0.0.0/8 return
+	[ -n "$server" ] && $NFT add rule inet ss_spec ss_spec_wan_ac_udp meta l4proto udp udp dport != 53 ip daddr "$server" return
 
-	# 3. 特殊功能规则
+	# Access control: blacklist -> whitelist -> fplan/bplan — UDP
+	$NFT add rule inet ss_spec ss_spec_wan_ac_udp ip daddr @blacklist jump ss_spec_wan_fw_udp
+	$NFT add rule inet ss_spec ss_spec_wan_ac_udp ip daddr @whitelist return
+	$NFT add rule inet ss_spec ss_spec_wan_ac_udp ip saddr @fplan jump ss_spec_wan_fw_udp
+	$NFT add rule inet ss_spec ss_spec_wan_ac_udp ip saddr @bplan return
+
 	# Music unlocking support
 	if $NFT list set inet ss_spec music >/dev/null 2>&1; then
-		$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @music return
+		$NFT add rule inet ss_spec ss_spec_wan_ac_tcp meta l4proto tcp ip daddr @music return
+		$NFT add rule inet ss_spec ss_spec_wan_ac_udp meta l4proto udp ip daddr @music return
 	fi
 
 	# Shunt/Netflix rules
-	if [ "$SHUNT_PORT" != "0" ] && [ -f "$SHUNT_LIST" ]; then
+	if [ -f "$SHUNT_LIST" ]; then
 		for ip in $(cat "$SHUNT_LIST" 2>/dev/null); do 
 			[ -n "$ip" ] && $NFT add element inet ss_spec netflix "{ $ip }" 2>/dev/null
 		done
-		case "$SHUNT_PORT" in
-		1)
-			$NFT add rule inet ss_spec ss_spec_wan_ac meta l4proto tcp $EXT_ARGS ip daddr @netflix counter redirect to :$local_port
-			;;
-		*)
-			$NFT add rule inet ss_spec ss_spec_wan_ac meta l4proto tcp $EXT_ARGS ip daddr @netflix counter redirect to :$SHUNT_PORT
-			if [ "$SHUNT_PROXY" = "1" ]; then
-				$NFT add rule inet ss_spec ss_spec_wan_ac meta l4proto tcp $EXT_ARGS ip daddr $SHUNT_IP counter redirect to :$local_port
-			else
-                [ -n "$SHUNT_IP" ] && $NFT add element inet ss_spec whitelist "{ $SHUNT_IP }" 2>/dev/null
-			fi
-            ;;
-		esac
 	fi
 
-	# 4. 模式特定规则
 	# Set up mode-specific rules
 	case "$RUNMODE" in
 	router)
-		if ! $NFT list set inet ss_spec ss_spec_wan_ac >/dev/null 2>&1; then
-			$NFT add set inet ss_spec ss_spec_wan_ac '{ type ipv4_addr; flags interval; auto-merge; }'
+		if ! $NFT list set inet ss_spec ss_spec_wan_ac_tcp >/dev/null 2>&1; then
+			$NFT add set inet ss_spec ss_spec_wan_ac_tcp '{ type ipv4_addr; flags interval; auto-merge; }'
 		else
-			$NFT flush set inet ss_spec ss_spec_wan_ac 2>/dev/null
+			$NFT flush set inet ss_spec ss_spec_wan_ac_tcp 2>/dev/null
 		fi
 		# Add special IP ranges to WAN AC set
 		for ip in $(gen_spec_iplist); do
-			[ -n "$ip" ] && $NFT add element inet ss_spec ss_spec_wan_ac "{ $ip }" 2>/dev/null
+			[ -n "$ip" ] && $NFT add element inet ss_spec ss_spec_wan_ac_tcp "{ $ip }" 2>/dev/null
 		done
 
-		$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @ss_spec_wan_ac return
-		$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @china return
-		if $NFT list chain inet ss_spec ss_spec_wan_fw >/dev/null 2>&1; then
-			$NFT add rule inet ss_spec ss_spec_wan_ac ip saddr @gmlan ip daddr != @china jump ss_spec_wan_fw
-			$NFT add rule inet ss_spec ss_spec_wan_ac jump ss_spec_wan_fw
+		$NFT add rule inet ss_spec ss_spec_wan_ac_tcp ip daddr @ss_spec_wan_ac_tcp return
+		$NFT add rule inet ss_spec ss_spec_wan_ac_tcp ip daddr @china return
+		if $NFT list chain inet ss_spec ss_spec_wan_ac_tcp >/dev/null 2>&1; then
+			$NFT add rule inet ss_spec ss_spec_wan_ac_tcp ip saddr @gmlan ip daddr != @china jump ss_spec_wan_fw_tcp
+			$NFT add rule inet ss_spec ss_spec_wan_ac_tcp jump ss_spec_wan_fw_tcp
+		fi
+		if ! $NFT list set inet ss_spec ss_spec_wan_ac_udp >/dev/null 2>&1; then
+			$NFT add set inet ss_spec ss_spec_wan_ac_udp '{ type ipv4_addr; flags interval; auto-merge; }'
+		else
+			$NFT flush set inet ss_spec ss_spec_wan_ac_udp 2>/dev/null
+		fi
+		# Add special IP ranges to WAN AC set
+		for ip in $(gen_spec_iplist); do
+			[ -n "$ip" ] && $NFT add element inet ss_spec ss_spec_wan_ac_udp "{ $ip }" 2>/dev/null
+		done
+		$NFT add rule inet ss_spec ss_spec_wan_ac_udp ip daddr @ss_spec_wan_ac_udp return
+		$NFT add rule inet ss_spec ss_spec_wan_ac_udp ip daddr @china return
+		if $NFT list chain inet ss_spec ss_spec_wan_fw_udp >/dev/null 2>&1; then
+			$NFT add rule inet ss_spec ss_spec_wan_ac_udp ip saddr @gmlan ip daddr != @china jump ss_spec_wan_fw_udp
+			$NFT add rule inet ss_spec ss_spec_wan_ac_udp jump ss_spec_wan_fw_udp
 		fi
 		;;
 	gfw)
 		if ! $NFT list set inet ss_spec gfwlist >/dev/null 2>&1; then
 			$NFT add set inet ss_spec gfwlist '{ type ipv4_addr; flags interval; auto-merge; }' 2>/dev/null
 		fi
-		$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @china return
-		$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @gfwlist jump ss_spec_wan_fw
-		$NFT add rule inet ss_spec ss_spec_wan_ac ip saddr @gmlan ip daddr != @china jump ss_spec_wan_fw
+		$NFT add rule inet ss_spec ss_spec_wan_ac_tcp ip daddr @china return
+		$NFT add rule inet ss_spec ss_spec_wan_ac_tcp ip daddr @gfwlist jump ss_spec_wan_fw_tcp
+		$NFT add rule inet ss_spec ss_spec_wan_ac_tcp ip saddr @gmlan ip daddr != @china jump ss_spec_wan_fw_tcp
+		$NFT add rule inet ss_spec ss_spec_wan_ac_udp ip daddr @china return
+		$NFT add rule inet ss_spec ss_spec_wan_ac_udp ip daddr @gfwlist jump ss_spec_wan_fw_udp
+		$NFT add rule inet ss_spec ss_spec_wan_ac_udp ip saddr @gmlan ip daddr != @china jump ss_spec_wan_fw_udp
 		;;
 	oversea)
 		if ! $NFT list set inet ss_spec oversea >/dev/null 2>&1; then
 			$NFT add set inet ss_spec oversea '{ type ipv4_addr; flags interval; auto-merge; }' 2>/dev/null
 		fi
-		$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @oversea jump ss_spec_wan_fw
-		$NFT add rule inet ss_spec ss_spec_wan_ac ip saddr @gmlan jump ss_spec_wan_fw
-		$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @china jump ss_spec_wan_fw
+		$NFT add rule inet ss_spec ss_spec_wan_ac_tcp ip daddr @oversea jump ss_spec_wan_fw_tcp
+		$NFT add rule inet ss_spec ss_spec_wan_ac_tcp ip saddr @gmlan jump ss_spec_wan_fw_tcp
+		$NFT add rule inet ss_spec ss_spec_wan_ac_tcp ip daddr @china jump ss_spec_wan_fw_tcp
+		$NFT add rule inet ss_spec ss_spec_wan_ac_udp ip daddr @oversea jump ss_spec_wan_fw_udp
+		$NFT add rule inet ss_spec ss_spec_wan_ac_udp ip saddr @gmlan jump ss_spec_wan_fw_udp
+		$NFT add rule inet ss_spec ss_spec_wan_ac_udp ip daddr @china jump ss_spec_wan_fw_udp
 		;;
 	all)
-		if $NFT list chain inet ss_spec ss_spec_wan_fw >/dev/null 2>&1; then
-			$NFT add rule inet ss_spec ss_spec_wan_ac jump ss_spec_wan_fw
+		if $NFT list chain inet ss_spec ss_spec_wan_fw_tcp >/dev/null 2>&1; then
+			$NFT add rule inet ss_spec ss_spec_wan_ac_tcp jump ss_spec_wan_fw_tcp
+		fi
+		if $NFT list chain inet ss_spec ss_spec_wan_fw_udp >/dev/null 2>&1; then
+			$NFT add rule inet ss_spec ss_spec_wan_ac_udp jump ss_spec_wan_fw_udp
 		fi
 		;;
 	esac
@@ -402,26 +472,66 @@ fw_rule() {
 }
 
 fw_rule_nft() {
-	# Exclude special local addresses
-	if $NFT list chain inet ss_spec ss_spec_wan_fw >/dev/null 2>&1; then
-		for net in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
-			$NFT add rule inet ss_spec ss_spec_wan_fw ip daddr $net return 2>/dev/null
-		done
+	# set up routing table for tproxy
+	if ! ip rule show | grep -Eq "fwmark 0x0*1.*lookup 100"; then
+		ip rule add fwmark 0x01/0x01 table 100 2>/dev/null
+	fi
+
+	if ! ip route show table 100 | grep -q "^local.*dev lo"; then
+		ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
 	fi
 
 	# redirect/translation: when PROXY_PORTS present, redirect those tcp ports to local_port
 	if [ -n "$PROXY_PORTS" ]; then
-		PORTS=$(echo "$PROXY_PORTS" | sed 's/-m multiport --dports //')
-		RULE="tcp dport { $PORTS } counter redirect to :"$local_port""
+		PORTS_ARGS=$(echo "$PROXY_PORTS" | sed 's/-m multiport --dports //')
+		if [ -n "$PORTS_ARGS" ]; then
+			TCP_EXT_ARGS="meta l4proto tcp tcp dport { $PORTS_ARGS }"
+			UDP_EXT_ARGS="meta l4proto udp udp dport { $PORTS_ARGS }"
+
+			TCP_RULE="meta l4proto tcp tcp dport { $PORTS_ARGS } counter redirect to :$local_port"
+			UDP_RULE="meta l4proto udp udp dport { $PORTS_ARGS } counter tproxy ip to :$local_port meta mark set 0x01"
+		fi
 	else
+		TCP_EXT_ARGS="meta l4proto tcp"
+		UDP_EXT_ARGS="meta l4proto udp"
+
 		# default: redirect everything except ssh(22)
-		RULE="tcp dport != 22 counter redirect to :"$local_port""
+		TCP_RULE="meta l4proto tcp tcp dport != 22 counter redirect to :$local_port"
+		# default: when PROXY_PORTS present, redirect those udp ports to local_port
+		UDP_RULE="meta l4proto udp counter tproxy ip to :$local_port meta mark set 0x01"
 	fi
-	if ! $NFT list chain inet ss_spec ss_spec_wan_fw 2>/dev/null | grep -q "$RULE"; then
-		if ! $NFT add rule inet ss_spec ss_spec_wan_fw $RULE 2>/dev/null; then
-			loger 3 "Can't redirect, please check nftables."
+	# add TCP rule to fw chain if not exists (use -F exact match)
+	if ! $NFT list chain inet ss_spec ss_spec_wan_fw_tcp 2>/dev/null | grep -F -- "$TCP_RULE" >/dev/null 2>&1; then
+		if ! $NFT add rule inet ss_spec ss_spec_wan_fw_tcp $TCP_RULE 2>/dev/null; then
+			loger 3 "Can't redirect TCP, please check nftables."
 			return 1
 		fi
+	fi
+
+	if ! $NFT list chain inet ss_spec ss_spec_wan_fw_udp 2>/dev/null | grep -F -- "$UDP_RULE" >/dev/null 2>&1; then
+		if ! $NFT add rule inet ss_spec ss_spec_wan_fw_udp $UDP_RULE 2>/dev/null; then
+			loger 3 "Can't tproxy UDP, please check nftables."
+			return 1
+		fi
+	fi
+
+	if [ "$SHUNT_PORT" != "0" ] && [ -f "$SHUNT_LIST" ]; then
+		case "$SHUNT_PORT" in
+		1)
+			$NFT add rule inet ss_spec ss_spec_wan_ac_tcp $TCP_EXT_ARGS ip daddr @netflix counter redirect to :$local_port
+			$NFT add rule inet ss_spec ss_spec_wan_ac_udp $UDP_EXT_ARGS ip daddr @netflix counter tproxy ip to :$local_port meta mark set 0x01
+			;;
+		*)
+			$NFT add rule inet ss_spec ss_spec_wan_ac_tcp $TCP_EXT_ARGS ip daddr @netflix counter redirect to :$SHUNT_PORT
+			$NFT add rule inet ss_spec ss_spec_wan_ac_udp $UDP_EXT_ARGS ip daddr @netflix counter tproxy ip to :$SHUNT_PORT meta mark set 0x01
+			if [ "$SHUNT_PROXY" = "1" ]; then
+				$NFT add rule inet ss_spec ss_spec_wan_ac_tcp $TCP_EXT_ARGS ip daddr $SHUNT_IP counter redirect to :$local_port
+				$NFT add rule inet ss_spec ss_spec_wan_ac_udp $UDP_EXT_ARGS ip daddr $SHUNT_IP counter tproxy ip to :$local_port meta mark set 0x01
+			else
+                [ -n "$SHUNT_IP" ] && $NFT add element inet ss_spec whitelist "{ $SHUNT_IP }" 2>/dev/null
+			fi
+            ;;
+		esac
 	fi
 
 	return $?
@@ -482,34 +592,67 @@ ac_rule_nft() {
 		esac
 	fi
 
-	# 创建ss_spec_prerouting链
-	if ! $NFT list chain inet ss_spec ss_spec_prerouting >/dev/null 2>&1; then
-		$NFT add chain inet ss_spec ss_spec_prerouting '{ type nat hook prerouting priority 0; policy accept; }'
+	# Create ss_spec_prerouting tcp chain
+	if ! $NFT list chain inet ss_spec ss_spec_prerouting_tcp >/dev/null 2>&1; then
+		$NFT add chain inet ss_spec ss_spec_prerouting_tcp '{ type nat hook prerouting priority 0; policy accept; }'
 	fi
-	$NFT flush chain inet ss_spec ss_spec_prerouting 2>/dev/null
+	$NFT flush chain inet ss_spec ss_spec_prerouting_tcp 2>/dev/null
 
-	# 创建ss_spec_output链
-	if ! $NFT list chain inet ss_spec ss_spec_output >/dev/null 2>&1; then
-		$NFT add chain inet ss_spec ss_spec_output '{ type nat hook output priority 0; policy accept; }'
+	# Exclude special local addresses
+	if $NFT list chain inet ss_spec ss_spec_prerouting_tcp >/dev/null 2>&1; then
+		for net in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+			$NFT add rule inet ss_spec ss_spec_prerouting_tcp ip daddr $net return 2>/dev/null
+		done
 	fi
-	$NFT flush chain inet ss_spec ss_spec_output 2>/dev/null
+
+	# 暂注释 IPV6 用于后续开启 IPV6
+	#if $NFT list chain inet ss_spec ss_spec_prerouting_tcp >/dev/null 2>&1; then
+	#	for net in ::1/128 fe80::/10 fc00::/7 ff00::/8 ::/128 ::ffff:0:0/96; do
+	#		$NFT add rule inet ss_spec ss_spec_prerouting_tcp ip6 daddr $net return 2>/dev/null
+	#	done
+	#fi
+
+	# Create ss_spec_prerouting udp chain
+	if ! $NFT list chain inet ss_spec ss_spec_prerouting_udp >/dev/null 2>&1; then
+		$NFT add chain inet ss_spec ss_spec_prerouting_udp '{ type filter hook prerouting priority -150; policy accept; }'
+	fi
+	$NFT flush chain inet ss_spec ss_spec_prerouting_udp 2>/dev/null
+
+	# Exclude special local addresses
+	if $NFT list chain inet ss_spec ss_spec_prerouting_udp >/dev/null 2>&1; then
+		for net in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+			$NFT add rule inet ss_spec ss_spec_prerouting_udp ip daddr $net return 2>/dev/null
+		done
+	fi
+
+	# 暂注释 IPV6 用于后续开启 IPV6
+	#if $NFT list chain inet ss_spec ss_spec_prerouting_udp >/dev/null 2>&1; then
+	#	for net in ::1/128 fe80::/10 fc00::/7 ff00::/8 ::/128 ::ffff:0:0/96; do
+	#		$NFT add rule inet ss_spec ss_spec_prerouting_udp ip6 daddr $net return 2>/dev/null
+	#	done
+	#fi
 
 	# Build a rule in the prerouting hook chain that jumps to business chain with conditions
-	EXT_ARGS=""
 	if [ -n "$PROXY_PORTS" ]; then
 		PORTS_ARGS=$(echo "$PROXY_PORTS" | sed 's/-m multiport --dports //')
 		if [ -n "$PORTS_ARGS" ]; then
-			EXT_ARGS="th dport { $PORTS_ARGS }"
+			TCP_EXT_ARGS="meta l4proto tcp tcp dport { $PORTS_ARGS }"
+			UDP_EXT_ARGS="meta l4proto udp udp dport { $PORTS_ARGS }"
 		fi
+	else
+		TCP_EXT_ARGS="meta l4proto tcp"
+		UDP_EXT_ARGS="meta l4proto udp"
 	fi
 
 	if [ -z "$Interface" ]; then
 		# generic prerouting jump already exists (see ipset_nft), but if we have MATCH_SET_CONDITION we add a more specific rule
 		if [ -n "$MATCH_SET" ]; then
 			# add a more specific rule at the top of ss_spec_prerouting
-			$NFT insert rule inet ss_spec ss_spec_prerouting meta l4proto tcp $EXT_ARGS $MATCH_SET jump ss_spec_wan_ac comment "\"$TAG\"" 2>/dev/null
+			$NFT add rule inet ss_spec ss_spec_prerouting_tcp $TCP_EXT_ARGS $MATCH_SET jump ss_spec_wan_ac_tcp comment "\"$TAG\"" 2>/dev/null
+			$NFT add rule inet ss_spec ss_spec_prerouting_udp $UDP_EXT_ARGS $MATCH_SET jump ss_spec_wan_ac_udp comment "\"$TAG\"" 2>/dev/null
 		else
-			$NFT insert rule inet ss_spec ss_spec_prerouting meta l4proto tcp $EXT_ARGS jump ss_spec_wan_ac comment "\"$TAG\"" 2>/dev/null
+			$NFT add rule inet ss_spec ss_spec_prerouting_tcp $TCP_EXT_ARGS jump ss_spec_wan_ac_tcp comment "\"$TAG\"" 2>/dev/null
+			$NFT add rule inet ss_spec ss_spec_prerouting_udp $UDP_EXT_ARGS jump ss_spec_wan_ac_udp comment "\"$TAG\"" 2>/dev/null
 		fi
 	else
 		# For each Interface, find its actual ifname and add an iifname-limited prerouting rule
@@ -518,9 +661,11 @@ ac_rule_nft() {
 			[ -z "$IFNAME" ] && IFNAME=$(uci -P /var/state get network."$name".device 2>/dev/null)
 			if [ -n "$IFNAME" ]; then
 				if [ -n "$MATCH_SET" ]; then
-					$NFT insert rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" meta l4proto tcp $EXT_ARGS $MATCH_SET jump ss_spec_wan_ac comment "\"$TAG\"" 2>/dev/null
+					$NFT add rule inet ss_spec ss_spec_prerouting_tcp meta iifname "$IFNAME" $TCP_EXT_ARGS $MATCH_SET jump ss_spec_wan_ac_tcp comment "\"$TAG\"" 2>/dev/null
+					$NFT add rule inet ss_spec ss_spec_prerouting_udp meta iifname "$IFNAME" $UDP_EXT_ARGS $MATCH_SET jump ss_spec_wan_ac_udp comment "\"$TAG\"" 2>/dev/null
 				else
-					$NFT insert rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" meta l4proto tcp $EXT_ARGS jump ss_spec_wan_ac comment "\"$TAG\"" 2>/dev/null
+					$NFT add rule inet ss_spec ss_spec_prerouting_tcp meta iifname "$IFNAME" $TCP_EXT_ARGS jump ss_spec_wan_ac_tcp comment "\"$TAG\"" 2>/dev/null
+					$NFT add rule inet ss_spec ss_spec_prerouting_udp meta iifname "$IFNAME" $UDP_EXT_ARGS jump ss_spec_wan_ac_udp comment "\"$TAG\"" 2>/dev/null
 				fi
 			fi
 		done
@@ -528,8 +673,51 @@ ac_rule_nft() {
 
 	case "$OUTPUT" in
 	1)
+		# Create ss_spec_output tcp chain
+		if ! $NFT list chain inet ss_spec ss_spec_output_tcp >/dev/null 2>&1; then
+			$NFT add chain inet ss_spec ss_spec_output_tcp '{ type nat hook output priority 0; policy accept; }'
+		fi
+		$NFT flush chain inet ss_spec ss_spec_output_tcp 2>/dev/null
+		
+		# Exclude special local addresses
+		if $NFT list chain inet ss_spec ss_spec_output_tcp >/dev/null 2>&1; then
+			for net in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+				$NFT add rule inet ss_spec ss_spec_output_tcp ip daddr $net return 2>/dev/null
+			done
+		fi
+
+		# 暂注释 IPV6 用于后续开启 IPV6
+		#if $NFT list chain inet ss_spec ss_spec_output_tcp >/dev/null 2>&1; then
+		#	for net in ::1/128 fe80::/10 fc00::/7 ff00::/8 ::/128 ::ffff:0:0/96; do
+		#		$NFT add rule inet ss_spec ss_spec_output_tcp ip6 daddr $net return 2>/dev/null
+		#	done
+		#fi
+
 		# create output hook chain & route output traffic into router chain
-		$NFT insert rule inet ss_spec ss_spec_output meta l4proto tcp $EXT_ARGS jump ss_spec_wan_ac comment "\"$TAG\"" 2>/dev/null
+		$NFT add rule inet ss_spec ss_spec_output_tcp $TCP_EXT_ARGS jump ss_spec_wan_ac_tcp comment "\"$TAG\"" 2>/dev/null
+
+		# Create ss_spec_output udp chain
+		if ! $NFT list chain inet ss_spec ss_spec_output_udp >/dev/null 2>&1; then
+			$NFT add chain inet ss_spec ss_spec_output_udp '{ type filter hook output priority -150; policy accept; }'
+		fi
+		$NFT flush chain inet ss_spec ss_spec_output_udp 2>/dev/null
+		
+		# Exclude special local addresses
+		if $NFT list chain inet ss_spec ss_spec_output_udp >/dev/null 2>&1; then
+			for net in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+				$NFT add rule inet ss_spec ss_spec_output_udp ip daddr $net return 2>/dev/null
+			done
+		fi
+
+		# 暂注释 IPV6 用于后续开启 IPV6
+		#if $NFT list chain inet ss_spec ss_spec_output_udp >/dev/null 2>&1; then
+		#	for net in ::1/128 fe80::/10 fc00::/7 ff00::/8 ::/128 ::ffff:0:0/96; do
+		#		$NFT add rule inet ss_spec ss_spec_output_udp ip6 daddr $net return 2>/dev/null
+		#	done
+		#fi
+		
+		# create output hook chain & route output traffic into router chain
+		$NFT add rule inet ss_spec ss_spec_output_udp $UDP_EXT_ARGS meta mark set 0x01 comment "\"$TAG\"" 2>/dev/null
 		;;
 	2)
 		# router mode output chain: create ssr_gen_router set & router chain
@@ -539,8 +727,10 @@ ac_rule_nft() {
 		done
 		$NFT add chain inet ss_spec ss_spec_router 2>/dev/null
 		$NFT add rule inet ss_spec ss_spec_router ip daddr @ssr_gen_router return 2>/dev/null
-		$NFT add rule inet ss_spec ss_spec_router jump ss_spec_wan_fw 2>/dev/null
-		$NFT add rule inet ss_spec ss_spec_output meta l4proto tcp $EXT_ARGS jump ss_spec_router comment "\"$TAG\"" 2>/dev/null
+		$NFT add rule inet ss_spec ss_spec_router jump ss_spec_wan_fw_tcp 2>/dev/null
+		$NFT add rule inet ss_spec ss_spec_output $TCP_EXT_ARGS jump ss_spec_router comment "\"$TAG\"" 2>/dev/null
+		$NFT add rule inet ss_spec ss_spec_router jump ss_spec_wan_fw_udp 2>/dev/null
+		$NFT add rule inet ss_spec ss_spec_output $UDP_EXT_ARGS jump ss_spec_router comment "\"$TAG\"" 2>/dev/null
 		;;
 	esac
 	return 0
@@ -605,8 +795,13 @@ tp_rule() {
 
 tp_rule_nft() {
 	# set up routing table for tproxy
-	ip rule add fwmark 0x01/0x01 table 100 2>/dev/null
-	ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
+	if ! ip rule show | grep -Eq "fwmark 0x0*1.*lookup 100"; then
+		ip rule add fwmark 0x01/0x01 table 100 2>/dev/null
+	fi
+
+	if ! ip route show table 100 | grep -q "^local.*dev lo"; then
+		ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
+	fi
 
 	# create mangle table and tproxy chain
 	if ! $NFT list table ip ss_spec_mangle >/dev/null 2>&1; then
@@ -615,19 +810,14 @@ tp_rule_nft() {
 
 	local MATCH_SET=""
 
-	EXT_ARGS=""
 	if [ -n "$PROXY_PORTS" ]; then
 		PORTS_ARGS=$(echo "$PROXY_PORTS" | sed 's/-m multiport --dports //')
 		if [ -n "$PORTS_ARGS" ]; then
-			EXT_ARGS="th dport { $PORTS_ARGS }"
+			EXT_ARGS="udp dport { $PORTS_ARGS }"
 		else
 			EXT_ARGS=""
 		fi
 	fi
-
-	# 有端口 => 1，无端口 => 0
-	HAS_PORTS=0
-	[ -n "$EXT_ARGS" ] && HAS_PORTS=1
 
 	if [ -n "$LAN_AC_IP" ]; then
 		# Create LAN access control set if needed
@@ -664,7 +854,7 @@ tp_rule_nft() {
 		fi
 	done
 
-	# 批量导入中国IP列表
+	# Bulk import china ip list safely (avoid huge single element limitation)
 	if [ -f "${china_ip:=/etc/ssrplus/china_ssr.txt}" ]; then
 		$NFT add element ip ss_spec_mangle china "{ $(tr '\n' ',' < "${china_ip}" | sed 's/,$//') }" 2>/dev/null
 	fi
@@ -682,12 +872,19 @@ tp_rule_nft() {
 		done
 	fi
 
+	# 暂注释 IPV6 用于后续开启 IPV6
+	#if $NFT list chain ip ss_spec_mangle ss_spec_tproxy >/dev/null 2>&1; then
+	#	for net in ::1/128 fe80::/10 fc00::/7 ff00::/8 fe80::/10 ::/128 ::ffff:0:0/96; do
+	#		$NFT add rule ip ss_spec_mangle ss_spec_tproxy ip6 daddr $net return 2>/dev/null
+	#	done
+	#fi
+
 	# basic return rules in tproxy chain
-	$NFT add rule ip ss_spec_mangle ss_spec_tproxy udp dport 53 return 2>/dev/null
+	$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp dport 53 return 2>/dev/null
 
 	# avoid redirecting to udp server address
 	if [ -n "$server" ]; then
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy udp dport != 53 ip daddr "$server" return 2>/dev/null
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp dport != 53 ip daddr "$server" return 2>/dev/null
 	fi
 
 	# if server != SERVER add SERVER to whitelist set (so tproxy won't touch it)
@@ -700,12 +897,7 @@ tp_rule_nft() {
 
 	# access control and tproxy rules
 	$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip saddr @bplan return 2>/dev/null
-
-	if [ $HAS_PORTS -eq 1 ]; then
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip saddr @fplan counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01
-	else
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip saddr @fplan counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
-	fi
+	$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip saddr @fplan counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
 
 	# Handle different run modes for nftables
 	case "$RUNMODE" in
@@ -722,50 +914,38 @@ tp_rule_nft() {
 
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip daddr @ss_spec_wan_ac return 2>/dev/null
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip daddr @china return 2>/dev/null
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp dport 80 drop 2>/dev/null
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 80 drop 2>/dev/null
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip saddr @gmlan ip daddr != @china counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
-		if [ $HAS_PORTS -eq 1 ]; then
-			$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip daddr != @ss_spec_wan_ac counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
-		else
-			$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip daddr != @ss_spec_wan_ac counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
-		fi
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip daddr != @ss_spec_wan_ac counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
 		;;
 	gfw)
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip daddr @china return 2>/dev/null
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp dport 80 drop 2>/dev/null
-		if [ $HAS_PORTS -eq 1 ]; then
-			$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip daddr @gfwlist counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
+		if ! $NFT list set ip ss_spec_mangle gfwlist >/dev/null 2>&1; then
+			$NFT add set ip ss_spec_mangle gfwlist '{ type ipv4_addr; flags interval; auto-merge; }' 2>/dev/null
 		fi
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip daddr @china return 2>/dev/null
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 80 drop 2>/dev/null
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip daddr @gfwlist counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip saddr @gmlan ip daddr != @china counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
 		;;
 	oversea)
 		if ! $NFT list set ip ss_spec_mangle oversea >/dev/null 2>&1; then
 			$NFT add set ip ss_spec_mangle oversea '{ type ipv4_addr; flags interval; auto-merge; }' 2>/dev/null
 		fi
-		if ! $NFT list set ip ss_spec_mangle china >/dev/null 2>&1; then
-			$NFT add set ip ss_spec_mangle china '{ type ipv4_addr; flags interval; auto-merge; }' 2>/dev/null
-		fi
-		if [ $HAS_PORTS -eq 1 ]; then
-			$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip saddr @oversea counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
-			$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip daddr @china counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
-		fi
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip saddr @oversea counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip daddr @china counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip saddr @gmlan counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
 		;;
 	all)
-		if [ $HAS_PORTS -eq 1 ]; then
-			$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
-		else
-			$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
-		fi
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS counter tproxy ip to :"$LOCAL_PORT" meta mark set 0x01 2>/dev/null
 		;;
 	esac
 
-	# 创建 prerouting 链（hook prerouting）
+	# finally, ensure prerouting hook entry to jump to tproxy chain
 	if ! $NFT list chain ip ss_spec_mangle prerouting >/dev/null 2>&1; then
 		$NFT add chain ip ss_spec_mangle prerouting '{ type filter hook prerouting priority mangle; policy accept; }'
 	fi
 
-	# 添加规则到 prerouting 链
+	# add prerouting jump (idempotent)
 	if [ -z "$Interface" ]; then
 		# 全局规则
 		if [ -n "$MATCH_SET" ]; then
@@ -884,17 +1064,23 @@ gen_include() {
 	return $?
 }
 
+# 修改gen_include_nft，调用持久化功能
 gen_include_nft() {
 	# Generate nftables include file for firewall4
 	[ -n "$FWI" ] && echo '#!/bin/sh' >"$FWI"
-	cat <<-'EOF' >>"$FWI"
+	cat <<-EOF >>"$FWI"
 		# Clear existing ss_spec tables
 		nft delete table inet ss_spec 2>/dev/null
 		nft delete table ip ss_spec 2>/dev/null
 		nft delete table ip ss_spec_mangle 2>/dev/null
 
-		# Restore shadowsocks nftables rules
-		nft list ruleset | awk '/^table (inet|ip) ss_spec/{flag=1} /^table / && !/^table (inet|ip) ss_spec/{flag=0} flag'
+		# Restore shadowsocks nftables rules from persistent file
+		if [ -f "/usr/share/nftables.d/ruleset-post/99-shadowsocksr.nft" ]; then
+			nft -f /usr/share/nftables.d/ruleset-post/99-shadowsocksr.nft
+		else
+			# Fallback: restore from current ruleset (filtered)
+			nft list ruleset | awk '/^table (inet|ip) ss_spec/{flag=1} /^table / && !/^table (inet|ip) ss_spec/{flag=0} flag' | nft -f -
+		fi
 	EOF
 	chmod +x "$FWI"
 }
@@ -914,7 +1100,273 @@ gen_include_iptables() {
 	EOF
 }
 
-while getopts ":m:s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUfgrczh" arg; do
+# 检查 nftables 规则状态
+check_nftables_status() {
+	if [ "$USE_NFT" != "1" ]; then
+		echo "NFTables not in use"
+		return 0
+	fi
+
+	# 检查ss_spec表是否存在
+	if ! $NFT list table inet ss_spec >/dev/null 2>&1 && \
+	   ! $NFT list table ip ss_spec_mangle >/dev/null 2>&1; then
+		echo "ss_spec tables missing in nftables"
+		return 1
+	fi
+
+	# 检查是否有基本规则
+	if ! $NFT list table inet ss_spec 2>/dev/null | grep -q "chain.*ss_spec_wan_ac" || \
+	   ! $NFT list table inet ss_spec 2>/dev/null | grep -q "jump.*ss_spec_wan_fw"; then
+		echo "Basic SSR rules missing"
+		return 1
+	fi
+
+	echo "NFTables rules status: OK"
+	return 0
+}
+
+# 比较当前规则与持久化规则
+compare_rules() {
+	if [ "$USE_NFT" != "1" ]; then
+		return 1  # NFTables未使用，需要更新
+	fi
+
+	# 如果没有持久化文件，更新持久化文件
+	if [ ! -f "$NFTABLES_RULES_FILE" ]; then
+		loger 6 "No persistence file found, update needed"
+		return 1  # 需要更新持久化文件
+	fi
+
+	# 检查ss_spec表是否存在
+	if ! $NFT list table inet ss_spec >/dev/null 2>&1 && \
+	   ! $NFT list table ip ss_spec_mangle >/dev/null 2>&1; then
+		loger 6 "ss_spec tables missing, update needed"
+		return 1  # 需要更新ss_spec表
+	fi
+
+	# 生成当前规则的临时文件
+	local temp_file=$(mktemp)
+	local rules_file=$(mktemp)
+	loger 7 "DEBUG: Temporary file path: $current_rules_file"
+
+	# 导出当前规则到临时文件
+	$NFT list ruleset | awk '
+		/^table (inet ss_spec|ip ss_spec_mangle)/ {flag=1}
+		/^table / && !/^table (inet ss_spec|ip ss_spec_mangle)/ {flag=0}
+		flag
+	' > "$rules_file" 2>/dev/null
+
+	# 检查是否成功导出了当前规则
+	if [ ! -s "$rules_file" ] || ! grep -q "table" "$rules_file" 2>/dev/null; then
+		loger 4 "Failed to export current rules"
+		rm -f "$temp_file" "$rules_file"
+		return 1  # 导出失败，需要更新
+	fi
+
+	# 比较当前规则与持久化文件中的规则
+	if ! cmp -s "$rules_file" "$NFTABLES_RULES_FILE"; then
+		loger 6 "Rules differ, update needed"
+		rm -f "$temp_file" "$rules_file"
+		return 1  # 需要更新
+	fi
+
+	rm -f "$temp_file" "$rules_file"
+	loger 6 "Rules unchanged, no update needed"
+	return 0  # 无需更新
+}
+
+# 自动更新持久化规则
+persist_nftables_rules() {
+	if [ "$USE_NFT" != "1" ]; then
+		return 0
+	fi
+
+	# 如果模式未改变且存在持久化文件，跳过更新
+	if [ "$MODE_CHANGED" = "0" ] && [ -f "$NFTABLES_RULES_FILE" ]; then
+		loger 6 "Mode unchanged and persistence file exists, skipping update"
+		return 0
+	fi
+
+	# 强制更新时，跳过比较检查并删除旧文件
+	if [ "$FORCE_UPDATE" = "1" ]; then
+		loger 6 "Force update requested, removing old persistence file"
+		rm -f "$NFTABLES_RULES_FILE" 2>/dev/null
+	# 非强制更新时，进行规则比较
+	elif [ -f "$NFTABLES_RULES_FILE" ]; then
+		if compare_rules; then
+			loger 6 "Rules unchanged, skipping persistence update"
+			return 0
+		fi
+	fi
+
+	# 确保目录存在
+	mkdir -p "$NFTABLES_RULES_DIR" 2>/dev/null
+
+	# 生成nftables规则文件
+	cat <<-'EOF' >>$NFTABLES_RULES_FILE
+		#!/usr/sbin/nft -f
+
+		# ShadowsocksR nftables rules
+		# Generated by ssr-rules script
+	EOF
+
+	echo "# Auto-updated: $(date)" >> "$NFTABLES_RULES_FILE"
+	echo "# Runmode: ${RUNMODE:-router}" >> "$NFTABLES_RULES_FILE"
+	echo "# Server: $server, Port: $local_port" >> "$NFTABLES_RULES_FILE"
+	echo "" >> "$NFTABLES_RULES_FILE"
+
+	local HAS_RULES=0
+
+	# 分别导出每个表
+	if $NFT list table inet ss_spec >/dev/null 2>&1; then
+		loger 6 "Exporting table inet ss_spec"
+		{
+			echo ""
+			echo "# inet ss_spec table for main rules"
+			$NFT list table inet ss_spec 2>/dev/null
+		} >> "$NFTABLES_RULES_FILE"
+		HAS_RULES=1
+	fi
+
+	if $NFT list table ip ss_spec_mangle >/dev/null 2>&1; then
+		loger 6 "Exporting table ip ss_spec_mangle"
+		{
+			echo ""
+			echo "# ip ss_spec_mangle table for TPROXY rules"
+			$NFT list table ip ss_spec_mangle 2>/dev/null
+		} >> "$NFTABLES_RULES_FILE"
+		HAS_RULES=1
+	fi
+
+	# 检查是否成功导出了规则
+	if [ $HAS_RULES -eq 0 ] || [ ! -s "$NFTABLES_RULES_FILE" ] || ! grep -q "table" "$NFTABLES_RULES_FILE" 2>/dev/null; then
+		loger 4 "No ss_spec nftables rules found to persist"
+		rm -f "$NFTABLES_RULES_FILE" 2>/dev/null
+		return 1
+	fi
+
+	# 设置文件权限
+	chmod 644 "$NFTABLES_RULES_FILE" 2>/dev/null
+
+	# 记录成功信息
+	local TABLES=$(grep "^table" "$NFTABLES_RULES_FILE" | awk '{print $2 " " $3}' | tr '\n' ',' | sed 's/,$//')
+	loger 5 "NFTables rules persisted to $NFTABLES_RULES_FILE (Tables: $TABLES)"
+
+	return 0
+}
+
+# 自动更新守护进程
+start_auto_update_daemon() {
+	if [ "$USE_NFT" != "1" ] || [ "$AUTO_UPDATE_INTERVAL" = "0" ]; then
+		return 0
+	fi
+
+	loger 6 "Starting nftables rules auto-update daemon"
+
+	# 停止已经运行的守护进程
+	stop_auto_update_daemon
+
+	# 直接在后台启动守护进程
+	(
+		logger -t ssr-rules[daemon] "Auto-update daemon started - PID: $$"
+		echo $$ > "/var/run/ssr-rules-daemon.pid"
+
+		while true; do
+			sleep 300
+			if [ -x "/usr/bin/ssr-rules" ]; then
+				if /usr/bin/ssr-rules -C >/dev/null 2>&1; then
+					logger -t ssr-rules[daemon] "Rules changed or missing, updating persistence"
+					if /usr/bin/ssr-rules -P >/dev/null 2>&1; then
+						logger -t ssr-rules[daemon] "Persistence rules updated successfully"
+					else
+						logger -t ssr-rules[daemon] "Failed to update persistence"
+					fi
+				else
+					logger -t ssr-rules[daemon] "Rules status OK, no update needed"
+				fi
+			else
+				logger -t ssr-rules[daemon] "Script not found, exiting daemon"
+				exit 1
+			fi
+		done
+	) &
+
+	local DAEMON_PID=$!
+	sleep 2
+
+	if kill -0 "$DAEMON_PID" 2>/dev/null; then
+		loger 6 "Auto-update daemon started with PID: $DAEMON_PID"
+		return 0
+	else
+		loger 3 "Auto-update daemon failed to start"
+		return 1
+	fi
+}
+
+# 停止自动更新守护进程函数
+stop_auto_update_daemon() {
+	local PID_FILE="/var/run/ssr-rules-daemon.pid"
+
+	if [ -f "$PID_FILE" ]; then
+		local DAEMON_PID=$(cat "$PID_FILE" 2>/dev/null)
+		if [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>/dev/null; then
+			kill "$DAEMON_PID" 2>/dev/null
+			loger 6 "Stopped auto-update daemon (PID: $DAEMON_PID)"
+		fi
+		rm -f "$PID_FILE" 2>/dev/null
+	fi
+
+	loger 6 "Auto-update daemon stopped"
+}
+
+# 强制更新持久化规则函数
+force_update_persistence() {
+	if [ "$USE_NFT" != "1" ]; then
+		echo "NFTables not in use"
+		return 0
+	fi
+
+	# 移除现有规则文件确保重新创建
+	rm -f "$NFTABLES_RULES_FILE" 2>/dev/null
+
+	# 调用持久化函数
+	if persist_nftables_rules; then
+		loger 5 "Persistence update completed successfully"
+		return 0
+	else
+		loger 3 "Persistence update failed"
+		return 1
+	fi
+}
+
+# 从持久化文件恢复规则
+restore_from_persistence() {
+	if [ "$USE_NFT" != "1" ]; then
+		loger 3 "NFTables not in use, cannot restore rules"
+		return 1
+	fi
+
+	if [ ! -f "$NFTABLES_RULES_FILE" ]; then
+		loger 4 "Persistence file not found: $NFTABLES_RULES_FILE"
+		return 1
+	fi
+
+	loger 6 "Restoring rules from persistence file"
+
+	# 清理现有规则
+	flush_r
+
+	# 从文件恢复规则
+	if $NFT -f "$NFTABLES_RULES_FILE" 2>/dev/null; then
+		loger 5 "Rules restored successfully from persistence file"
+		return 0
+	else
+		loger 4 "Failed to restore rules from persistence file"
+		return 1
+	fi
+}
+
+while getopts ":m:s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUfgrczAKPCRXh" arg; do
 	case "$arg" in
 	m)
 		Interface=$OPTARG
@@ -994,58 +1446,283 @@ while getopts ":m:s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUfgrczh" arg; do
 	z)
 		RUNMODE=all
 		;;
-	f)
-		flush_r
-		exit 0
+	# 新增持久化管理选项
+	A)
+		ENABLE_AUTO_UPDATE=1
 		;;
-	h) usage 0 ;;
+	K)
+		STOP_AUTO_UPDATE=1
+		;;
+	P)
+		FORCE_UPDATE=1
+		;;
+	C)
+		CHECK_STATUS=1
+		;;
+	R)
+		RESTORE_RULES=1
+		;;
+	X)
+		CLEANUP_PERSISTENCE=1
+		;;
+	f)
+		FLUSH_RULES=1
+		;;
+	h) 
+		usage 0 
+		;;
 	esac
 done
 
-if [ -z "$server" ] || [ -z "$local_port" ]; then
-	usage 2
+# 首先处理需要立即退出的选项
+if [ "$CHECK_STATUS" = "1" ]; then
+	check_nftables_status
+	exit $?
 fi
 
-if ! echo "$local_port" | grep -qE '^[0-9]+$'; then
-	loger 3 "Invalid local port: $local_port"
-	exit 1
+if [ "$STOP_AUTO_UPDATE" = "1" ]; then
+	stop_auto_update_daemon
+	exit 0
 fi
 
-case "$TPROXY" in
-1)
-	SERVER=$server
-	LOCAL_PORT=$local_port
-	;;
-2)
-	: ${SERVER:?"You must assign an ip for the udp relay server."}
-	: ${LOCAL_PORT:?"You must assign a port for the udp relay server."}
-	;;
-esac
+# 只有-X选项，执行清理后退出
+if [ "$CLEANUP_PERSISTENCE" = "1" ] && [ "$FLUSH_RULES" != "1" ] && [ -z "$server" ] && [ -z "$local_port" ] && \
+   [ "$FORCE_UPDATE" != "1" ] && [ "$RESTORE_RULES" != "1" ] && [ "$ENABLE_AUTO_UPDATE" != "1" ]; then
+	cleanup_persistence_files
+	exit $?
+fi
 
-# First check whether nftables is working properly
-if [ "$USE_NFT" = "1" ]; then
-	if ! $NFT list tables 2>/dev/null; then
-		loger 3 "nftables is not working properly, check if nftables is installed and running"
-		exit 1
+# 检查是否有持久化管理选项单独处理
+PERSISTENCE_ONLY=0
+if [ -z "$server" ] && [ -z "$local_port" ] && [ "$FLUSH_RULES" != "1" ]; then
+	if [ "$FORCE_UPDATE" = "1" ] || [ "$RESTORE_RULES" = "1" ] || [ "$ENABLE_AUTO_UPDATE" = "1" ] || [ "$CLEANUP_PERSISTENCE" = "1" ]; then
+		PERSISTENCE_ONLY=1
+	else
+		usage 2
 	fi
 fi
 
-if [ "$USE_NFT" = "1" ]; then
-	# NFTables
-	if flush_r && ipset_r && fw_rule && ac_rule && tp_rule && gen_include; then
-		loger 5 "NFTables rules applied successfully"
+# 处理持久化管理选项的情况
+if [ "$PERSISTENCE_ONLY" = "1" ]; then
+	if [ "$FORCE_UPDATE" = "1" ]; then
+		force_update_persistence
+		exit $?
+	fi
+
+	if [ "$RESTORE_RULES" = "1" ]; then
+		restore_from_persistence
+		exit $?
+	fi
+
+	if [ "$ENABLE_AUTO_UPDATE" = "1" ]; then
+		start_auto_update_daemon
+		exit $?
+	fi
+fi
+
+# 强制刷新规则
+if [ "$FLUSH_RULES" = "1" ]; then
+	flush_r
+	# 如果只有 -f 选项，则退出
+	if [ -z "$server" ] && [ -z "$local_port" ] && [ "$FORCE_UPDATE" != "1" ] && \
+		[ "$RESTORE_RULES" != "1" ] && [ "$ENABLE_AUTO_UPDATE" != "1" ] && \
+		[ "$CLEANUP_PERSISTENCE" != "1" ]; then
 		exit 0
+	fi
+fi
+
+# 从持久化文件恢复规则（在规则应用之前）
+if [ "$RESTORE_RULES" = "1" ]; then
+	restore_from_persistence
+	if [ $? -ne 0 ]; then
+		loger 3 "Failed to restore from persistence, continuing with rule application"
+	fi
+fi
+
+# 运行模式更改
+runmode_change() {
+	local mode_file="/tmp/.ssr_run_mode"
+	local new_mode=""
+	local old_mode=""
+
+	# 从参数获取模式
+	if [ -n "$1" ]; then
+		new_mode="$1"
+	fi
+
+	# 从文件中读取上一次的运行模式
+	if [ -f "$mode_file" ]; then
+		old_mode=$(cat "$mode_file" 2>/dev/null)
+	fi
+
+	# 比较模式是否改变
+	if [ "$old_mode" = "$new_mode" ] && [ -n "$old_mode" ]; then
+		# 模式未改变
+		echo "$new_mode" > "$mode_file"  # 更新文件时间戳
+		loger 6 "Runmode unchanged: $new_mode"
+		return 1  # 返回1表示未改变
 	else
-		loger 3 "NFTables setup failed!"
+		# 模式已改变或首次运行
+		echo "$new_mode" > "$mode_file"
+		if [ -n "$old_mode" ]; then
+			loger 6 "Runmode changed from '$old_mode' to '$new_mode'"
+		else
+			loger 6 "Runmode set to '$new_mode'"
+		fi
+		return 0  # 返回0表示已改变
+	fi
+}
+
+# Main process
+if [ -n "$server" ] && [ -n "$local_port" ]; then
+	if ! echo "$local_port" | grep -qE '^[0-9]+$'; then
+		loger 3 "Invalid local port: $local_port"
 		exit 1
 	fi
-else
-	# iptables
-	if flush_r && fw_rule && ipset_r && ac_rule && tp_rule && gen_include; then
-		loger 5 "iptables rules applied successfully"
-		exit 0
+
+	case "$TPROXY" in
+	1)
+		SERVER=$server
+		LOCAL_PORT=$local_port
+		;;
+	2)
+		: ${SERVER:?"You must assign an ip for the udp relay server."}
+		: ${LOCAL_PORT:?"You must assign a port for the udp relay server."}
+		;;
+	esac
+
+	if [ "$USE_NFT" = "1" ]; then
+		# NFTables
+		# 保存上一次 TPROXY 状态文件
+		TPROXY_STATE_FILE="/tmp/.last_tproxy"
+		if [ -f "$TPROXY_STATE_FILE" ]; then
+			LAST_TPROXY=$(cat "$TPROXY_STATE_FILE")
+		else
+			LAST_TPROXY=""
+		fi
+
+		# 保存上一次 PROXY_PORTS 状态
+		PROXY_PORTS_STATE_FILE="/tmp/.last_proxy_ports"
+		if [ -f "$PROXY_PORTS_STATE_FILE" ]; then
+			LAST_PROXY_PORTS=$(cat "$PROXY_PORTS_STATE_FILE")
+		else
+			LAST_PROXY_PORTS=""
+		fi
+
+		# STEP 1: 判断 TPROXY 是否有值（1 或 2）
+		if [ "$TPROXY" = "1" ] || [ "$TPROXY" = "2" ]; then
+			TPROXY_HAS_VALUE=1
+		else
+			TPROXY_HAS_VALUE=0
+		fi
+
+		if [ "$LAST_TPROXY" = "1" ] || [ "$LAST_TPROXY" = "2" ]; then
+			LAST_HAS_VALUE=1
+		else
+			LAST_HAS_VALUE=0
+		fi
+
+		# STEP 2: 判断 PROXY_PORTS 是否有值（非空字符串）
+		if [ -n "${PROXY_PORTS// }" ]; then
+			PROXY_HAS_VALUE=1
+		else
+			PROXY_HAS_VALUE=0
+		fi
+
+		if [ -n "${LAST_PROXY_PORTS// }" ]; then
+			LAST_PROXY_HAS_VALUE=1
+		else
+			LAST_PROXY_HAS_VALUE=0
+		fi
+
+		# STEP 3: 判断是否需要强制重建
+		FORCE_RECREATE=0
+		PERSISTENCE_EXISTS=0
+
+		# 触发条件：
+		# 1. TPROXY 从空 ↔ 有值变化
+		# 2. PROXY_PORTS 从空 ↔ 有值变化
+		if [ "$TPROXY_HAS_VALUE" != "$LAST_HAS_VALUE" ] || [ "$PROXY_HAS_VALUE" != "$LAST_PROXY_HAS_VALUE" ]; then
+			FORCE_RECREATE=1
+			loger 6 "TPROXY or PROXY_PORTS changed → force rebuild rules"
+			rm -f "$NFTABLES_RULES_FILE" 2>/dev/null
+		else
+			# 未触发 FORCE_RECREATE → 检查持久化文件
+			if [ -f "$NFTABLES_RULES_FILE" ] && [ -s "$NFTABLES_RULES_FILE" ]; then
+				PERSISTENCE_EXISTS=1
+				loger 6 "Persistence file exists: $NFTABLES_RULES_FILE"
+			else
+				PERSISTENCE_EXISTS=0
+				loger 6 "Persistence file does not exist or empty"
+			fi
+		fi
+
+		# STEP 4: 保存当前状态
+		echo "$TPROXY" > "$TPROXY_STATE_FILE"
+		echo "$PROXY_PORTS" > "$PROXY_PORTS_STATE_FILE"
+
+		# STEP 5: 判断运行模式是否改变
+		if runmode_change "$RUNMODE"; then
+			MODE_CHANGED=1
+			loger 6 "Runmode changed: MODE_CHANGED=1"
+		else
+			MODE_CHANGED=0
+			loger 6 "Runmode unchanged: MODE_CHANGED=0"
+		fi
+
+		# STEP 6: 模式改变且持久化存在 → 删除一次
+		if [ "$MODE_CHANGED" = "1" ] && [ "$PERSISTENCE_EXISTS" = "1" ]; then
+			loger 6 "Mode changed → removing persistence file"
+			rm -f "$NFTABLES_RULES_FILE"
+			PERSISTENCE_EXISTS=0
+		fi
+
+		# STEP 7: FORCE_RECREATE 优先 → 必须重建规则
+		if [ "$FORCE_RECREATE" = "1" ]; then
+			loger 5 "Forced regeneration of NFTables rules"
+			if flush_r && ipset_r && fw_rule && ac_rule && tp_rule && gen_include; then
+				loger 5 "NFT rules applied successfully (forced rebuild)"
+				persist_nftables_rules
+				[ "$ENABLE_AUTO_UPDATE" = "1" ] && start_auto_update_daemon
+				exit 0
+			else
+				loger 3 "NFT forced rebuild failed!"
+				exit 1
+			fi
+		fi
+
+		# STEP 8: 持久化存在 → 尝试 restore
+		if [ "$PERSISTENCE_EXISTS" = "1" ]; then
+			# 恢复规则
+			if restore_from_persistence; then
+				loger 5 "NFT rules restored from persistence"
+				gen_include
+				[ "$ENABLE_AUTO_UPDATE" = "1" ] && start_auto_update_daemon
+				exit 0
+			else
+				loger 3 "Restore failed → fallback to full setup"
+				PERSISTENCE_EXISTS=0
+			fi
+		fi
+
+		# STEP 9: 持久化不存在或 restore 失败 → 生成新规则
+		if flush_r && ipset_r && fw_rule && ac_rule && tp_rule && gen_include; then
+			loger 5 "NFTables rules applied successfully"
+			persist_nftables_rules
+			[ "$ENABLE_AUTO_UPDATE" = "1" ] && start_auto_update_daemon
+			exit 0
+		else
+			loger 3 "NFTables setup failed!"
+			exit 1
+		fi
 	else
-		loger 3 "iptables setup failed!"
-		exit 1
+		# iptables
+		if flush_r && fw_rule && ipset_r && ac_rule && tp_rule && gen_include; then
+			loger 5 "iptables rules applied successfully"
+			exit 0
+		else
+			loger 3 "iptables setup failed!"
+			exit 1
+		fi
 	fi
 fi
