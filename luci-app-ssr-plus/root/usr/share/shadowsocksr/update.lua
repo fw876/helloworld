@@ -213,7 +213,9 @@ local function update(url, file, type, file2)
 			if type == "gfw_data" or type == "ad_data" then
 				luci.sys.call("/usr/share/shadowsocksr/gfw2ipset.sh")
 			else
-				luci.sys.call("/usr/share/shadowsocksr/chinaipset.sh " .. TMP_PATH .. "/china_ssr.txt")
+				if luci.sys.call("command -v ipset >/dev/null 2>&1") == 0 then
+					luci.sys.call("/usr/share/shadowsocksr/chinaipset.sh " .. TMP_PATH .. "/china_ssr.txt")
+				end
 			end
 			if args then
 				log(0, tonumber(icount) / Num)
