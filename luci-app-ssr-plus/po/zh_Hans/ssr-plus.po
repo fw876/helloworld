@@ -416,8 +416,8 @@ msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:149
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client.lua:172
-msgid "Custom DNS Server for MosDNS"
-msgstr "MosDNS 自定义 DNS 服务器"
+msgid "Custom DNS Server format as tcp://IP:PORT or tls://DOMAIN:PORT (tcp://8.8.8.8 or tls://dns.google:853)"
+msgstr "格式为tcp://IP:Port或tls://域名:Port (tcp://8.8.8.8或tls://dns.google:853)"
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:138
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:220
