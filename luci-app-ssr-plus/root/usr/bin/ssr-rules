@@ -28,7 +28,8 @@ detect_firewall
 
 TAG="_SS_SPEC_RULE_"                                  # comment tag
 
-# 这些变量将在后续的 getopts 参数解析中被赋值
+# Initialize all global switch variables (for both NFT and IPT)
+# These variables will be set in getopts parameter parsing
 ENABLE_AUTO_UPDATE=0
 STOP_AUTO_UPDATE=0
 FORCE_UPDATE=0
@@ -42,10 +43,10 @@ if [ "$USE_NFT" = "1" ]; then
 	NFTABLES_RULES_DIR="/usr/share/nftables.d/ruleset-post"
 	NFTABLES_RULES_FILE="$NFTABLES_RULES_DIR/99-shadowsocksr.nft"
 	# Auto-update configuration
-	AUTO_UPDATE_INTERVAL=300  # 自动更新检查间隔（秒），0表示禁用自动更新
+	AUTO_UPDATE_INTERVAL=300  # auto-update check interval (seconds), 0 means disable
 fi
 
-# 修改 usage 函数
+# Modified usage function
 usage() {
 	cat <<-EOF
 		Usage: ssr-rules [options]
@@ -82,7 +83,7 @@ usage() {
 		    -c                      oversea mode
 		    -z                      all mode
 		    
-		    # 新增持久化管理选项 (使用不同的字母避免冲突)
+		    # New persistence management options (use different letters to avoid conflicts)
 		    -A                      enable auto-update daemon
 		    -K                      stop auto-update daemon  
 		    -P                      force update persistence
@@ -100,34 +101,93 @@ loger() {
 	logger -st ssr-rules[$$] -p$1 $2
 }
 
-# 清理持久化和运行模块文件等
+# IP list normalization function (for comparison)
+normalize_ip_list() {
+	echo "$1" | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//'
+}
+
+# Check if IP list has changed
+check_ip_list_changed() {
+	local current_list="$1"
+	local last_list="$2"
+	local list_name="$3"
+	
+	local current_norm=$(normalize_ip_list "$current_list")
+	local last_norm=$(normalize_ip_list "$last_list")
+	
+	if [ "$current_norm" != "$last_norm" ]; then
+		loger 6 "$list_name changed: '$last_norm' -> '$current_norm'"
+		return 1  # changed
+	else
+		loger 6 "$list_name unchanged: '$current_norm'"
+		return 0  # unchanged
+	fi
+}
+
+# Cleanup persistence and runtime module files
 cleanup_persistence_files() {
 	if [ "$USE_NFT" != "1" ]; then
 		return 0
 	fi
 
-	# 删除持久化规则文件
+	# Remove persistence rule file
 	if [ -f "$NFTABLES_RULES_FILE" ]; then
 		rm -f "$NFTABLES_RULES_FILE" 2>/dev/null
 		loger 5 "Removed persistence file: $NFTABLES_RULES_FILE"
 	fi
 
-	# 删除运行模块文件
+	# Remove run mode file
 	if [ -f "/tmp/.ssr_run_mode" ]; then
 		rm -f "/tmp/.ssr_run_mode" 2>/dev/null
 		loger 5 "Removed run mode file: /tmp/.ssr_run_mode"
 	fi
 
-	# 删除 TPROXY 文件
+	# Remove TPROXY file
 	if [ -f "/tmp/.last_tproxy" ]; then
 		rm -f "/tmp/.last_tproxy" 2>/dev/null
 		loger 5 "Removed run mode file: /tmp/.last_tproxy"
 	fi
 
-	# 删除 PROXY_PORTS 文件
+	# Remove PROXY_PORTS file
 	if [ -f "/tmp/.last_proxy_ports" ]; then
 		rm -f "/tmp/.last_proxy_ports" 2>/dev/null
 		loger 5 "Removed run mode file: /tmp/.last_proxy_ports"
+	fi
+
+	# Remove WAN_BP_IP file
+	if [ -f "/tmp/.last_wan_bp_ip" ]; then
+		rm -f "/tmp/.last_wan_bp_ip" 2>/dev/null
+		loger 5 "Removed run mode file: /tmp/.last_wan_bp_ip"
+	fi
+
+	# Remove LAN_AC_IP file
+	if [ -f "/tmp/.last_lan_ac_ip" ]; then
+		rm -f "/tmp/.last_lan_ac_ip" 2>/dev/null
+		loger 5 "Removed run mode file: /tmp/.last_lan_ac_ip"
+	fi
+
+	# Remove LAN_BP_IP file
+	if [ -f "/tmp/.last_lan_bp_ip" ]; then
+		rm -f "/tmp/.last_lan_bp_ip" 2>/dev/null
+		loger 5 "Removed run mode file: /tmp/.last_lan_bp_ip"
+	fi
+
+	# Remove WAN_FW_IP file
+	if [ -f "/tmp/.last_wan_fw_ip" ]; then
+		rm -f "/tmp/.last_wan_fw_ip" 2>/dev/null
+		loger 5 "Removed run mode file: /tmp/.last_wan_fw_ip"
+	fi
+
+	# Remove LAN_FP_IP file
+	if [ -f "/tmp/.last_lan_fp_ip" ]; then
+		rm -f "/tmp/.last_lan_fp_ip" 2>/dev/null
+		loger 5 "Removed run mode file: /tmp/.last_lan_fp_ip"
+	fi
+
+	# Remove LAN_GM_IP file
+	if [ -f "/tmp/.last_lan_gm_ip" ]; then
+		rm -f "/tmp/.last_lan_gm_ip" 2>/dev/null
+		loger 5 "Removed run mode file: /tmp/.last_lan_gm_ip"
 	fi
 
 	loger 5 "Persistence cleanup completed"
@@ -144,60 +204,60 @@ flush_r() {
 }
 
 flush_nftables() {
-	# 删除 inet ss_spec 表
+	# Delete inet ss_spec table
 	if $NFT list table inet ss_spec >/dev/null 2>&1; then
-		# 删除所有链
+		# Delete all chains
 		local CHAINS=$($NFT list table inet ss_spec | awk '/chain [a-zA-Z0-9_-]+/ {print $2}' | sort -u)
 		for chain in $CHAINS; do
 			$NFT flush chain inet ss_spec $chain 2>/dev/null
 			$NFT delete chain inet ss_spec $chain 2>/dev/null
 		done
 
-		# 删除所有集合（set）
+		# Delete all sets
 		local SETS=$($NFT list table inet ss_spec | awk '/set [a-zA-Z0-9_-]+/ {print $2}' | sort -u)
 		for setname in $SETS; do
 			$NFT flush set inet ss_spec $setname 2>/dev/null
 			$NFT delete set inet ss_spec $setname 2>/dev/null
 		done
 
-		# 删除整个表
+		# Delete entire table
 		$NFT delete table inet ss_spec 2>/dev/null
 	fi
 
-	# 删除 ip ss_spec_mangle 表（如果存在）
+	# Delete ip ss_spec_mangle table (if exists)
 	if $NFT list table ip ss_spec_mangle >/dev/null 2>&1; then
-		# 删除所有链
+		# Delete all chains
 		local CHAINS=$($NFT list table ip ss_spec_mangle | awk '/chain [a-zA-Z0-9_-]+/ {print $2}' | sort -u)
 		for chain in $CHAINS; do
 			$NFT flush chain ip ss_spec_mangle $chain 2>/dev/null
 			$NFT delete chain ip ss_spec_mangle $chain 2>/dev/null
 		done
 
-		# 删除所有集合（set）
+		# Delete all sets
 		local SETS=$($NFT list table ip ss_spec_mangle | awk '/set [a-zA-Z0-9_-]+/ {print $2}' | sort -u)
 		for setname in $SETS; do
 			$NFT flush set ip ss_spec_mangle $setname 2>/dev/null
 			$NFT delete set ip ss_spec_mangle $setname 2>/dev/null
 		done
 
-		# 删除整个表
+		# Delete entire table
 		$NFT delete table ip ss_spec_mangle 2>/dev/null
 	fi
 
-	# 删除策略路由标记规则
+	# Delete policy routing mark rules
 	ip rule del fwmark 0x01/0x01 table 100 2>/dev/null
 	ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null
 
-	# 可选：强制删除所有 ss_spec 相关的集合（即使表被误删）
+	# Optional: force delete all ss_spec related sets (even if table was accidentally deleted)
 	for setname in ss_spec_lan_ac ss_spec_wan_ac ssr_gen_router fplan bplan gmlan oversea whitelist blacklist netflix gfwlist china music; do
 		$NFT delete set inet ss_spec $setname 2>/dev/null
 		$NFT delete set ip ss_spec_mangle $setname 2>/dev/null
 	done
 
-	# 重置防火墙 include 文件
+	# Reset firewall include file
 	[ -n "$FWI" ] && echo '#!/bin/sh' >"$FWI"
 
-	# 清理持久化和运行模块文件
+	# Cleanup persistence and runtime module files
 	if [ "$CLEANUP_PERSISTENCE" = "1" ]; then
 		cleanup_persistence_files
 	fi
@@ -605,7 +665,7 @@ ac_rule_nft() {
 		done
 	fi
 
-	# 暂注释 IPV6 用于后续开启 IPV6
+	# Temporarily comment IPV6 for future enablement
 	#if $NFT list chain inet ss_spec ss_spec_prerouting_tcp >/dev/null 2>&1; then
 	#	for net in ::1/128 fe80::/10 fc00::/7 ff00::/8 ::/128 ::ffff:0:0/96; do
 	#		$NFT add rule inet ss_spec ss_spec_prerouting_tcp ip6 daddr $net return 2>/dev/null
@@ -625,7 +685,7 @@ ac_rule_nft() {
 		done
 	fi
 
-	# 暂注释 IPV6 用于后续开启 IPV6
+	# Temporarily comment IPV6 for future enablement
 	#if $NFT list chain inet ss_spec ss_spec_prerouting_udp >/dev/null 2>&1; then
 	#	for net in ::1/128 fe80::/10 fc00::/7 ff00::/8 ::/128 ::ffff:0:0/96; do
 	#		$NFT add rule inet ss_spec ss_spec_prerouting_udp ip6 daddr $net return 2>/dev/null
@@ -686,7 +746,7 @@ ac_rule_nft() {
 			done
 		fi
 
-		# 暂注释 IPV6 用于后续开启 IPV6
+		# Temporarily comment IPV6 for future enablement
 		#if $NFT list chain inet ss_spec ss_spec_output_tcp >/dev/null 2>&1; then
 		#	for net in ::1/128 fe80::/10 fc00::/7 ff00::/8 ::/128 ::ffff:0:0/96; do
 		#		$NFT add rule inet ss_spec ss_spec_output_tcp ip6 daddr $net return 2>/dev/null
@@ -709,7 +769,7 @@ ac_rule_nft() {
 			done
 		fi
 
-		# 暂注释 IPV6 用于后续开启 IPV6
+		# Temporarily comment IPV6 for future enablement
 		#if $NFT list chain inet ss_spec ss_spec_output_udp >/dev/null 2>&1; then
 		#	for net in ::1/128 fe80::/10 fc00::/7 ff00::/8 ::/128 ::ffff:0:0/96; do
 		#		$NFT add rule inet ss_spec ss_spec_output_udp ip6 daddr $net return 2>/dev/null
@@ -872,7 +932,7 @@ tp_rule_nft() {
 		done
 	fi
 
-	# 暂注释 IPV6 用于后续开启 IPV6
+	# Temporarily comment IPV6 for future enablement
 	#if $NFT list chain ip ss_spec_mangle ss_spec_tproxy >/dev/null 2>&1; then
 	#	for net in ::1/128 fe80::/10 fc00::/7 ff00::/8 fe80::/10 ::/128 ::ffff:0:0/96; do
 	#		$NFT add rule ip ss_spec_mangle ss_spec_tproxy ip6 daddr $net return 2>/dev/null
@@ -947,14 +1007,14 @@ tp_rule_nft() {
 
 	# add prerouting jump (idempotent)
 	if [ -z "$Interface" ]; then
-		# 全局规则
+		# Global rules
 		if [ -n "$MATCH_SET" ]; then
 			$NFT add rule ip ss_spec_mangle prerouting meta l4proto udp $EXT_ARGS $MATCH_SET jump ss_spec_tproxy comment "\"$TAG\"" 2>/dev/null
 		else
 			$NFT add rule ip ss_spec_mangle prerouting meta l4proto udp $EXT_ARGS jump ss_spec_tproxy comment "\"$TAG\"" 2>/dev/null
 		fi
 	else
-		# 指定接口
+		# Specific interface
 		for name in $Interface; do
 			IFNAME=$(uci -P /var/state get network."$name".ifname 2>/dev/null)
 			[ -z "$IFNAME" ] && IFNAME=$(uci -P /var/state get network."$name".device 2>/dev/null)
@@ -1064,7 +1124,7 @@ gen_include() {
 	return $?
 }
 
-# 修改gen_include_nft，调用持久化功能
+# Modified gen_include_nft to call persistence function
 gen_include_nft() {
 	# Generate nftables include file for firewall4
 	[ -n "$FWI" ] && echo '#!/bin/sh' >"$FWI"
@@ -1100,21 +1160,21 @@ gen_include_iptables() {
 	EOF
 }
 
-# 检查 nftables 规则状态
+# Check nftables rules status
 check_nftables_status() {
 	if [ "$USE_NFT" != "1" ]; then
 		echo "NFTables not in use"
 		return 0
 	fi
 
-	# 检查ss_spec表是否存在
+	# Check if ss_spec tables exist
 	if ! $NFT list table inet ss_spec >/dev/null 2>&1 && \
 	   ! $NFT list table ip ss_spec_mangle >/dev/null 2>&1; then
 		echo "ss_spec tables missing in nftables"
 		return 1
 	fi
 
-	# 检查是否有基本规则
+	# Check if basic rules exist
 	if ! $NFT list table inet ss_spec 2>/dev/null | grep -q "chain.*ss_spec_wan_ac" || \
 	   ! $NFT list table inet ss_spec 2>/dev/null | grep -q "jump.*ss_spec_wan_fw"; then
 		echo "Basic SSR rules missing"
@@ -1125,73 +1185,73 @@ check_nftables_status() {
 	return 0
 }
 
-# 比较当前规则与持久化规则
+# Compare current rules with persistence rules
 compare_rules() {
 	if [ "$USE_NFT" != "1" ]; then
-		return 1  # NFTables未使用，需要更新
+		return 1  # NFTables not used, need update
 	fi
 
-	# 如果没有持久化文件，更新持久化文件
+	# If no persistence file, update persistence file
 	if [ ! -f "$NFTABLES_RULES_FILE" ]; then
 		loger 6 "No persistence file found, update needed"
-		return 1  # 需要更新持久化文件
+		return 1  # Need to update persistence file
 	fi
 
-	# 检查ss_spec表是否存在
+	# Check if ss_spec tables exist
 	if ! $NFT list table inet ss_spec >/dev/null 2>&1 && \
 	   ! $NFT list table ip ss_spec_mangle >/dev/null 2>&1; then
 		loger 6 "ss_spec tables missing, update needed"
-		return 1  # 需要更新ss_spec表
+		return 1  # Need to update ss_spec table
 	fi
 
-	# 生成当前规则的临时文件
+	# Generate temporary file for current rules
 	local temp_file=$(mktemp)
 	local rules_file=$(mktemp)
 	loger 7 "DEBUG: Temporary file path: $current_rules_file"
 
-	# 导出当前规则到临时文件
+	# Export current rules to temporary file
 	$NFT list ruleset | awk '
 		/^table (inet ss_spec|ip ss_spec_mangle)/ {flag=1}
 		/^table / && !/^table (inet ss_spec|ip ss_spec_mangle)/ {flag=0}
 		flag
 	' > "$rules_file" 2>/dev/null
 
-	# 检查是否成功导出了当前规则
+	# Check if current rules were exported successfully
 	if [ ! -s "$rules_file" ] || ! grep -q "table" "$rules_file" 2>/dev/null; then
 		loger 4 "Failed to export current rules"
 		rm -f "$temp_file" "$rules_file"
-		return 1  # 导出失败，需要更新
+		return 1  # Export failed, need update
 	fi
 
-	# 比较当前规则与持久化文件中的规则
+	# Compare current rules with rules in persistence file
 	if ! cmp -s "$rules_file" "$NFTABLES_RULES_FILE"; then
 		loger 6 "Rules differ, update needed"
 		rm -f "$temp_file" "$rules_file"
-		return 1  # 需要更新
+		return 1  # Need update
 	fi
 
 	rm -f "$temp_file" "$rules_file"
 	loger 6 "Rules unchanged, no update needed"
-	return 0  # 无需更新
+	return 0  # No update needed
 }
 
-# 自动更新持久化规则
+# Auto-update persistence rules
 persist_nftables_rules() {
 	if [ "$USE_NFT" != "1" ]; then
 		return 0
 	fi
 
-	# 如果模式未改变且存在持久化文件，跳过更新
+	# If mode unchanged and persistence file exists, skip update
 	if [ "$MODE_CHANGED" = "0" ] && [ -f "$NFTABLES_RULES_FILE" ]; then
 		loger 6 "Mode unchanged and persistence file exists, skipping update"
 		return 0
 	fi
 
-	# 强制更新时，跳过比较检查并删除旧文件
+	# Force update: skip comparison check and delete old file
 	if [ "$FORCE_UPDATE" = "1" ]; then
 		loger 6 "Force update requested, removing old persistence file"
 		rm -f "$NFTABLES_RULES_FILE" 2>/dev/null
-	# 非强制更新时，进行规则比较
+	# Non-force update: compare rules
 	elif [ -f "$NFTABLES_RULES_FILE" ]; then
 		if compare_rules; then
 			loger 6 "Rules unchanged, skipping persistence update"
@@ -1199,10 +1259,10 @@ persist_nftables_rules() {
 		fi
 	fi
 
-	# 确保目录存在
+	# Ensure directory exists
 	mkdir -p "$NFTABLES_RULES_DIR" 2>/dev/null
 
-	# 生成nftables规则文件
+	# Generate nftables rule file
 	cat <<-'EOF' >>$NFTABLES_RULES_FILE
 		#!/usr/sbin/nft -f
 
@@ -1213,11 +1273,17 @@ persist_nftables_rules() {
 	echo "# Auto-updated: $(date)" >> "$NFTABLES_RULES_FILE"
 	echo "# Runmode: ${RUNMODE:-router}" >> "$NFTABLES_RULES_FILE"
 	echo "# Server: $server, Port: $local_port" >> "$NFTABLES_RULES_FILE"
+	echo "# WAN_BP_IP: $WAN_BP_IP" >> "$NFTABLES_RULES_FILE"
+	echo "# LAN_AC_IP: $LAN_AC_IP" >> "$NFTABLES_RULES_FILE"
+	echo "# LAN_BP_IP: $LAN_BP_IP" >> "$NFTABLES_RULES_FILE"
+	echo "# WAN_FW_IP: $WAN_FW_IP" >> "$NFTABLES_RULES_FILE"
+	echo "# LAN_FP_IP: $LAN_FP_IP" >> "$NFTABLES_RULES_FILE"
+	echo "# LAN_GM_IP: $LAN_GM_IP" >> "$NFTABLES_RULES_FILE"
 	echo "" >> "$NFTABLES_RULES_FILE"
 
 	local HAS_RULES=0
 
-	# 分别导出每个表
+	# Export each table separately
 	if $NFT list table inet ss_spec >/dev/null 2>&1; then
 		loger 6 "Exporting table inet ss_spec"
 		{
@@ -1238,24 +1304,24 @@ persist_nftables_rules() {
 		HAS_RULES=1
 	fi
 
-	# 检查是否成功导出了规则
+	# Check if rules were exported successfully
 	if [ $HAS_RULES -eq 0 ] || [ ! -s "$NFTABLES_RULES_FILE" ] || ! grep -q "table" "$NFTABLES_RULES_FILE" 2>/dev/null; then
 		loger 4 "No ss_spec nftables rules found to persist"
 		rm -f "$NFTABLES_RULES_FILE" 2>/dev/null
 		return 1
 	fi
 
-	# 设置文件权限
+	# Set file permissions
 	chmod 644 "$NFTABLES_RULES_FILE" 2>/dev/null
 
-	# 记录成功信息
+	# Log success information
 	local TABLES=$(grep "^table" "$NFTABLES_RULES_FILE" | awk '{print $2 " " $3}' | tr '\n' ',' | sed 's/,$//')
 	loger 5 "NFTables rules persisted to $NFTABLES_RULES_FILE (Tables: $TABLES)"
 
 	return 0
 }
 
-# 自动更新守护进程
+# Auto-update daemon
 start_auto_update_daemon() {
 	if [ "$USE_NFT" != "1" ] || [ "$AUTO_UPDATE_INTERVAL" = "0" ]; then
 		return 0
@@ -1263,10 +1329,10 @@ start_auto_update_daemon() {
 
 	loger 6 "Starting nftables rules auto-update daemon"
 
-	# 停止已经运行的守护进程
+	# Stop already running daemon
 	stop_auto_update_daemon
 
-	# 直接在后台启动守护进程
+	# Start daemon directly in background
 	(
 		logger -t ssr-rules[daemon] "Auto-update daemon started - PID: $$"
 		echo $$ > "/var/run/ssr-rules-daemon.pid"
@@ -1303,7 +1369,7 @@ start_auto_update_daemon() {
 	fi
 }
 
-# 停止自动更新守护进程函数
+# Stop auto-update daemon function
 stop_auto_update_daemon() {
 	local PID_FILE="/var/run/ssr-rules-daemon.pid"
 
@@ -1319,17 +1385,17 @@ stop_auto_update_daemon() {
 	loger 6 "Auto-update daemon stopped"
 }
 
-# 强制更新持久化规则函数
+# Force update persistence rules function
 force_update_persistence() {
 	if [ "$USE_NFT" != "1" ]; then
 		echo "NFTables not in use"
 		return 0
 	fi
 
-	# 移除现有规则文件确保重新创建
+	# Remove existing rule file to ensure recreation
 	rm -f "$NFTABLES_RULES_FILE" 2>/dev/null
 
-	# 调用持久化函数
+	# Call persistence function
 	if persist_nftables_rules; then
 		loger 5 "Persistence update completed successfully"
 		return 0
@@ -1339,7 +1405,7 @@ force_update_persistence() {
 	fi
 }
 
-# 从持久化文件恢复规则
+# Restore rules from persistence file
 restore_from_persistence() {
 	if [ "$USE_NFT" != "1" ]; then
 		loger 3 "NFTables not in use, cannot restore rules"
@@ -1353,10 +1419,10 @@ restore_from_persistence() {
 
 	loger 6 "Restoring rules from persistence file"
 
-	# 清理现有规则
+	# Cleanup existing rules
 	flush_r
 
-	# 从文件恢复规则
+	# Restore rules from file
 	if $NFT -f "$NFTABLES_RULES_FILE" 2>/dev/null; then
 		loger 5 "Rules restored successfully from persistence file"
 		return 0
@@ -1446,7 +1512,7 @@ while getopts ":m:s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUfgrczAKPCRXh" arg; do
 	z)
 		RUNMODE=all
 		;;
-	# 新增持久化管理选项
+	# New persistence management options
 	A)
 		ENABLE_AUTO_UPDATE=1
 		;;
@@ -1474,7 +1540,7 @@ while getopts ":m:s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUfgrczAKPCRXh" arg; do
 	esac
 done
 
-# 首先处理需要立即退出的选项
+# First process options that need immediate exit
 if [ "$CHECK_STATUS" = "1" ]; then
 	check_nftables_status
 	exit $?
@@ -1485,14 +1551,14 @@ if [ "$STOP_AUTO_UPDATE" = "1" ]; then
 	exit 0
 fi
 
-# 只有-X选项，执行清理后退出
+# Only -X option, cleanup and exit
 if [ "$CLEANUP_PERSISTENCE" = "1" ] && [ "$FLUSH_RULES" != "1" ] && [ -z "$server" ] && [ -z "$local_port" ] && \
    [ "$FORCE_UPDATE" != "1" ] && [ "$RESTORE_RULES" != "1" ] && [ "$ENABLE_AUTO_UPDATE" != "1" ]; then
 	cleanup_persistence_files
 	exit $?
 fi
 
-# 检查是否有持久化管理选项单独处理
+# Check if there are persistence management options only
 PERSISTENCE_ONLY=0
 if [ -z "$server" ] && [ -z "$local_port" ] && [ "$FLUSH_RULES" != "1" ]; then
 	if [ "$FORCE_UPDATE" = "1" ] || [ "$RESTORE_RULES" = "1" ] || [ "$ENABLE_AUTO_UPDATE" = "1" ] || [ "$CLEANUP_PERSISTENCE" = "1" ]; then
@@ -1502,7 +1568,7 @@ if [ -z "$server" ] && [ -z "$local_port" ] && [ "$FLUSH_RULES" != "1" ]; then
 	fi
 fi
 
-# 处理持久化管理选项的情况
+# Handle persistence management options
 if [ "$PERSISTENCE_ONLY" = "1" ]; then
 	if [ "$FORCE_UPDATE" = "1" ]; then
 		force_update_persistence
@@ -1520,10 +1586,10 @@ if [ "$PERSISTENCE_ONLY" = "1" ]; then
 	fi
 fi
 
-# 强制刷新规则
+# Force flush rules
 if [ "$FLUSH_RULES" = "1" ]; then
 	flush_r
-	# 如果只有 -f 选项，则退出
+	# If only -f option, then exit
 	if [ -z "$server" ] && [ -z "$local_port" ] && [ "$FORCE_UPDATE" != "1" ] && \
 		[ "$RESTORE_RULES" != "1" ] && [ "$ENABLE_AUTO_UPDATE" != "1" ] && \
 		[ "$CLEANUP_PERSISTENCE" != "1" ]; then
@@ -1531,7 +1597,7 @@ if [ "$FLUSH_RULES" = "1" ]; then
 	fi
 fi
 
-# 从持久化文件恢复规则（在规则应用之前）
+# Restore rules from persistence file (before rule application)
 if [ "$RESTORE_RULES" = "1" ]; then
 	restore_from_persistence
 	if [ $? -ne 0 ]; then
@@ -1539,37 +1605,37 @@ if [ "$RESTORE_RULES" = "1" ]; then
 	fi
 fi
 
-# 运行模式更改
+# Run mode change
 runmode_change() {
 	local mode_file="/tmp/.ssr_run_mode"
 	local new_mode=""
 	local old_mode=""
 
-	# 从参数获取模式
+	# Get mode from parameters
 	if [ -n "$1" ]; then
 		new_mode="$1"
 	fi
 
-	# 从文件中读取上一次的运行模式
+	# Read previous run mode from file
 	if [ -f "$mode_file" ]; then
 		old_mode=$(cat "$mode_file" 2>/dev/null)
 	fi
 
-	# 比较模式是否改变
+	# Compare if mode changed
 	if [ "$old_mode" = "$new_mode" ] && [ -n "$old_mode" ]; then
-		# 模式未改变
-		echo "$new_mode" > "$mode_file"  # 更新文件时间戳
+		# Mode unchanged
+		echo "$new_mode" > "$mode_file"  # Update file timestamp
 		loger 6 "Runmode unchanged: $new_mode"
-		return 1  # 返回1表示未改变
+		return 1  # Return 1 means unchanged
 	else
-		# 模式已改变或首次运行
+		# Mode changed or first run
 		echo "$new_mode" > "$mode_file"
 		if [ -n "$old_mode" ]; then
 			loger 6 "Runmode changed from '$old_mode' to '$new_mode'"
 		else
 			loger 6 "Runmode set to '$new_mode'"
 		fi
-		return 0  # 返回0表示已改变
+		return 0  # Return 0 means changed
 	fi
 }
 
@@ -1593,7 +1659,7 @@ if [ -n "$server" ] && [ -n "$local_port" ]; then
 
 	if [ "$USE_NFT" = "1" ]; then
 		# NFTables
-		# 保存上一次 TPROXY 状态文件
+		# Save previous TPROXY state file
 		TPROXY_STATE_FILE="/tmp/.last_tproxy"
 		if [ -f "$TPROXY_STATE_FILE" ]; then
 			LAST_TPROXY=$(cat "$TPROXY_STATE_FILE")
@@ -1601,7 +1667,7 @@ if [ -n "$server" ] && [ -n "$local_port" ]; then
 			LAST_TPROXY=""
 		fi
 
-		# 保存上一次 PROXY_PORTS 状态
+		# Save previous PROXY_PORTS state
 		PROXY_PORTS_STATE_FILE="/tmp/.last_proxy_ports"
 		if [ -f "$PROXY_PORTS_STATE_FILE" ]; then
 			LAST_PROXY_PORTS=$(cat "$PROXY_PORTS_STATE_FILE")
@@ -1609,7 +1675,55 @@ if [ -n "$server" ] && [ -n "$local_port" ]; then
 			LAST_PROXY_PORTS=""
 		fi
 
-		# STEP 1: 判断 TPROXY 是否有值（1 或 2）
+		# Save previous WAN_BP_IP state
+		WAN_BP_IP_STATE_FILE="/tmp/.last_wan_bp_ip"
+		if [ -f "$WAN_BP_IP_STATE_FILE" ]; then
+			LAST_WAN_BP_IP=$(cat "$WAN_BP_IP_STATE_FILE")
+		else
+			LAST_WAN_BP_IP=""
+		fi
+
+		# Save previous LAN_AC_IP state
+		LAN_AC_IP_STATE_FILE="/tmp/.last_lan_ac_ip"
+		if [ -f "$LAN_AC_IP_STATE_FILE" ]; then
+			LAST_LAN_AC_IP=$(cat "$LAN_AC_IP_STATE_FILE")
+		else
+			LAST_LAN_AC_IP=""
+		fi
+
+		# Save previous LAN_BP_IP state
+		LAN_BP_IP_STATE_FILE="/tmp/.last_lan_bp_ip"
+		if [ -f "$LAN_BP_IP_STATE_FILE" ]; then
+			LAST_LAN_BP_IP=$(cat "$LAN_BP_IP_STATE_FILE")
+		else
+			LAST_LAN_BP_IP=""
+		fi
+
+		# Save previous WAN_FW_IP state
+		WAN_FW_IP_STATE_FILE="/tmp/.last_wan_fw_ip"
+		if [ -f "$WAN_FW_IP_STATE_FILE" ]; then
+			LAST_WAN_FW_IP=$(cat "$WAN_FW_IP_STATE_FILE")
+		else
+			LAST_WAN_FW_IP=""
+		fi
+
+		# Save previous LAN_FP_IP state
+		LAN_FP_IP_STATE_FILE="/tmp/.last_lan_fp_ip"
+		if [ -f "$LAN_FP_IP_STATE_FILE" ]; then
+			LAST_LAN_FP_IP=$(cat "$LAN_FP_IP_STATE_FILE")
+		else
+			LAST_LAN_FP_IP=""
+		fi
+
+		# Save previous LAN_GM_IP state
+		LAN_GM_IP_STATE_FILE="/tmp/.last_lan_gm_ip"
+		if [ -f "$LAN_GM_IP_STATE_FILE" ]; then
+			LAST_LAN_GM_IP=$(cat "$LAN_GM_IP_STATE_FILE")
+		else
+			LAST_LAN_GM_IP=""
+		fi
+
+		# STEP 1: Check if TPROXY has value (1 or 2)
 		if [ "$TPROXY" = "1" ] || [ "$TPROXY" = "2" ]; then
 			TPROXY_HAS_VALUE=1
 		else
@@ -1622,7 +1736,7 @@ if [ -n "$server" ] && [ -n "$local_port" ]; then
 			LAST_HAS_VALUE=0
 		fi
 
-		# STEP 2: 判断 PROXY_PORTS 是否有值（非空字符串）
+		# STEP 2: Check if PROXY_PORTS has value (non-empty string)
 		if [ -n "${PROXY_PORTS// }" ]; then
 			PROXY_HAS_VALUE=1
 		else
@@ -1635,19 +1749,61 @@ if [ -n "$server" ] && [ -n "$local_port" ]; then
 			LAST_PROXY_HAS_VALUE=0
 		fi
 
-		# STEP 3: 判断是否需要强制重建
+		# STEP 2.5: Check if any IP list has changed
+		ANY_IP_LIST_CHANGED=0
+		
+		# Check WAN_BP_IP
+		check_ip_list_changed "$WAN_BP_IP" "$LAST_WAN_BP_IP" "WAN_BP_IP"
+		if [ $? -eq 1 ]; then
+			ANY_IP_LIST_CHANGED=1
+		fi
+		
+		# Check LAN_AC_IP
+		check_ip_list_changed "$LAN_AC_IP" "$LAST_LAN_AC_IP" "LAN_AC_IP"
+		if [ $? -eq 1 ]; then
+			ANY_IP_LIST_CHANGED=1
+		fi
+		
+		# Check LAN_BP_IP
+		check_ip_list_changed "$LAN_BP_IP" "$LAST_LAN_BP_IP" "LAN_BP_IP"
+		if [ $? -eq 1 ]; then
+			ANY_IP_LIST_CHANGED=1
+		fi
+		
+		# Check WAN_FW_IP
+		check_ip_list_changed "$WAN_FW_IP" "$LAST_WAN_FW_IP" "WAN_FW_IP"
+		if [ $? -eq 1 ]; then
+			ANY_IP_LIST_CHANGED=1
+		fi
+		
+		# Check LAN_FP_IP
+		check_ip_list_changed "$LAN_FP_IP" "$LAST_LAN_FP_IP" "LAN_FP_IP"
+		if [ $? -eq 1 ]; then
+			ANY_IP_LIST_CHANGED=1
+		fi
+		
+		# Check LAN_GM_IP
+		check_ip_list_changed "$LAN_GM_IP" "$LAST_LAN_GM_IP" "LAN_GM_IP"
+		if [ $? -eq 1 ]; then
+			ANY_IP_LIST_CHANGED=1
+		fi
+
+		# STEP 3: Determine if forced rebuild is needed
 		FORCE_RECREATE=0
 		PERSISTENCE_EXISTS=0
 
-		# 触发条件：
-		# 1. TPROXY 从空 ↔ 有值变化
-		# 2. PROXY_PORTS 从空 ↔ 有值变化
-		if [ "$TPROXY_HAS_VALUE" != "$LAST_HAS_VALUE" ] || [ "$PROXY_HAS_VALUE" != "$LAST_PROXY_HAS_VALUE" ]; then
+		# Trigger conditions:
+		# 1. TPROXY changes from empty ↔ has value
+		# 2. PROXY_PORTS changes from empty ↔ has value
+		# 3. Any IP list has changed
+		if [ "$TPROXY_HAS_VALUE" != "$LAST_HAS_VALUE" ] || \
+		   [ "$PROXY_HAS_VALUE" != "$LAST_PROXY_HAS_VALUE" ] || \
+		   [ "$ANY_IP_LIST_CHANGED" = "1" ]; then
 			FORCE_RECREATE=1
-			loger 6 "TPROXY or PROXY_PORTS changed → force rebuild rules"
+			loger 6 "TPROXY, PROXY_PORTS or any IP list changed → force rebuild rules"
 			rm -f "$NFTABLES_RULES_FILE" 2>/dev/null
 		else
-			# 未触发 FORCE_RECREATE → 检查持久化文件
+			# No FORCE_RECREATE triggered → check persistence file
 			if [ -f "$NFTABLES_RULES_FILE" ] && [ -s "$NFTABLES_RULES_FILE" ]; then
 				PERSISTENCE_EXISTS=1
 				loger 6 "Persistence file exists: $NFTABLES_RULES_FILE"
@@ -1657,11 +1813,17 @@ if [ -n "$server" ] && [ -n "$local_port" ]; then
 			fi
 		fi
 
-		# STEP 4: 保存当前状态
+		# STEP 4: Save current state
 		echo "$TPROXY" > "$TPROXY_STATE_FILE"
 		echo "$PROXY_PORTS" > "$PROXY_PORTS_STATE_FILE"
+		echo "$(normalize_ip_list "$WAN_BP_IP")" > "$WAN_BP_IP_STATE_FILE"
+		echo "$(normalize_ip_list "$LAN_AC_IP")" > "$LAN_AC_IP_STATE_FILE"
+		echo "$(normalize_ip_list "$LAN_BP_IP")" > "$LAN_BP_IP_STATE_FILE"
+		echo "$(normalize_ip_list "$WAN_FW_IP")" > "$WAN_FW_IP_STATE_FILE"
+		echo "$(normalize_ip_list "$LAN_FP_IP")" > "$LAN_FP_IP_STATE_FILE"
+		echo "$(normalize_ip_list "$LAN_GM_IP")" > "$LAN_GM_IP_STATE_FILE"
 
-		# STEP 5: 判断运行模式是否改变
+		# STEP 5: Check if run mode changed
 		if runmode_change "$RUNMODE"; then
 			MODE_CHANGED=1
 			loger 6 "Runmode changed: MODE_CHANGED=1"
@@ -1670,14 +1832,14 @@ if [ -n "$server" ] && [ -n "$local_port" ]; then
 			loger 6 "Runmode unchanged: MODE_CHANGED=0"
 		fi
 
-		# STEP 6: 模式改变且持久化存在 → 删除一次
+		# STEP 6: Mode changed and persistence exists → delete once
 		if [ "$MODE_CHANGED" = "1" ] && [ "$PERSISTENCE_EXISTS" = "1" ]; then
 			loger 6 "Mode changed → removing persistence file"
 			rm -f "$NFTABLES_RULES_FILE"
 			PERSISTENCE_EXISTS=0
 		fi
 
-		# STEP 7: FORCE_RECREATE 优先 → 必须重建规则
+		# STEP 7: FORCE_RECREATE priority → must rebuild rules
 		if [ "$FORCE_RECREATE" = "1" ]; then
 			loger 5 "Forced regeneration of NFTables rules"
 			if flush_r && ipset_r && fw_rule && ac_rule && tp_rule && gen_include; then
@@ -1691,9 +1853,9 @@ if [ -n "$server" ] && [ -n "$local_port" ]; then
 			fi
 		fi
 
-		# STEP 8: 持久化存在 → 尝试 restore
+		# STEP 8: Persistence exists → try restore
 		if [ "$PERSISTENCE_EXISTS" = "1" ]; then
-			# 恢复规则
+			# Restore rules
 			if restore_from_persistence; then
 				loger 5 "NFT rules restored from persistence"
 				gen_include
@@ -1705,7 +1867,7 @@ if [ -n "$server" ] && [ -n "$local_port" ]; then
 			fi
 		fi
 
-		# STEP 9: 持久化不存在或 restore 失败 → 生成新规则
+		# STEP 9: Persistence doesn't exist or restore failed → generate new rules
 		if flush_r && ipset_r && fw_rule && ac_rule && tp_rule && gen_include; then
 			loger 5 "NFTables rules applied successfully"
 			persist_nftables_rules
