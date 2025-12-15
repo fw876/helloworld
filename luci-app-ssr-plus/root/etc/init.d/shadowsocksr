@@ -1405,6 +1405,45 @@ start_monitor() {
 	fi
 }
 
+start_xhttp_addr() {
+	local xhttp_addr_file="/etc/ssrplus/xhttp_address.txt"
+	local tmp_file="/tmp/.xhttp_addr.tmp"
+
+	# 收集所有 xhttp_extra 地址，去掉空行并去重排序
+	{
+		for sec in "$GLOBAL_SERVER" "$SHUNT_SERVER" "$UDP_RELAY_SERVER"; do
+			local extra
+			extra=$(uci_get_by_name "$sec" xhttp_extra)
+			[ -n "$extra" ] && \
+				echo "$extra" | sed -n 's/.*"address":[[:space:]]*"\([^"]*\)".*/\1/p'
+		done
+	} | grep -v '^$' | sort -u > "$tmp_file"
+
+	# 如果没有 xhttp_extra 地址，删除旧文件并退出
+	if [ ! -s "$tmp_file" ]; then
+		[ -f "$xhttp_addr_file" ] && rm -f "$xhttp_addr_file"
+		rm -f "$tmp_file"
+		return 0
+	fi
+
+	# 比较 MD5 判断 xhttp_extra 地址是否有变化
+	local md5_new md5_old
+	md5_new=$(md5sum "$tmp_file" | awk '{print $1}')
+	if [ -f "$xhttp_addr_file" ]; then
+		md5_old=$(md5sum "$xhttp_addr_file" | awk '{print $1}')
+	else
+		md5_old=""
+	fi
+
+	# MD5 不同更新 xhttp_extra 地址文件
+	if [ "$md5_new" != "$md5_old" ]; then
+		mv -f "$tmp_file" "$xhttp_addr_file"
+		logger -t ssrplus-xhttp "xhttp_address.txt updated"
+	else
+		rm -f "$tmp_file"
+	fi
+}
+
 start_rules() {
 	local server=$(get_host_ip $GLOBAL_SERVER)
 	local local_port=$(uci_get_by_name $GLOBAL_SERVER local_port)
@@ -1483,6 +1522,7 @@ start() {
 	echo "conf-dir=${TMP_DNSMASQ_PATH}" >"$DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf"
 	if load_config; then
 		Start_Run
+		start_xhttp_addr
 		start_rules
 		start_dns
 		add_cron
@@ -1604,6 +1644,7 @@ reset() {
 	stop
 	set_lock
 	rm -rf /etc/config/shadowsocksr $LOG_FILE
+	[ -f "/etc/ssrplus/xhttp_address.txt" ] && rm -f /etc/ssrplus/xhttp_address.txt
 	touch /etc/config/shadowsocksr $LOG_FILE
 	cp /usr/share/shadowsocksr/shadowsocksr.config /etc/config/shadowsocksr
 	unset_lock

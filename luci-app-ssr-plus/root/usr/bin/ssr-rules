@@ -190,6 +190,16 @@ cleanup_persistence_files() {
 		loger 5 "Removed run mode file: /tmp/.last_lan_gm_ip"
 	fi
 
+	# Remove xhttp file state and hash files
+	if [ -f "/tmp/.last_xhttp_file" ]; then
+		rm -f "/tmp/.last_xhttp_file" 2>/dev/null
+		loger 5 "Removed xhttp file state: /tmp/.last_xhttp_file"
+	fi
+	if [ -f "/tmp/.last_xhttp_hash" ]; then
+		rm -f "/tmp/.last_xhttp_hash" 2>/dev/null
+		loger 5 "Removed xhttp hash file: /tmp/.last_xhttp_hash"
+	fi
+
 	loger 5 "Persistence cleanup completed"
 	return 0
 }
@@ -321,6 +331,11 @@ ipset_nft() {
 	# Bulk import china ip list safely (avoid huge single element limitation)
 	if [ -f "${china_ip:=/etc/ssrplus/china_ssr.txt}" ]; then
 		$NFT add element inet ss_spec china "{ $(tr '\n' ',' < "${china_ip}" | sed 's/,$//') }" 2>/dev/null
+	fi
+
+	# Bulk import xhttp ip list into nft whitelist (server + shunt)
+	if [ -f "${xhttp_ip:=/etc/ssrplus/xhttp_address.txt}" ]; then
+		$NFT add element inet ss_spec whitelist "{ $(tr '\n' ',' < "${xhttp_ip}" | sed 's/,$//') }" 2>/dev/null
 	fi
 
 	# Add IP addresses to sets
@@ -493,6 +508,11 @@ ipset_iptables() {
 	for ip in $LAN_BP_IP; do ipset -! add bplan "$ip"; done
 		$IPT -I SS_SPEC_WAN_AC -m set --match-set bplan src -j RETURN
 	ipset -N whitelist hash:net 2>/dev/null
+	if [ -f "${xhttp_ip:=/etc/ssrplus/xhttp_address.txt}" ]; then
+		while IFS= read -r ip; do
+			[ -n "$ip" ] && ipset add whitelist "$ip" -exist
+		done < "$xhttp_ip"
+	fi
 	ipset -N blacklist hash:net 2>/dev/null
 	$IPT -I SS_SPEC_WAN_AC -m set --match-set blacklist dst -j SS_SPEC_WAN_FW
 	$IPT -I SS_SPEC_WAN_AC -m set --match-set whitelist dst -j RETURN
@@ -919,6 +939,11 @@ tp_rule_nft() {
 		$NFT add element ip ss_spec_mangle china "{ $(tr '\n' ',' < "${china_ip}" | sed 's/,$//') }" 2>/dev/null
 	fi
 
+	# Bulk import xhttp ip list into nft whitelist (server + shunt)
+	if [ -f "${xhttp_ip:=/etc/ssrplus/xhttp_address.txt}" ]; then
+		$NFT add element ip ss_spec_mangle whitelist "{ $(tr '\n' ',' < "${xhttp_ip}" | sed 's/,$//') }" 2>/dev/null
+	fi
+
 	# use priority mangle for compatibility with other rules
 	if ! $NFT list chain ip ss_spec_mangle ss_spec_tproxy >/dev/null 2>&1; then
 		$NFT add chain ip ss_spec_mangle ss_spec_tproxy 2>/dev/null
@@ -1047,6 +1072,11 @@ tp_rule_iptables() {
 	$ipt -A SS_SPEC_TPROXY -p udp -d 240.0.0.0/4 -j RETURN
 	$ipt -A SS_SPEC_TPROXY -p udp ! --dport 53 -d "$SERVER" -j RETURN
 	[ "$server" != "$SERVER" ] && ipset -! add whitelist "$SERVER"
+	if [ -f "${xhttp_ip:=/etc/ssrplus/xhttp_address.txt}" ]; then
+		while IFS= read -r ip; do
+			[ -n "$ip" ] && ipset add whitelist "$ip" -exist
+		done < "$xhttp_ip"
+	fi
 	$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set bplan src -j RETURN
 	$ipt -A SS_SPEC_TPROXY -p udp $PROXY_PORTS -m set --match-set fplan src -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark 0x01/0x01
 	case "$RUNMODE" in
@@ -1207,7 +1237,7 @@ compare_rules() {
 	# Generate temporary file for current rules
 	local temp_file=$(mktemp)
 	local rules_file=$(mktemp)
-	loger 7 "DEBUG: Temporary file path: $current_rules_file"
+	loger 7 "DEBUG: Temporary file path: $rules_file"
 
 	# Export current rules to temporary file
 	$NFT list ruleset | awk '
@@ -1723,6 +1753,31 @@ if [ -n "$server" ] && [ -n "$local_port" ]; then
 			LAST_LAN_GM_IP=""
 		fi
 
+		# Check for changes in the existence and content of the server XHTTP address file
+		XHTTP_FILE_STATE_FILE="/tmp/.last_xhttp_file"
+		XHTTP_FILE_HASH_FILE="/tmp/.last_xhttp_hash"
+
+		# Get the current server XHTTP file status
+		XHTTP_FILE_EXISTS=0
+		XHTTP_FILE_HASH=""
+		if [ -f "/etc/ssrplus/xhttp_address.txt" ]; then
+			XHTTP_FILE_EXISTS=1
+			XHTTP_FILE_HASH=$(md5sum /etc/ssrplus/xhttp_address.txt 2>/dev/null | awk '{print $1}')
+		fi
+
+		# Read the previous server XHTTP file status and hash
+		if [ -f "$XHTTP_FILE_STATE_FILE" ]; then
+			LAST_XHTTP_FILE_EXISTS=$(cat "$XHTTP_FILE_STATE_FILE")
+		else
+			LAST_XHTTP_FILE_EXISTS=""
+		fi
+
+		if [ -f "$XHTTP_FILE_HASH_FILE" ]; then
+			LAST_XHTTP_FILE_HASH=$(cat "$XHTTP_FILE_HASH_FILE")
+		else
+			LAST_XHTTP_FILE_HASH=""
+		fi
+
 		# STEP 1: Check if TPROXY has value (1 or 2)
 		if [ "$TPROXY" = "1" ] || [ "$TPROXY" = "2" ]; then
 			TPROXY_HAS_VALUE=1
@@ -1788,6 +1843,28 @@ if [ -n "$server" ] && [ -n "$local_port" ]; then
 			ANY_IP_LIST_CHANGED=1
 		fi
 
+		# Check for changes in the existence of the server XHTTP address file.
+		if [ "$XHTTP_FILE_EXISTS" != "$LAST_XHTTP_FILE_EXISTS" ]; then
+			loger 6 "xhttp address file existence changed: '$LAST_XHTTP_FILE_EXISTS' -> '$XHTTP_FILE_EXISTS'"
+			ANY_IP_LIST_CHANGED=1
+		fi
+
+		# Check for XHTTP file content changes (compare hashes only when the file exists in both checks)
+		if [ "$XHTTP_FILE_EXISTS" = "1" ] && [ "$LAST_XHTTP_FILE_EXISTS" = "1" ]; then
+			if [ "$XHTTP_FILE_HASH" != "$LAST_XHTTP_FILE_HASH" ]; then
+				loger 6 "xhttp address file content changed (hash: '$LAST_XHTTP_FILE_HASH' -> '$XHTTP_FILE_HASH')"
+				ANY_IP_LIST_CHANGED=1
+			else
+				loger 6 "xhttp address file content unchanged"
+			fi
+		elif [ "$XHTTP_FILE_EXISTS" = "0" ] && [ "$LAST_XHTTP_FILE_EXISTS" = "1" ]; then
+			loger 6 "xhttp address file deleted"
+			ANY_IP_LIST_CHANGED=1
+		elif [ "$XHTTP_FILE_EXISTS" = "1" ] && [ "$LAST_XHTTP_FILE_EXISTS" = "0" ]; then
+			loger 6 "xhttp address file created"
+			ANY_IP_LIST_CHANGED=1
+		fi
+
 		# STEP 3: Determine if forced rebuild is needed
 		FORCE_RECREATE=0
 		PERSISTENCE_EXISTS=0
@@ -1822,6 +1899,8 @@ if [ -n "$server" ] && [ -n "$local_port" ]; then
 		echo "$(normalize_ip_list "$WAN_FW_IP")" > "$WAN_FW_IP_STATE_FILE"
 		echo "$(normalize_ip_list "$LAN_FP_IP")" > "$LAN_FP_IP_STATE_FILE"
 		echo "$(normalize_ip_list "$LAN_GM_IP")" > "$LAN_GM_IP_STATE_FILE"
+		echo "$XHTTP_FILE_EXISTS" > "$XHTTP_FILE_STATE_FILE"
+		echo "$XHTTP_FILE_HASH" > "$XHTTP_FILE_HASH_FILE"
 
 		# STEP 5: Check if run mode changed
 		if runmode_change "$RUNMODE"; then
