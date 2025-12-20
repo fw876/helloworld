@@ -997,10 +997,11 @@ local function processData(szType, content)
 		local Info = content
 		if Info:find("@") then
 			local contents = split(Info, "@")
-			if contents[1]:find(":") then
-				local userinfo = split(contents[1], ":")
-				result.tuic_uuid = UrlDecode(userinfo[1])
-				result.tuic_passwd = UrlDecode(userinfo[2])
+			local userinfo_raw = UrlDecode(contents[1] or "") -- 如有Url编码进行解码
+			if userinfo_raw:find(":") then
+				local userinfo = split(userinfo_raw, ":")
+				result.tuic_uuid = userinfo[1]
+				result.tuic_passwd = userinfo[2]
 			end
 			Info = (contents[2] or ""):gsub("/%?", "?")
 		end
@@ -1077,12 +1078,11 @@ local function processData(szType, content)
 			end
 		end
 
-		-- 处理 insecure 参数
-		if params.allowInsecure then
-			if params.allowinsecure == "1" or params.allowinsecure == "0" then
-				result.insecure = params.allowInsecure
-		else
-				result.insecure = string.lower(params.allowinsecure) == "true" and "1" or "0"
+		-- 兼容 allowInsecure / allowlnsecure / insecure
+		if params.allowInsecure or params.allowlnsecure or params.insecure then
+			local insecure = params.allowInsecure or params.allowlnsecure or params.insecure
+			if insecure == true or insecure == "1" or insecure == "true" then
+				result.insecure = "1"
 			end
 		end
 	end

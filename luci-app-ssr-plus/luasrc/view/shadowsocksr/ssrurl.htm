@@ -844,7 +844,7 @@ function import_ssr_url(btn, urlname, sid) {
 			var params = Object.fromEntries(new URLSearchParams(query));
 
 			var sipIndex = url0.indexOf("@");
-			var userInfo = url0.substring(0, sipIndex);      // 格式：uuid:password
+			var userInfo = decodeURIComponent(url0.substring(0, sipIndex));      //  -- 如有Url编码进行解码，格式：uuid:password
 			var hostPart = url0.substring(sipIndex + 1);     // 格式：hostname:port
 			var userInfoSplitIndex = userInfo.indexOf(":");
 			if(userInfoSplitIndex < 0) {
@@ -887,13 +887,12 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_dual_stack')[0].checked = true;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.tuic_dual_stack')[0].dispatchEvent(event);
 				if (params.ipstack_prefer && params.ipstack_prefer.trim() !== "") {
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.ipstack_prefer')[0].value = params.ipstack_prefer;
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.ipstack_prefer')[0].value = params.ipstack_prefer || "";
 				}
 			}
-			if (params["allowInsecure"] === "1" || params["allowInsecure"] === "true") {
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].checked = true;
-				document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].dispatchEvent(event);
-			}
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].checked =
+				!!(params.allowInsecure ?? params.allowlnsecure ?? params.insecure); // 设置 insecure 为 true
+			document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].dispatchEvent(event); // 触发事件
 			if (param != undefined) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = decodeURIComponent(param);
 			}
