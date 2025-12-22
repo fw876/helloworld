@@ -892,7 +892,7 @@ local function processData(szType, content)
 		-- 统一 TLS / Reality 公共字段
 		result.tls_host = params.sni
 		result.fingerprint = params.fp
-		result.tls_flow = (security == "tls" or security == "reality") and params.flow or nil
+		result.tls_flow = params.flow or nil
 
 		-- 处理 alpn 列表
 		if params.alpn and params.alpn ~= "" then

@@ -32,7 +32,10 @@ function vmess_vless()
 						alterId = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and tonumber(server.alter_id) or nil,
 						security = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and server.security or nil,
 						encryption = (server.v2ray_protocol == "vless") and server.vless_encryption or "none", 
-						flow = (((server.xtls == '1') or (server.tls == '1') or (server.reality == '1')) and (((server.tls_flow ~= "none") and server.tls_flow) or ((server.xhttp_tls_flow ~= "none") and server.xhttp_tls_flow))) or nil
+						flow = (server.v2ray_protocol == "vless" and (server.xtls == "1" or server.tls == "1" or server.reality == "1"
+								or (server.vless_encryption and server.vless_encryption ~= "" and server.vless_encryption ~= "none")) and (
+								server.transport == "raw" or server.transport == "tcp" or server.transport == "xhttp" or server.transport == "splithttp") and (
+								server.tls_flow and server.tls_flow ~= "none")) and server.tls_flow or nil
 					}
 				}
 			}
@@ -717,4 +720,3 @@ function config:handleIndex(index)
 end
 local f = config:new()
 f:handleIndex(server.type)
-

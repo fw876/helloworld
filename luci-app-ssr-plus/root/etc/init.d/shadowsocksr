@@ -587,7 +587,7 @@ start_udp() {
 		gen_config_file $UDP_RELAY_SERVER $type 2 $tmp_udp_local_port
 		ln_start_bin $(first_type tuic-client) tuic-client --config $udp_config_file
 		ln_start_bin $(first_type ipt2socks) ipt2socks -U -b 0.0.0.0 -4 -s 127.0.0.1 -p $tmp_udp_local_port -l $tmp_udp_port
-		echolog "UDP TPROXY Relay:tuic-client $($(first_type tuic-client) --version) Started!"
+		echolog "UDP TPROXY Relay:$($(first_type tuic-client) --version) Started!"
 		echolog "TUIC UDP TPROXY Relay not supported!"
 		#redir_udp=0
 		#ARG_UDP=""
@@ -879,7 +879,7 @@ start_shunt() {
 		gen_config_file $SHUNT_SERVER $type 3 $tmp_port		# make a tuic socks :304
 		ln_start_bin $(first_type tuic-client) tuic-client --config $shunt_dns_config_file
 		shunt_dns_command $tmp_port
-		echolog "Netflix Separated Shunt Server:tuic-client $($(first_type tuic-client) --version) Started!"
+		echolog "Netflix Separated Shunt Server:$($(first_type tuic-client) --version) Started!"
 		# FIXME: ipt2socks cannot handle udp reply from tuic
 		#redir_udp=0
 		;;
@@ -985,7 +985,7 @@ start_local() {
 		if [ "$_local" == "2" ]; then
 			gen_config_file $LOCAL_SERVER $type 4 $local_port
 			ln_start_bin $(first_type tuic-client) tuic-client --config $local_config_file
-			echolog "Global Socks5:tuic-client $($(first_type tuic-client) --version) Started!"
+			echolog "Global Socks5:$($(first_type tuic-client) --version) Started!"
 		fi
 		;;
 	shadowtls)
@@ -1104,9 +1104,9 @@ Start_Run() {
 		if [ -n $socks_port ] && [ $GLOBAL_SERVER == $LOCAL_SERVER ]; then #start a new tuic instance
 			gen_config_file $GLOBAL_SERVER $type 4 $socks_port
 			ln_start_bin $(first_type tuic-client) tuic-client --config $local_config_file
-			echolog "Global Socks5:tuic-client $($(first_type tuic-client) --version) Started!"
+			echolog "Global Socks5:$($(first_type tuic-client) --version) Started!"
 		fi
-		echolog "Main node:tuic-client $($(first_type tuic-client) --version) Started!"
+		echolog "Main node:$($(first_type tuic-client) --version) Started!"
 		;;
 	shadowtls)
 		if [ -z "$socks_port" ]; then

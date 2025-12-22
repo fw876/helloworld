@@ -716,12 +716,17 @@ function import_ssr_url(btn, urlname, sid) {
 					element.dispatchEvent(event);
 				}
 			}
+			var server = url.hostname;
+			/* 如果带 []，再去掉 [] */
+			if (server[0] === "[" && server[server.length - 1] === "]") {
+				server = server.slice(1, -1);
+			}
 			setElementValue('cbid.shadowsocksr.' + sid + '.alias', url.hash ? decodeURIComponent(url.hash.slice(1)) : "");
 			setElementValue('cbid.shadowsocksr.' + sid + '.type', "v2ray");
 			dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.type', event);
 			setElementValue('cbid.shadowsocksr.' + sid + '.v2ray_protocol', "vless");
 			dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.v2ray_protocol', event);
-			setElementValue('cbid.shadowsocksr.' + sid + '.server', url.hostname);
+			setElementValue('cbid.shadowsocksr.' + sid + '.server', server);
 			setElementValue('cbid.shadowsocksr.' + sid + '.server_port', url.port || "80");
 			setElementValue('cbid.shadowsocksr.' + sid + '.vmess_id', url.username);
 			setElementValue('cbid.shadowsocksr.' + sid + '.transport', 
@@ -732,6 +737,8 @@ function import_ssr_url(btn, urlname, sid) {
 			);
 			dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.transport', event);
 			setElementValue('cbid.shadowsocksr.' + sid + '.vless_encryption', params.get("encryption") || "none");
+			setElementValue('cbid.shadowsocksr.' + sid + '.tls_flow', params.get("flow") || "none");
+			dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.tls_flow', event);
 			if ([ "tls", "xtls", "reality" ].includes(params.get("security"))) {
 				setElementValue('cbid.shadowsocksr.' + sid + '.' + params.get("security"), true);
 				dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.' + params.get("security"), event);
@@ -758,8 +765,6 @@ function import_ssr_url(btn, urlname, sid) {
 						setElementValue('cbid.shadowsocksr.' + sid + '.reality_mldsa65verify', params.get("pqv") || "");
 					}
 				}
-				setElementValue('cbid.shadowsocksr.' + sid + '.tls_flow', params.get("flow") || "none");
-				dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.tls_flow', event);
 
 				setElementValue('cbid.shadowsocksr.' + sid + '.tls_alpn', params.get("alpn") || "");
 				setElementValue('cbid.shadowsocksr.' + sid + '.fingerprint', params.get("fp") || "");
