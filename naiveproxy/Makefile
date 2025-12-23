@@ -5,13 +5,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=naiveproxy
-PKG_REAL_VERSION:=140.0.7339.123-3
+PKG_REAL_VERSION:=143.0.7499.109-2
 PKG_VERSION:=$(subst -,.,$(PKG_REAL_VERSION))
 PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_REAL_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/klzgrad/naiveproxy/tar.gz/v$(PKG_REAL_VERSION)?
-PKG_HASH:=c69c4b256957a9c88f8cfd11ffe5954727682ee02cdc7c7b4564b181f898e4dc
+PKG_HASH:=07e3a44a73c92cc9df347b12a23a2420458b31917a7f6dfdb06e18590d9c1aea
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_REAL_VERSION)
 
 PKG_LICENSE:=BSD 3-Clause
@@ -57,22 +57,22 @@ ifneq ($(CONFIG_CCACHE),)
   export naive_ccache_flags=cc_wrapper="$(CCACHE)"
 endif
 
-CLANG_VER:=21-init-16348-gbd809ffb-15
+CLANG_VER:=22-init-8940-g4d4cb757-84
 CLANG_FILE:=clang-llvmorg-$(CLANG_VER).tar.xz
 define Download/CLANG
 	URL:=https://commondatastorage.googleapis.com/chromium-browser-clang/Linux_x64
 	URL_FILE:=$(CLANG_FILE)
 	FILE:=$(CLANG_FILE)
-	HASH:=b448a78b42740352a37b458115a9482f213097bbf28f1f839e72cab829bdfa6d
+	HASH:=f6a487ffd0e56ba7a39b063d85d1f8ff7846514f50635785730cffb7368872ce
 endef
 
-PGO_VER:=main-1752989296-3dc3c84b1ea64dfbadeca18145c6e823bab3ff87-3a0e503d2bd87771c1e55103ac2a9a7b59a7411b
+PGO_VER:=7499-1764697213-c882935fa3cd65518c410503710d1c1528e41260-abb34356235cd297f57c1bb9c272d7f54dbe3bd8
 PGO_FILE:=chrome-linux-$(PGO_VER).profdata
 define Download/PGO_PROF
 	URL:=https://storage.googleapis.com/chromium-optimization-profiles/pgo_profiles
 	URL_FILE:=$(PGO_FILE)
 	FILE:=$(PGO_FILE)
-	HASH:=97dcc3060a7ea38abffffc128e030d16bed0992810a551cef740d56f1eb1f09b
+	HASH:=f983a4c13f1a4bffd2dca0b741b77c5bf57d67549a674df5854e935b16e9cf93
 endef
 
 define Build/Prepare
