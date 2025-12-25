@@ -292,12 +292,19 @@ end
 					path = server.xhttp_path or "/",
 					extra = (server.enable_xhttp_extra == "1" and server.xhttp_extra) and (function()
 						local success, parsed = pcall(json.parse, server.xhttp_extra)
-							if success then
-								return parsed.extra or parsed
-							else
-								return nil
+						if not success or not parsed then return nil end
+						-- 如果包含 "extra" 节，就使用它，否则直接使用 tbl
+						local tbl = parsed.extra or parsed
+						-- 枚举第1层字段，如果值为空表或 nil 就删除(简单容错)
+						for k, v in pairs(tbl) do
+							if type(v) == "table" and next(v) == nil then
+								tbl[k] = nil
+							elseif v == nil then
+								tbl[k] = nil
 							end
-						end)() or nil
+						end
+						return tbl
+					end)() or nil
 				} or nil,
 				httpSettings = (server.transport == "h2") and {
 					-- h2
