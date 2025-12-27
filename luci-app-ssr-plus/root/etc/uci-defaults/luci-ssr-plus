@@ -68,5 +68,6 @@ if [ -s "/etc/uwsgi/vassals/luci-webui.ini" ];then
 	/etc/init.d/uwsgi restart
 fi
 
-rm -rf /tmp/luci-modulecache /tmp/luci-indexcache
+rm -f /tmp/luci-indexcache /tmp/luci-indexcache.*
+rm -rf /tmp/luci-modulecache/
 exit 0
