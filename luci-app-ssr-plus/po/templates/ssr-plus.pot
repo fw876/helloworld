@@ -1545,6 +1545,14 @@ msgstr ""
 msgid "Refresh..."
 msgstr ""
 
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:90
+msgid "Regular update (Hour)"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:98
+msgid "Regular update (Min)"
+msgstr ""
+
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1392
 msgid "Reno"
 msgstr ""
@@ -1993,24 +2001,16 @@ msgstr ""
 msgid "Update All Subscribe Servers"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:98
-msgid "Update Interval (min)"
-msgstr ""
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:141
 msgid "Update Subscribe List"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:77
-msgid "Update Time (Every Week)"
+msgid "Update cycle (Day/Week)"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:143
 msgid "Update subscribe url list first"
-msgstr ""
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:90
-msgid "Update time (every day)"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1067

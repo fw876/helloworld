@@ -1561,6 +1561,14 @@ msgstr "更新成功！"
 msgid "Refresh..."
 msgstr "正在更新，请稍候..."
 
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:90
+msgid "Regular update (Hour)"
+msgstr "定时更新（小时）"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:98
+msgid "Regular update (Min)"
+msgstr "定时更新（分钟）"
+
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1392
 msgid "Reno"
 msgstr ""
@@ -2012,25 +2020,17 @@ msgstr "未知"
 msgid "Update All Subscribe Servers"
 msgstr "更新所有订阅服务器节点"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:98
-msgid "Update Interval (min)"
-msgstr "更新间隔 (分钟)"
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:141
 msgid "Update Subscribe List"
 msgstr "更新订阅 URL 列表"
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:77
-msgid "Update Time (Every Week)"
-msgstr "更新时间（每周）"
+msgid "Update cycle (Day/Week)"
+msgstr "更新周期（天/周）"
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:143
 msgid "Update subscribe url list first"
 msgstr "修改订阅 URL 和节点关键字后，请先点击更新"
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:90
-msgid "Update time (every day)"
-msgstr "更新时间（每天）"
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1067
 msgid "Uplink Capacity(Default:Mbps)"
