@@ -72,7 +72,7 @@
 		} else {
 			fromNode.parentNode.insertBefore(fromNode, toNode);
 		}
-		for (var idx = 2; idx < table.rows.length; idx++) {
+		for (var idx = 1; idx < table.rows.length; idx++) {
 			table.rows[idx].className = table.rows[idx].className.replace(
 				/cbi-rowstyle-[12]/,
 				"cbi-rowstyle-" + (1 + (idx % 2))
@@ -95,11 +95,19 @@
 				cursor: move;
 				user-select: none;
 			}
+			/* 确保按钮在同一行 */
+			.cbi-section-actions {
+				white-space: nowrap !important;
+			}
+			.cbi-section-actions > * {
+				display: inline-block !important;
+				margin-right: 2px !important;
+			}
 			`;
 		document.head.appendChild(style);
 		
 		var trs = document.querySelectorAll(table_selector + " tr");
-		if (!trs || trs.length.length < 3) {
+		if (!trs || trs.length < 2) {
 			return;
 		}
 		function ondragstart(ev) {
@@ -113,38 +121,118 @@
 			ev.preventDefault();
 			ev.dataTransfer.dropEffect = "move";
 		}
+		
+		// 上移一行
+		function moveUp(id) {
+			// 查找当前行的索引
+			var trList = document.querySelectorAll(table_selector + " tr");
+			var currentIndex = -1;
+			for (var i = 0; i < trList.length; i++) {
+				if (trList[i].id === id) {
+					currentIndex = i;
+					break;
+				}
+			}
+			
+			// 如果不是第一行数据行，则上移一行
+			if (currentIndex > 1) {
+				var prevRow = trList[currentIndex - 1];
+				cbi_row_drop(id, prevRow.id, store);
+			}
+		}
+		
+		// 下移一行
+		function moveDown(id) {
+			// 查找当前行的索引
+			var trList = document.querySelectorAll(table_selector + " tr");
+			var currentIndex = -1;
+			for (var i = 0; i < trList.length; i++) {
+				if (trList[i].id === id) {
+					currentIndex = i;
+					break;
+				}
+			}
+			
+			// 如果不是最后一行，则下移一行
+			if (currentIndex < trList.length - 1) {
+				var nextRow = trList[currentIndex + 1];
+				// 对于下移，我们需要将当前行插入到下一行的后面
+				var nextNextRow = trList[currentIndex + 2];
+				if (nextNextRow) {
+					cbi_row_drop(id, nextNextRow.id, store, false);
+				} else {
+					// 如果是倒数第二行，移动到最后一行的后面
+					cbi_row_drop(id, nextRow.id, store, true);
+				}
+			}
+		}
+		
+		// 置顶
 		function moveToTop(id) {
-			var top = document.querySelectorAll(table_selector + " tr")[2];
+			var top = document.querySelectorAll(table_selector + " tr")[1];
 			cbi_row_drop(id, top.id, store);
 		}
+		
+		// 置底
 		function moveToBottom(id) {
 			//console.log('moveToBottom:', id);
 			var trList = document.querySelectorAll(table_selector + " tr");
 			var bottom = trList[trList.length - 1];
 			cbi_row_drop(id, bottom.id, store, true);
 		}
-		for (let index = 2; index < trs.length; index++) {
+		
+		for (let index = 1; index < trs.length; index++) {
 			const el = trs[index];
 			el.setAttribute("draggable", true);
 			el.ondragstart = ondragstart;
 			el.ondrop = ondrop;
 			el.ondragover = ondragover;
-			// reset the behaviors of the btns
+			
+			// 上移和下移按钮
 			var upBtns = el.querySelectorAll(".cbi-button.cbi-button-up");
 			if (upBtns && upBtns.length > 0) {
 				upBtns.forEach(function (_el) {
 					_el.onclick = function () {
-						moveToTop(el.id);
+						moveUp(el.id);
 					};
 				});
 			}
+			
 			var downBtns = el.querySelectorAll(".cbi-button.cbi-button-down");
 			if (downBtns && downBtns.length > 0) {
 				downBtns.forEach(function (_el) {
 					_el.onclick = function () {
-						moveToBottom(el.id);
+						moveDown(el.id);
 					};
 				});
+			}
+			
+			// 添加置顶和置底按钮
+			var actionsCell = el.querySelector(".cbi-section-actions");
+			if (actionsCell) {
+				// 置顶按钮
+				var toTopBtn = document.createElement("input");
+				toTopBtn.className = "btn cbi-button cbi-button-top";
+				toTopBtn.type = "button";
+				toTopBtn.value = "<%:To Top%>";
+				toTopBtn.title = "<%:To Top%>";
+				toTopBtn.onclick = function () {
+					moveToTop(el.id);
+				};
+				
+				// 置底按钮
+				var toBottomBtn = document.createElement("input");
+				toBottomBtn.className = "btn cbi-button cbi-button-bottom";
+				toBottomBtn.type = "button";
+				toBottomBtn.value = "<%:To Bottom%>";
+				toBottomBtn.title = "<%:To Bottom%>";
+				toBottomBtn.onclick = function () {
+					moveToBottom(el.id);
+				};
+				
+				// 将置顶和置底按钮插入到单元格的开头
+				actionsCell.insertBefore(toBottomBtn, actionsCell.firstChild);
+				actionsCell.insertBefore(toTopBtn, actionsCell.firstChild);
 			}
 		}
 	}
