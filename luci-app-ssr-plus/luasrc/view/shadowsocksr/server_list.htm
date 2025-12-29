@@ -95,13 +95,11 @@
 				cursor: move;
 				user-select: none;
 			}
-			/* 确保按钮在同一行 */
-			.cbi-section-actions {
-				white-space: nowrap !important;
-			}
-			.cbi-section-actions > * {
-				display: inline-block !important;
-				margin-right: 2px !important;
+			/* 添加置顶和置底按钮的间距 */
+			.cbi-button-top, 
+			.cbi-button-bottom {
+				margin-right: 4px;
+				display: inline-block;
 			}
 			`;
 		document.head.appendChild(style);
@@ -210,6 +208,15 @@
 			// 添加置顶和置底按钮
 			var actionsCell = el.querySelector(".cbi-section-actions");
 			if (actionsCell) {
+				// 获取现有的按钮容器内的div
+				var buttonDiv = actionsCell.querySelector("div");
+        
+				// 如果按钮容器内没有div，则创建一个
+				if (!buttonDiv) {
+					buttonDiv = document.createElement("div");
+					actionsCell.appendChild(buttonDiv);
+				}
+
 				// 置顶按钮
 				var toTopBtn = document.createElement("input");
 				toTopBtn.className = "btn cbi-button cbi-button-top";
@@ -231,8 +238,8 @@
 				};
 				
 				// 将置顶和置底按钮插入到单元格的开头
-				actionsCell.insertBefore(toBottomBtn, actionsCell.firstChild);
-				actionsCell.insertBefore(toTopBtn, actionsCell.firstChild);
+				buttonDiv.insertBefore(toBottomBtn, buttonDiv.firstChild);
+				buttonDiv.insertBefore(toTopBtn, buttonDiv.firstChild);
 			}
 		}
 	}
