@@ -31,6 +31,7 @@ function vmess_vless()
 						id = server.vmess_id,
 						alterId = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and tonumber(server.alter_id) or nil,
 						security = (server.v2ray_protocol == "vmess" or not server.v2ray_protocol) and server.security or nil,
+						testpre = (server.v2ray_protocol == "vless" or not server.v2ray_protocol) and tonumber(server.preconns) or nil,
 						encryption = (server.v2ray_protocol == "vless" or (not server.v2ray_protocol and server.vless_encryption)) and (server.vless_encryption or "none") or nil,
 						flow = (server.v2ray_protocol == "vless" and (server.xtls == "1" or server.tls == "1" or server.reality == "1"
 								or (server.vless_encryption and server.vless_encryption ~= "" and server.vless_encryption ~= "none")) and (
