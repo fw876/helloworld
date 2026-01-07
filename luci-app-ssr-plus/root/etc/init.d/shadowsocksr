@@ -1544,6 +1544,13 @@ start() {
 	fi
 	/etc/init.d/dnsmasq restart >/dev/null 2>&1
 	check_server
+    if command -v nft >/dev/null 2>&1; then
+		local CURRENT_SERVER="$(uci_get_by_type global global_server nil)"
+		if [ "$CURRENT_SERVER" != "nil" ]; then
+			uci set shadowsocksr.@global[0].old_global_server="$CURRENT_SERVER"
+			uci commit shadowsocksr
+		fi
+	fi
 	start_server
 	start_monitor
 	clean_log
@@ -1560,13 +1567,16 @@ boot() {
 stop() {
 	unlock
 	set_lock
-	if command -v nft >/dev/null 2>&1; then
-		/usr/bin/ssr-rules -K
-		#local CLEANUP_PERSISTENCE="$(uci_get_by_type global global_server nil)"
-		#if [ "$CLEANUP_PERSISTENCE" == "nil" ]; then
-		#	/usr/bin/ssr-rules -X
-		#fi
-	fi
+    if command -v nft >/dev/null 2>&1; then
+        /usr/bin/ssr-rules -K
+        local OLD_SERVER="$(uci_get_by_type global old_global_server nil)"
+        local NEW_SERVER="$(uci_get_by_type global global_server nil)"
+        if [ "$OLD_SERVER" != "nil" ] && [ "$NEW_SERVER" != "nil" ] && [ "$OLD_SERVER" != "$NEW_SERVER" ]; then
+			/usr/bin/ssr-rules -X
+        fi
+        uci delete shadowsocksr.@global[0].old_global_server 2>/dev/null
+        uci commit shadowsocksr
+    fi
 	/usr/bin/ssr-rules -f
 	local srulecount=0
 	if command -v nft >/dev/null 2>&1; then
