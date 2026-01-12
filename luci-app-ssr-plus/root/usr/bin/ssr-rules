@@ -18,7 +18,8 @@ detect_firewall() {
 			FWI=$(uci get firewall.shadowsocksr.path 2>/dev/null)  # firewall include file
 	else
 		USE_NFT=0
-		IPT="iptables -t nat"                                 # alias of iptables
+		IPT="iptables -t nat"                                 # alias of iptables TCP
+		ipt="iptables -t mangle"                              # alias of iptables UDP
 		FWI=$(uci get firewall.shadowsocksr.path 2>/dev/null) # firewall include file
 	fi
 }
@@ -290,16 +291,10 @@ flush_iptables_legacy() {
 	flush_iptables mangle
 	ip rule del fwmark 0x01/0x01 table 100 2>/dev/null
 	ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null
-	ipset -X ss_spec_lan_ac 2>/dev/null
-	ipset -X ss_spec_wan_ac 2>/dev/null
-	ipset -X ssr_gen_router 2>/dev/null
-	ipset -X fplan 2>/dev/null
-	ipset -X bplan 2>/dev/null
-	ipset -X gmlan 2>/dev/null
-	ipset -X oversea 2>/dev/null
-	ipset -X whitelist 2>/dev/null
-	ipset -X blacklist 2>/dev/null
-	ipset -X netflix 2>/dev/null
+	for setname in ss_spec_lan_ac ss_spec_wan_ac ssr_gen_router \
+			fplan bplan gmlan oversea whitelist blacklist netflix; do
+		ipset -X $setname 2>/dev/null
+	done
 	[ -n "$FWI" ] && echo '#!/bin/sh' >$FWI
 	return 0
 }
@@ -469,70 +464,111 @@ ipset_nft() {
 
 ipset_iptables() {
 	[ -f "$IGNORE_LIST" ] && /usr/share/shadowsocksr/chinaipset.sh "$IGNORE_LIST"
-	$IPT -N SS_SPEC_WAN_AC 2>/dev/null
-	$IPT -I SS_SPEC_WAN_AC -p tcp --dport 53 -d 127.0.0.0/8 -j RETURN
-	$IPT -I SS_SPEC_WAN_AC -p tcp ! --dport 53 -d "$server" -j RETURN
+
+	$IPT -N SS_SPEC_WAN_AC_TCP 2>/dev/null
+	$ipt -N SS_SPEC_WAN_AC_UDP 2>/dev/null
+
+	$IPT -F SS_SPEC_WAN_AC_TCP
+	$ipt -F SS_SPEC_WAN_AC_UDP
+
+	$IPT -I SS_SPEC_WAN_AC_TCP -p tcp --dport 53 -d 127.0.0.0/8 -j RETURN
+	$IPT -I SS_SPEC_WAN_AC_TCP -p tcp ! --dport 53 -d "$server" -j RETURN
+
+	$ipt -I SS_SPEC_WAN_AC_UDP -p udp --dport 53 -d 127.0.0.0/8 -j RETURN
+	$ipt -I SS_SPEC_WAN_AC_UDP -p udp ! --dport 53 -d "$server" -j RETURN
+
 	ipset -N gmlan hash:net 2>/dev/null
 	for ip in $LAN_GM_IP; do ipset -! add gmlan "$ip"; done
+
 	case "$RUNMODE" in
 	router)
 		ipset -! -R <<-EOF || return 1
 			create ss_spec_wan_ac hash:net
 			$(gen_spec_iplist | sed -e "s/^/add ss_spec_wan_ac /")
 		EOF
-		$IPT -A SS_SPEC_WAN_AC -m set --match-set ss_spec_wan_ac dst -j RETURN
-		$IPT -A SS_SPEC_WAN_AC -m set --match-set china dst -j RETURN
-		$IPT -A SS_SPEC_WAN_AC -m set --match-set gmlan src -m set ! --match-set china dst -j SS_SPEC_WAN_FW
-		$IPT -A SS_SPEC_WAN_AC -j SS_SPEC_WAN_FW
+		$IPT -A SS_SPEC_WAN_AC_TCP -m set --match-set ss_spec_wan_ac dst -j RETURN
+		$IPT -A SS_SPEC_WAN_AC_TCP -m set --match-set china dst -j RETURN
+		$IPT -A SS_SPEC_WAN_AC_TCP -m set --match-set gmlan src -m set ! --match-set china dst -j SS_SPEC_WAN_FW_TCP
+		$IPT -A SS_SPEC_WAN_AC_TCP -j SS_SPEC_WAN_FW_TCP
+
+		$ipt -A SS_SPEC_WAN_AC_UDP -m set --match-set ss_spec_wan_ac dst -j RETURN
+		$ipt -A SS_SPEC_WAN_AC_UDP -m set --match-set china dst -j RETURN
+		$ipt -A SS_SPEC_WAN_AC_UDP -m set --match-set gmlan src -m set ! --match-set china dst -j SS_SPEC_WAN_FW_UDP
+		$ipt -A SS_SPEC_WAN_AC_UDP -j SS_SPEC_WAN_FW_UDP
 		;;
 	gfw)
 		ipset -N gfwlist hash:net 2>/dev/null
-		$IPT -A SS_SPEC_WAN_AC -m set --match-set china dst -j RETURN
-		$IPT -A SS_SPEC_WAN_AC -m set --match-set gfwlist dst -j SS_SPEC_WAN_FW
-		$IPT -A SS_SPEC_WAN_AC -m set --match-set gmlan src -m set ! --match-set china dst -j SS_SPEC_WAN_FW
+		$IPT -A SS_SPEC_WAN_AC_TCP -m set --match-set china dst -j RETURN
+		$IPT -A SS_SPEC_WAN_AC_TCP -m set --match-set gfwlist dst -j SS_SPEC_WAN_FW_TCP
+		$IPT -A SS_SPEC_WAN_AC_TCP -m set --match-set gmlan src -m set ! --match-set china dst -j SS_SPEC_WAN_FW_TCP
+
+		$ipt -A SS_SPEC_WAN_AC_UDP -m set --match-set china dst -j RETURN
+		$ipt -A SS_SPEC_WAN_AC_UDP -m set --match-set gfwlist dst -j SS_SPEC_WAN_FW_UDP
+		$ipt -A SS_SPEC_WAN_AC_UDP -m set --match-set gmlan src -m set ! --match-set china dst -j SS_SPEC_WAN_FW_UDP
 		;;
 	oversea)
 		ipset -N oversea hash:net 2>/dev/null
-		$IPT -I SS_SPEC_WAN_AC -m set --match-set oversea dst -j SS_SPEC_WAN_FW
-		$IPT -A SS_SPEC_WAN_AC -m set --match-set gmlan src -j SS_SPEC_WAN_FW
-		$IPT -A SS_SPEC_WAN_AC -m set --match-set china dst -j SS_SPEC_WAN_FW
+		$IPT -I SS_SPEC_WAN_AC_TCP -m set --match-set oversea dst -j SS_SPEC_WAN_FW_TCP
+		$IPT -A SS_SPEC_WAN_AC_TCP -m set --match-set gmlan src -j SS_SPEC_WAN_FW_TCP
+		$IPT -A SS_SPEC_WAN_AC_TCP -m set --match-set china dst -j SS_SPEC_WAN_FW_TCP
+
+		$ipt -I SS_SPEC_WAN_AC_UDP -m set --match-set oversea dst -j SS_SPEC_WAN_FW_UDP
+		$ipt -A SS_SPEC_WAN_AC_UDP -m set --match-set gmlan src -j SS_SPEC_WAN_FW_UDP
+		$ipt -A SS_SPEC_WAN_AC_UDP -m set --match-set china dst -j SS_SPEC_WAN_FW_UDP
 		;;
 	all)
-		$IPT -A SS_SPEC_WAN_AC -j SS_SPEC_WAN_FW
+		$IPT -A SS_SPEC_WAN_AC_TCP -j SS_SPEC_WAN_FW_TCP
+		$ipt -A SS_SPEC_WAN_AC_UDP -j SS_SPEC_WAN_FW_UDP
 		;;
 	esac
+
 	ipset -N fplan hash:net 2>/dev/null
 	for ip in $LAN_FP_IP; do ipset -! add fplan "$ip"; done
-		$IPT -I SS_SPEC_WAN_AC -m set --match-set fplan src -j SS_SPEC_WAN_FW
+	$IPT -I SS_SPEC_WAN_AC_TCP -m set --match-set fplan src -j SS_SPEC_WAN_FW_TCP
+	$ipt -I SS_SPEC_WAN_AC_UDP -m set --match-set fplan src -j SS_SPEC_WAN_FW_UDP
+
 	ipset -N bplan hash:net 2>/dev/null
 	for ip in $LAN_BP_IP; do ipset -! add bplan "$ip"; done
-		$IPT -I SS_SPEC_WAN_AC -m set --match-set bplan src -j RETURN
+	$IPT -I SS_SPEC_WAN_AC_TCP -m set --match-set bplan src -j RETURN
+	$ipt -I SS_SPEC_WAN_AC_UDP -m set --match-set bplan src -j RETURN
+
 	ipset -N whitelist hash:net 2>/dev/null
 	if [ -f "${xhttp_ip:=/etc/ssrplus/xhttp_address.txt}" ]; then
 		while IFS= read -r ip; do
 			[ -n "$ip" ] && ipset add whitelist "$ip" -exist
 		done < "$xhttp_ip"
 	fi
+
 	ipset -N blacklist hash:net 2>/dev/null
-	$IPT -I SS_SPEC_WAN_AC -m set --match-set blacklist dst -j SS_SPEC_WAN_FW
-	$IPT -I SS_SPEC_WAN_AC -m set --match-set whitelist dst -j RETURN
+	$IPT -I SS_SPEC_WAN_AC_TCP -m set --match-set blacklist dst -j SS_SPEC_WAN_FW_TCP
+	$IPT -I SS_SPEC_WAN_AC_TCP -m set --match-set whitelist dst -j RETURN
+
+	$ipt -I SS_SPEC_WAN_AC_UDP -m set --match-set blacklist dst -j SS_SPEC_WAN_FW_UDP
+	$ipt -I SS_SPEC_WAN_AC_UDP -m set --match-set whitelist dst -j RETURN
+
 	if [ $(ipset list music -name -quiet | grep music) ]; then
-		$IPT -I SS_SPEC_WAN_AC -m set --match-set music dst -j RETURN 2>/dev/null
+		$IPT -I SS_SPEC_WAN_AC_TCP -m set --match-set music dst -j RETURN 2>/dev/null
+		$ipt -I SS_SPEC_WAN_AC_UDP -m set --match-set music dst -j RETURN 2>/dev/null
 	fi
+
 	for ip in $WAN_BP_IP; do ipset -! add whitelist "$ip"; done
 	for ip in $WAN_FW_IP; do ipset -! add blacklist "$ip"; done
+
 	if [ "$SHUNT_PORT" != "0" ]; then
 		ipset -N netflix hash:net 2>/dev/null
 		for ip in $(cat "${SHUNT_LIST:=/dev/null}" 2>/dev/null); do ipset -! add netflix "$ip"; done
 		case "$SHUNT_PORT" in
 		0) ;;
 		1)
-			$IPT -I SS_SPEC_WAN_AC -p tcp -m set --match-set netflix dst -j REDIRECT --to-ports "$local_port"
+			$IPT -I SS_SPEC_WAN_AC_TCP -p tcp -m set --match-set netflix dst -j REDIRECT --to-ports "$local_port"
+			$ipt -I SS_SPEC_WAN_AC_UDP -p udp -m set --match-set netflix dst -j TPROXY --on-port "$local_port" --tproxy-mark 0x01/0x01
 			;;
 		*)
-			$IPT -I SS_SPEC_WAN_AC -p tcp -m set --match-set netflix dst -j REDIRECT --to-ports "$SHUNT_PORT"
+			$IPT -I SS_SPEC_WAN_AC_TCP -p tcp -m set --match-set netflix dst -j REDIRECT --to-ports "$SHUNT_PORT"
+			$ipt -I SS_SPEC_WAN_AC_UDP -p udp -m set --match-set netflix dst -j TPROXY --on-port "$SHUNT_PORT" --tproxy-mark 0x01/0x01
 			if [ "$SHUNT_PROXY" = "1" ]; then
-				$IPT -I SS_SPEC_WAN_AC -p tcp -d "$SHUNT_IP" -j REDIRECT --to-ports "$local_port"
+				$IPT -I SS_SPEC_WAN_AC_TCP -p tcp -d "$SHUNT_IP" -j REDIRECT --to-ports "$local_port"
+				$ipt -I SS_SPEC_WAN_AC_UDP -p udp -d "$SHUNT_IP" -j TPROXY --on-port "$local_port" --tproxy-mark 0x01/0x01
 			else
 				ipset -! add whitelist "$SHUNT_IP"
 			fi
@@ -618,19 +654,48 @@ fw_rule_nft() {
 }
 
 fw_rule_iptables() {
-	$IPT -N SS_SPEC_WAN_FW
-	$IPT -A SS_SPEC_WAN_FW -d 0.0.0.0/8 -j RETURN
-	$IPT -A SS_SPEC_WAN_FW -d 10.0.0.0/8 -j RETURN
-	$IPT -A SS_SPEC_WAN_FW -d 127.0.0.0/8 -j RETURN
-	$IPT -A SS_SPEC_WAN_FW -d 169.254.0.0/16 -j RETURN
-	$IPT -A SS_SPEC_WAN_FW -d 172.16.0.0/12 -j RETURN
-	$IPT -A SS_SPEC_WAN_FW -d 192.168.0.0/16 -j RETURN
-	$IPT -A SS_SPEC_WAN_FW -d 224.0.0.0/4 -j RETURN
-	$IPT -A SS_SPEC_WAN_FW -d 240.0.0.0/4 -j RETURN
-	$IPT -A SS_SPEC_WAN_FW -p tcp $PROXY_PORTS -j REDIRECT --to-ports "$local_port" 2>/dev/null || {
-		loger 3 "Can't redirect, please check the iptables."
+	# set up routing table for tproxy
+	if ! ip rule show | grep -Eq "fwmark 0x0*1.*lookup 100"; then
+		ip rule add fwmark 0x01/0x01 table 100 2>/dev/null
+	fi
+
+	if ! ip route show table 100 | grep -q "^local.*dev lo"; then
+		ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
+	fi
+
+	# 创建TCP链 (在nat表中)
+	$IPT -N SS_SPEC_WAN_FW_TCP 2>/dev/null
+	$IPT -F SS_SPEC_WAN_FW_TCP
+
+	for net in \
+		0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 \
+		172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4
+	do
+		$IPT -A SS_SPEC_WAN_FW_TCP -d "$net" -j RETURN
+	done
+
+	$IPT -A SS_SPEC_WAN_FW_TCP -p tcp $PROXY_PORTS -j REDIRECT --to-ports "$local_port" 2>/dev/null || {
+		loger 3 "Can't redirect TCP, please check the iptables."
 		exit 1
 	}
+
+	# 创建UDP链 (在mangle表中)
+	$ipt -N SS_SPEC_WAN_FW_UDP 2>/dev/null
+	$ipt -F SS_SPEC_WAN_FW_UDP
+
+	for net in \
+		0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 \
+		172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4
+	do
+		$ipt -A SS_SPEC_WAN_FW_UDP -p udp -d "$net" -j RETURN
+	done
+
+	# UDP TPROXY规则 (必须在mangle表中)
+	$ipt -A SS_SPEC_WAN_FW_UDP -p udp $PROXY_PORTS -j TPROXY --on-port "$local_port" --tproxy-mark 0x01/0x01 2>/dev/null || {
+		loger 3 "Can't set UDP TPROXY, please check the iptables."
+		exit 1
+	}
+
 	return $?
 }
 
@@ -810,7 +875,7 @@ ac_rule_nft() {
 		$NFT add rule inet ss_spec ss_spec_router jump ss_spec_wan_fw_tcp 2>/dev/null
 		$NFT add rule inet ss_spec ss_spec_output $TCP_EXT_ARGS jump ss_spec_router comment "\"$TAG\"" 2>/dev/null
 		$NFT add rule inet ss_spec ss_spec_router jump ss_spec_wan_fw_udp 2>/dev/null
-		$NFT add rule inet ss_spec ss_spec_output $UDP_EXT_ARGS jump ss_spec_router comment "\"$TAG\"" 2>/dev/null
+		$NFT add rule inet ss_spec ss_spec_output $UDP_EXT_ARGS meta mark set 0x01 comment "\"$TAG\"" 2>/dev/null
 		;;
 	esac
 	return 0
@@ -836,28 +901,39 @@ ac_rule_iptables() {
 		$(for ip in ${LAN_AC_IP#?}; do echo "add ss_spec_lan_ac $ip"; done)
 	EOF
 	if [ -z "$Interface" ]; then
-		$IPT -I PREROUTING 1 -p tcp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
+		$IPT -I PREROUTING 1 -p tcp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_WAN_AC_TCP
+		$ipt -I PREROUTING 1 -p udp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_WAN_AC_UDP
 	else
 		for name in $Interface; do
 			local IFNAME=$(uci -P /var/state get network."$name".ifname 2>/dev/null)
 			[ -z "$IFNAME" ] && IFNAME=$(uci -P /var/state get network."$name".device 2>/dev/null)
-			[ -n "$IFNAME" ] && $IPT -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p tcp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
+			if [ -n "$IFNAME" ]; then
+				$IPT -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p tcp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_WAN_AC_TCP
+				$ipt -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p udp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_WAN_AC_UDP
+			fi
 		done
 	fi
 
 	case "$OUTPUT" in
 	1)
-		$IPT -I OUTPUT 1 -p tcp $EXT_ARGS -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
+		$IPT -I OUTPUT 1 -p tcp $EXT_ARGS -m comment --comment "$TAG" -j SS_SPEC_WAN_AC_TCP
+		#$ipt -I OUTPUT 1 -p udp $EXT_ARGS -m comment --comment "$TAG" -j MARK --set-xmark 0x01/0x01
 		;;
 	2)
 		ipset -! -R <<-EOF || return 1
 			create ssr_gen_router hash:net
 			$(gen_spec_iplist | sed -e "s/^/add ssr_gen_router /")
 		EOF
-		$IPT -N SS_SPEC_ROUTER && \
-		$IPT -A SS_SPEC_ROUTER -m set --match-set ssr_gen_router dst -j RETURN && \
-		$IPT -A SS_SPEC_ROUTER -j SS_SPEC_WAN_FW
-		$IPT -I OUTPUT 1 -p tcp -m comment --comment "$TAG" -j SS_SPEC_ROUTER
+		$IPT -N SS_SPEC_ROUTER_TCP 2>/dev/null
+		$IPT -F SS_SPEC_ROUTER_TCP 2>/dev/null
+		$IPT -A SS_SPEC_ROUTER_TCP -m set --match-set ssr_gen_router dst -j RETURN && \
+		$IPT -A SS_SPEC_ROUTER_TCP -j SS_SPEC_WAN_FW_TCP
+		$IPT -I OUTPUT 1 -p tcp -m comment --comment "$TAG" -j SS_SPEC_ROUTER_TCP
+		$ipt -N SS_SPEC_ROUTER_UDP 2>/dev/null
+		$ipt -F SS_SPEC_ROUTER_UDP 2>/dev/null
+		$ipt -A SS_SPEC_ROUTER_UDP -m set --match-set ssr_gen_router dst -j RETURN && \
+		$ipt -A SS_SPEC_ROUTER_UDP -j SS_SPEC_WAN_FW_UDP
+		#$ipt -I OUTPUT 1 -p udp -m comment --comment "$TAG" -j SS_SPEC_ROUTER_UDP
 		;;
 	esac
 	return $?
@@ -1057,19 +1133,22 @@ tp_rule_nft() {
 }
 
 tp_rule_iptables() {
-	ip rule add fwmark 0x01/0x01 table 100
-	ip route add local 0.0.0.0/0 dev lo table 100
-	local ipt="iptables -t mangle"
+	# set up routing table for tproxy
+	if ! ip rule show | grep -Eq "fwmark 0x0*1.*lookup 100"; then
+		ip rule add fwmark 0x01/0x01 table 100 2>/dev/null
+	fi
+
+	if ! ip route show table 100 | grep -q "^local.*dev lo"; then
+		ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
+	fi
 	$ipt -N SS_SPEC_TPROXY
 	$ipt -A SS_SPEC_TPROXY -p udp --dport 53 -j RETURN
-	$ipt -A SS_SPEC_TPROXY -p udp -d 0.0.0.0/8 -j RETURN
-	$ipt -A SS_SPEC_TPROXY -p udp -d 10.0.0.0/8 -j RETURN
-	$ipt -A SS_SPEC_TPROXY -p udp -d 127.0.0.0/8 -j RETURN
-	$ipt -A SS_SPEC_TPROXY -p udp -d 169.254.0.0/16 -j RETURN
-	$ipt -A SS_SPEC_TPROXY -p udp -d 172.16.0.0/12 -j RETURN
-	$ipt -A SS_SPEC_TPROXY -p udp -d 192.168.0.0/16 -j RETURN
-	$ipt -A SS_SPEC_TPROXY -p udp -d 224.0.0.0/4 -j RETURN
-	$ipt -A SS_SPEC_TPROXY -p udp -d 240.0.0.0/4 -j RETURN
+	for net in \
+		0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 \
+		172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4
+	do
+		$ipt -A SS_SPEC_TPROXY -p udp -d "$net" -j RETURN
+	done
 	$ipt -A SS_SPEC_TPROXY -p udp ! --dport 53 -d "$SERVER" -j RETURN
 	[ "$server" != "$SERVER" ] && ipset -! add whitelist "$SERVER"
 	if [ -f "${xhttp_ip:=/etc/ssrplus/xhttp_address.txt}" ]; then

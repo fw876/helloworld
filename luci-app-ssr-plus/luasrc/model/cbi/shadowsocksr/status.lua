@@ -60,7 +60,7 @@ if Process_list:find("udp.only.ssr.reudp") then
 	reudp_run = 1
 end
 
-if Process_list:find("tcp.only.ssr.retcp") then
+if Process_list:find("tcp.udp.dual.ssr.retcp") then
 	redir_run = 1
 end
 

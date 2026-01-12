@@ -1181,20 +1181,12 @@ load_config() {
 		# 没有开启 设置为 nil
 		SHUNT_SERVER=nil
 	fi
-	tcp_config_file=$TMP_PATH/tcp-only-ssr-retcp.json
+	tcp_config_file=$TMP_PATH/tcp-udp-dual-ssr-retcp.json
 	case "$UDP_RELAY_SERVER" in
 	nil)
-		if command -v nft >/dev/null 2>&1; then
-			# nftables / fw4
-			mode="tcp,udp"
-			ARG_UDP=""
-			udp_config_file=""
-			UDP_RELAY_SERVER="nil"
-			tcp_config_file=$TMP_PATH/nft-ssr-retcp.json
-		else
-			# iptables / fw3
-			mode="tcp"
-		fi
+		mode="tcp,udp"
+		ARG_UDP=""
+		udp_config_file=""
 		;;
 	$GLOBAL_SERVER | same)
 		mode="tcp,udp"
@@ -1207,13 +1199,7 @@ load_config() {
 		udp_config_file=$TMP_PATH/udp-only-ssr-reudp.json
 		ARG_UDP="-U"
 		start_udp
-		if command -v nft >/dev/null 2>&1; then
-			# nftables / fw4
-			mode="tcp,udp"
-		else
-			# iptables / fw3
-			mode="tcp"
-		fi
+		mode="tcp,udp"
 		;;
 	esac
 	case "$LOCAL_SERVER" in
