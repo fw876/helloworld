@@ -291,8 +291,8 @@ flush_iptables_legacy() {
 	flush_iptables mangle
 	ip rule del fwmark 0x01/0x01 table 100 2>/dev/null
 	ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null
-	for setname in ss_spec_lan_ac ss_spec_wan_ac ssr_gen_router \
-			fplan bplan gmlan oversea whitelist blacklist netflix; do
+	for setname in ss_spec_lan_ac ss_spec_wan_ac ss_spec_wan_ac_tcp ss_spec_wan_ac_udp ssr_gen_router \
+			china fplan bplan gmlan oversea whitelist blacklist netflix; do
 		ipset -X $setname 2>/dev/null
 	done
 	[ -n "$FWI" ] && echo '#!/bin/sh' >$FWI
@@ -483,15 +483,19 @@ ipset_iptables() {
 	case "$RUNMODE" in
 	router)
 		ipset -! -R <<-EOF || return 1
-			create ss_spec_wan_ac hash:net
-			$(gen_spec_iplist | sed -e "s/^/add ss_spec_wan_ac /")
+			create ss_spec_wan_ac_tcp hash:net
+			$(gen_spec_iplist | sed -e "s/^/add ss_spec_wan_ac_tcp /")
 		EOF
-		$IPT -A SS_SPEC_WAN_AC_TCP -m set --match-set ss_spec_wan_ac dst -j RETURN
+		ipset -! -R <<-EOF || return 1
+			create ss_spec_wan_ac_udp hash:net
+			$(gen_spec_iplist | sed -e "s/^/add ss_spec_wan_ac_udp /")
+		EOF
+		$IPT -A SS_SPEC_WAN_AC_TCP -m set --match-set ss_spec_wan_ac_tcp dst -j RETURN
 		$IPT -A SS_SPEC_WAN_AC_TCP -m set --match-set china dst -j RETURN
 		$IPT -A SS_SPEC_WAN_AC_TCP -m set --match-set gmlan src -m set ! --match-set china dst -j SS_SPEC_WAN_FW_TCP
 		$IPT -A SS_SPEC_WAN_AC_TCP -j SS_SPEC_WAN_FW_TCP
 
-		$ipt -A SS_SPEC_WAN_AC_UDP -m set --match-set ss_spec_wan_ac dst -j RETURN
+		$ipt -A SS_SPEC_WAN_AC_UDP -m set --match-set ss_spec_wan_ac_udp dst -j RETURN
 		$ipt -A SS_SPEC_WAN_AC_UDP -m set --match-set china dst -j RETURN
 		$ipt -A SS_SPEC_WAN_AC_UDP -m set --match-set gmlan src -m set ! --match-set china dst -j SS_SPEC_WAN_FW_UDP
 		$ipt -A SS_SPEC_WAN_AC_UDP -j SS_SPEC_WAN_FW_UDP
@@ -1160,6 +1164,10 @@ tp_rule_iptables() {
 	$ipt -A SS_SPEC_TPROXY -p udp $PROXY_PORTS -m set --match-set fplan src -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark 0x01/0x01
 	case "$RUNMODE" in
 	router)
+		ipset -! -R <<-EOF || return 1
+			create ss_spec_wan_ac hash:net
+			$(gen_spec_iplist | sed -e "s/^/add ss_spec_wan_ac /")
+		EOF
 		$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set ss_spec_wan_ac dst -j RETURN
 		$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set china dst -j RETURN
 		$ipt -A SS_SPEC_TPROXY -p udp --dport 80 -j DROP
