@@ -1145,8 +1145,24 @@ tp_rule_iptables() {
 	if ! ip route show table 100 | grep -q "^local.*dev lo"; then
 		ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
 	fi
-	$ipt -N SS_SPEC_TPROXY
+	$ipt -N SS_SPEC_TPROXY 2>/dev/null
+	$ipt -F SS_SPEC_TPROXY
 	$ipt -A SS_SPEC_TPROXY -p udp --dport 53 -j RETURN
+
+	# 添加排除 LAN_AC_IP 规则
+	if [ -n "$LAN_AC_IP" ]; then
+		case "${LAN_AC_IP%${LAN_AC_IP#?}}" in
+		w | W)
+			# 白名单模式：集合中的IP跳过透明代理
+			$ipt -A SS_SPEC_TPROXY -m set --match-set ss_spec_lan_ac src -j RETURN
+			;;
+		b | B)
+			# 黑名单模式：集合中的IP走透明代理，其他IP跳过
+			$ipt -A SS_SPEC_TPROXY -m set ! --match-set ss_spec_lan_ac src -j RETURN
+			;;
+		esac
+	fi
+
 	for net in \
 		0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 \
 		172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4
