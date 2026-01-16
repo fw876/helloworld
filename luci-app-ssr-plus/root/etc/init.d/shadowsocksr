@@ -1040,15 +1040,16 @@ Start_Run() {
 	if [ "$_local" == "1" ]; then
 		local socks_port=$(uci_get_by_type socks5_proxy local_port)
 		tcp_config_file=$TMP_PATH/local-ssr-retcp.json
-		[ "$mode" == "tcp,udp" ] && {
-			if command -v nft >/dev/null 2>&1; then
-				# nftables / fw4
-				tcp_config_file=$TMP_PATH/local-nft-ssr-retcp.json
-			else
-				# iptables / fw3
-				tcp_config_file=$TMP_PATH/local-udp-ssr-retcp.json
-			fi
-		}
+		[ "$mode" == "tcp,udp" ] && tcp_config_file=$TMP_PATH/local-udp-ssr-retcp.json
+		#[ "$mode" == "tcp,udp" ] && {
+		#	if command -v nft >/dev/null 2>&1; then
+		#		# nftables / fw4
+		#		tcp_config_file=$TMP_PATH/local-nft-ssr-retcp.json
+		#	else
+		#		# iptables / fw3
+		#		tcp_config_file=$TMP_PATH/local-udp-ssr-retcp.json
+		#	fi
+		#}
 	fi
 	local tcp_port=$(uci_get_by_name $GLOBAL_SERVER local_port)
 	local type=$(uci_get_by_name $GLOBAL_SERVER type)
@@ -1181,10 +1182,12 @@ load_config() {
 		# 没有开启 设置为 nil
 		SHUNT_SERVER=nil
 	fi
-	tcp_config_file=$TMP_PATH/tcp-udp-dual-ssr-retcp.json
+	#tcp_config_file=$TMP_PATH/tcp-udp-dual-ssr-retcp.json
+	tcp_config_file=$TMP_PATH/tcp-only-ssr-retcp.json
 	case "$UDP_RELAY_SERVER" in
 	nil)
-		mode="tcp,udp"
+		#mode="tcp,udp"
+		mode="tcp"
 		ARG_UDP=""
 		udp_config_file=""
 		;;
@@ -1199,7 +1202,8 @@ load_config() {
 		udp_config_file=$TMP_PATH/udp-only-ssr-reudp.json
 		ARG_UDP="-U"
 		start_udp
-		mode="tcp,udp"
+		#mode="tcp,udp"
+		mode="tcp"
 		;;
 	esac
 	case "$LOCAL_SERVER" in

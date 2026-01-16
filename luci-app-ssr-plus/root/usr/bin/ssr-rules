@@ -291,7 +291,7 @@ flush_iptables_legacy() {
 	flush_iptables mangle
 	ip rule del fwmark 0x01/0x01 table 100 2>/dev/null
 	ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null
-	for setname in ss_spec_lan_ac ss_spec_wan_ac ss_spec_wan_ac_tcp ss_spec_wan_ac_udp ssr_gen_router \
+	for setname in ss_spec_lan_ac ss_spec_lan_ac_udp ss_spec_wan_ac ss_spec_wan_ac_tcp ss_spec_wan_ac_udp ssr_gen_router \
 			china fplan bplan gmlan oversea whitelist blacklist netflix; do
 		ipset -X $setname 2>/dev/null
 	done
@@ -886,6 +886,7 @@ ac_rule_nft() {
 }
 
 ac_rule_iptables() {
+	local MATCH_SET=""
 	if [ -n "$LAN_AC_IP" ]; then
 		case "${LAN_AC_IP%${LAN_AC_IP#?}}" in
 		w | W)
@@ -1147,21 +1148,30 @@ tp_rule_iptables() {
 	fi
 	$ipt -N SS_SPEC_TPROXY 2>/dev/null
 	$ipt -F SS_SPEC_TPROXY
+	$ipt -N PREROUTING_UDP 2>/dev/null
+	$ipt -F PREROUTING_UDP
+
 	$ipt -A SS_SPEC_TPROXY -p udp --dport 53 -j RETURN
 
-	# 添加排除 LAN_AC_IP 规则
+	local MATCH_SET_UDP=""
 	if [ -n "$LAN_AC_IP" ]; then
 		case "${LAN_AC_IP%${LAN_AC_IP#?}}" in
 		w | W)
-			# 白名单模式：集合中的IP跳过透明代理
-			$ipt -A SS_SPEC_TPROXY -m set --match-set ss_spec_lan_ac src -j RETURN
+			MATCH_SET_UDP="-m set --match-set ss_spec_lan_ac_udp src"
 			;;
 		b | B)
-			# 黑名单模式：集合中的IP走透明代理，其他IP跳过
-			$ipt -A SS_SPEC_TPROXY -m set ! --match-set ss_spec_lan_ac src -j RETURN
+			MATCH_SET_UDP="-m set ! --match-set ss_spec_lan_ac_udp src"
+			;;
+		*)
+			loger 3 "Bad argument \`-a $LAN_AC_IP\`."
+			return 2
 			;;
 		esac
 	fi
+	ipset -! -R <<-EOF || return 1
+		create ss_spec_lan_ac_udp hash:net
+		$(for ip in ${LAN_AC_IP#?}; do echo "add ss_spec_lan_ac_udp $ip"; done)
+	EOF
 
 	for net in \
 		0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 \
@@ -1206,12 +1216,12 @@ tp_rule_iptables() {
 		;;
 	esac
 	if [ -z "$Interface" ]; then
-		$ipt -I PREROUTING 1 -p udp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_TPROXY
+		$ipt -I PREROUTING_UDP 1 -p udp $EXT_ARGS $MATCH_SET_UDP -m comment --comment "$TAG" -j SS_SPEC_TPROXY
 	else
 		for name in $Interface; do
 			local IFNAME=$(uci -P /var/state get network."$name".ifname 2>/dev/null)
 			[ -z "$IFNAME" ] && IFNAME=$(uci -P /var/state get network."$name".device 2>/dev/null)
-			[ -n "$IFNAME" ] && $ipt -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p udp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_TPROXY
+			[ -n "$IFNAME" ] && $ipt -I PREROUTING_UDP 1 ${IFNAME:+-i $IFNAME} -p udp $EXT_ARGS $MATCH_SET_UDP -m comment --comment "$TAG" -j SS_SPEC_TPROXY
 		done
 	fi
 	return $?
