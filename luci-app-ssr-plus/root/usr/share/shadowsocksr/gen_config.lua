@@ -88,8 +88,15 @@ function wireguard()
 			}
 		},
 		noKernelTun = (server.kernelmode == "1") and true or false,
-		reserved = {server.reserved} or nil,
+		reserved = server.reserved and { server.reserved } or nil,
 		mtu = tonumber(server.mtu)
+	}
+end
+function xray_hysteria2()
+	outbound_settings = {
+		version = (server.v2ray_protocol == "hysteria2") and 2 or nil,
+		address = server.server,
+		port = tonumber(server.server_port)
 	}
 end
 local outbound = {}
@@ -121,6 +128,9 @@ function outbound:handleIndex(index)
 		end,
 		wireguard = function()
 			wireguard()
+		end,
+		hysteria2 = function()
+			xray_hysteria2()
 		end
 	}
 	if switch[index] then
@@ -208,11 +218,11 @@ end
 	-- 传出连接
 	Xray.outbounds = {
 		{
-			protocol = server.v2ray_protocol,
+			protocol = (server.v2ray_protocol == "hysteria2") and "hysteria" or server.v2ray_protocol,
 			settings = outbound_settings,
 			-- 底层传输配置
 			streamSettings = (server.v2ray_protocol ~= "wireguard") and {
-				network = server.transport or "raw",
+				network = (server.v2ray_protocol == "hysteria2") and "hysteria" or (server.transport or "raw"),
 				security = (server.xtls == '1') and "xtls" or (server.tls == '1') and "tls" or (server.reality == '1') and "reality" or nil,
 				tlsSettings = (server.tls == '1') and {
 					-- tls
@@ -329,9 +339,53 @@ end
 					permit_without_stream = (server.permit_without_stream == "1") and true or nil,
 					initial_windows_size = tonumber(server.initial_windows_size) or nil
 				} or nil,
+				hysteriaSettings = (server.v2ray_protocol == "hysteria2") and {
+					-- hysteria2
+					version = 2,
+					auth = server.hy2_auth,
+					congestion = server.hy2_tcpcongestion or nil,
+					up = tonumber(server.uplink_capacity) and tonumber(server.uplink_capacity) .. " mbps" or nil,
+					down = tonumber(server.downlink_capacity) and tonumber(server.downlink_capacity) .. " mbps" or nil,
+					udphop = (server.flag_port_hopping == "1") and {
+						port = string.gsub(server.port_range, ":", "-"),
+						interval = (function()
+							local v = tonumber((server.hopinterval or "30"):match("^%d+"))
+							return (v and v >= 5) and v or 30
+							end)()
+					} or nil,
+					initStreamReceiveWindow = (server.flag_quicparam == "1" and server.initstreamreceivewindow) and tonumber(server.initstreamreceivewindow) or nil,
+					maxStreamReceiveWindow = (server.flag_quicparam == "1" and server.maxstreamreceivewindow) and tonumber(server.maxstreamreceivewindow) or nil,
+					initConnectionReceiveWindow = (server.flag_quicparam == "1" and server.initconnreceivewindow) and tonumber(server.initconnreceivewindow) or nil,
+					maxConnectionReceiveWindow = (server.flag_quicparam == "1" and server.maxconnreceivewindow) and tonumber(server.maxconnreceivewindow) or nil,
+					maxIdleTimeout = (server.flag_quicparam == "1" and (function()
+						local timeoutStr = tostring(server.maxidletimeout or "")
+						local timeout = tonumber(timeoutStr:match("^%d+"))
+						if timeout and timeout >= 4 and timeout <= 120 then
+							return timeout
+						end
+					end)()) or 30,
+					keepAlivePeriod = (server.flag_quicparam == "1" and server.keepaliveperiod) and tonumber(server.keepaliveperiod) or nil,
+					disablePathMTUDiscovery = (server.flag_quicparam == "1" and tostring(server.disablepathmtudiscovery) == "1") and true or nil
+				} or nil,
+				udpmasks = (server.flag_obfs == "1" and (server.v2ray_protocol == "hysteria2" and server.obfs_type and server.obfs_type ~= "")) and {
+					{
+						type = server.obfs_type,
+						settings = server.salamander and {
+							password = server.salamander
+						} or nil
+					}
+				} or nil,
 				sockopt = {
 					mark = 250,
-					tcpFastOpen = ((server.transport == "xhttp" and server.tcpfastopen == "1") and true or false) or (server.transport ~= "xhttp") and nil, -- XHTTP Tcp Fast Open
+					tcpFastOpen = (function()
+						if server.transport == "xhttp" then
+							return (server.fast_open == "1") and true or false
+						elseif server.v2ray_protocol == "hysteria2" then
+							return (server.fast_open == "1") and true or nil
+						else
+							return nil
+						end
+					end)(), -- XHTTP Tcp Fast Open
 					tcpMptcp = (server.mptcp == "1") and true or nil, -- MPTCP
 					Penetrate = (server.mptcp == "1") and true or nil, -- Penetrate MPTCP
 					tcpcongestion = server.custom_tcpcongestion, -- 连接服务器节点的 TCP 拥塞控制算法
@@ -339,7 +393,7 @@ end
 					              ((remarks ~= nil and remarks ~= "") and (node_id .. "." .. remarks) or node_id) or nil
 				}
 			} or nil,
-			mux = (server.v2ray_protocol ~= "wireguard") and {
+			mux = (server.v2ray_protocol ~= "hysteria2" and server.v2ray_protocol ~= "wireguard") and {
 				-- mux
 				enabled = (server.mux == "1"), -- Mux
 				concurrency = (server.mux == "1" and (tonumber(server.concurrency) or -1)) or nil, -- TCP 最大并发连接数
@@ -374,7 +428,15 @@ if xray_fragment.fragment ~= "0" or (xray_fragment.noise ~= "0" and xray_noise.e
 		streamSettings = {
 			sockopt = {
 			mark = 250,
-			tcpFastOpen = ((server.transport == "xhttp" and server.tcpfastopen == "1") and true or false) or (server.transport ~= "xhttp") and nil, -- XHTTP Tcp Fast Open
+			tcpFastOpen = (function()
+				if server.transport == "xhttp" then
+					return (server.fast_open == "1") and true or false
+				elseif server.v2ray_protocol == "hysteria2" then
+					return (server.fast_open == "1") and true or nil
+				else
+					return nil
+				end
+			end)(), -- XHTTP Tcp Fast Open
 			tcpMptcp = (server.mptcp == "1") and true or nil, -- MPTCP
 			Penetrate = (server.mptcp == "1") and true or nil, -- Penetrate MPTCP
 			tcpcongestion = server.custom_tcpcongestion -- 连接服务器节点的 TCP 拥塞控制算法
