@@ -362,6 +362,9 @@ o:value("shadowsocks", translate("ShadowSocks"))
 if is_finded("xray") then
 	o:value("wireguard", translate("WireGuard"))
 end
+if is_finded("xray") then
+	o:value("hysteria2", translate("hysteria2"))
+end
 o:value("socks", translate("Socks"))
 o:value("http", translate("HTTP"))
 o:depends("type", "v2ray")
@@ -508,17 +511,20 @@ o:depends("type", "ssr")
 -- [[ Hysteria2 ]]--
 o = s:option(Value, "hy2_auth", translate("Users Authentication"))
 o:depends("type", "hysteria2")
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2"})
 o.password = true
 o.rmempty = false
 
 o = s:option(Flag, "flag_port_hopping", translate("Enable Port Hopping"))
 o:depends("type", "hysteria2")
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2"})
 o.rmempty = true
 o.default = "0"
 
 o = s:option(Value, "port_range", translate("Port hopping range"))
 o.description = translate("Format as 10000:20000 or 10000-20000 Multiple groups are separated by commas (,).")
 o:depends({type = "hysteria2", flag_port_hopping = true})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2", flag_port_hopping = true})
 --o.datatype = "portrange"
 o.rmempty = true
 
@@ -535,12 +541,14 @@ o.rmempty = true
 
 o = s:option(Value, "hopinterval", translate("Port Hopping Interval(Unit:Second)"))
 o:depends({type = "hysteria2", flag_transport = true, flag_port_hopping = true})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2", flag_port_hopping = true})
 o.datatype = "uinteger"
 o.rmempty = true
 o.default = "30"
 
 o = s:option(Flag, "flag_obfs", translate("Enable Obfuscation"))
 o:depends("type", "hysteria2")
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2"})
 o.rmempty = true
 o.default = "0"
 
@@ -550,61 +558,71 @@ o.rmempty = true
 o.default = "0"
 
 o = s:option(Value, "obfs_type", translate("Obfuscation Type"))
-o:depends({type = "hysteria2", flag_obfs = "1"})
+o:depends({type = "hysteria2", flag_obfs = true})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2", flag_obfs = true})
 o.rmempty = true
 o.placeholder = "salamander"
 
 o = s:option(Value, "salamander", translate("Obfuscation Password"))
-o:depends({type = "hysteria2", flag_obfs = "1"})
+o:depends({type = "hysteria2", flag_obfs = true})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2", flag_obfs = true})
 o.password = true
 o.rmempty = true
 o.placeholder = "cry_me_a_r1ver"
 
 o = s:option(Flag, "flag_quicparam", translate("Hysterir QUIC parameters"))
 o:depends("type", "hysteria2")
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2"})
 o.rmempty = true
 o.default = "0"
 
 o = s:option(Flag, "disablepathmtudiscovery", translate("Disable QUIC path MTU discovery"))
-o:depends({type = "hysteria2",flag_quicparam = "1"})
+o:depends({type = "hysteria2",flag_quicparam = true})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2", flag_quicparam = true})
 o.rmempty = true
 o.default = false
 
 --[[Hysteria2 QUIC parameters setting]]
 o = s:option(Value, "initstreamreceivewindow", translate("QUIC initStreamReceiveWindow"))
-o:depends({type = "hysteria2", flag_quicparam = "1"})
+o:depends({type = "hysteria2", flag_quicparam = true})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2", flag_quicparam = true})
 o.datatype = "uinteger"
 o.rmempty = true
 o.default = "8388608"
 
 o = s:option(Value, "maxstreamreceivewindow", translate("QUIC maxStreamReceiveWindow"))
-o:depends({type = "hysteria2", flag_quicparam = "1"})
+o:depends({type = "hysteria2", flag_quicparam = true})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2", flag_quicparam = true})
 o.datatype = "uinteger"
 o.rmempty = true
 o.default = "8388608"
 
 o = s:option(Value, "initconnreceivewindow", translate("QUIC initConnReceiveWindow"))
-o:depends({type = "hysteria2", flag_quicparam = "1"})
+o:depends({type = "hysteria2", flag_quicparam = true})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2", flag_quicparam = true})
 o.datatype = "uinteger"
 o.rmempty = true
 o.default = "20971520"
 
 o = s:option(Value, "maxconnreceivewindow", translate("QUIC maxConnReceiveWindow"))
-o:depends({type = "hysteria2", flag_quicparam = "1"})
+o:depends({type = "hysteria2", flag_quicparam = true})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2", flag_quicparam = true})
 o.datatype = "uinteger"
 o.rmempty = true
 o.default = "20971520"
 
 o = s:option(Value, "maxidletimeout", translate("QUIC maxIdleTimeout(Unit:second)"))
-o:depends({type = "hysteria2", flag_quicparam = "1"})
+o:depends({type = "hysteria2", flag_quicparam = true})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2", flag_quicparam = true})
 o.rmempty = true
 o.datatype = "uinteger"
 o.default = "30"
 
 o = s:option(Value, "keepaliveperiod", translate("The keep-alive period.(Unit:second)"))
 o.description = translate("Default value 0 indicatesno heartbeat.")
-o:depends({type = "hysteria2", flag_quicparam = "1"})
+o:depends({type = "hysteria2", flag_quicparam = true})
 o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2", flag_quicparam = true})
 o.rmempty = true
 o.datatype = "uinteger"
 o.default = "10"
@@ -1068,6 +1086,7 @@ o = s:option(Value, "uplink_capacity", translate("Uplink Capacity(Default:Mbps)"
 o.datatype = "uinteger"
 o:depends("transport", "kcp")
 o:depends("type", "hysteria2")
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2"})
 o.placeholder = 5
 o.rmempty = true
 
@@ -1075,6 +1094,7 @@ o = s:option(Value, "downlink_capacity", translate("Downlink Capacity(Default:Mb
 o.datatype = "uinteger"
 o:depends("transport", "kcp")
 o:depends("type", "hysteria2")
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2"})
 o.placeholder = 20
 o.rmempty = true
 
@@ -1144,6 +1164,7 @@ o:depends({type = "v2ray", v2ray_protocol = "vless", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "vmess", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "trojan", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks", reality = false})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "socks", socks_ver = "5", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "http", reality = false})
 o:depends("type", "trojan")
@@ -1269,7 +1290,6 @@ o:value("http/1.1")
 o:value("h2,http/1.1")
 o:value("h3,h2,http/1.1")
 o:depends("tls", true)
-o:depends({type = "hysteria2", tls = true})
 
 -- TUIC ALPN
 o = s:option(ListValue, "tuic_alpn", translate("TUIC ALPN"))
@@ -1366,10 +1386,10 @@ o:value("skip", translate("skip"))
 o:depends("mux", true)
 
 -- [[ XHTTP TCP Fast Open ]]--
-o = s:option(Flag, "tcpfastopen", translate("TCP Fast Open"), translate("Enabling TCP Fast Open Requires Server Support."))
-o.rmempty = true
-o.default = "0"
-o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "xhttp"})
+--o = s:option(Flag, "tcpfastopen", translate("TCP Fast Open"), translate("Enabling TCP Fast Open Requires Server Support."))
+--o.rmempty = true
+--o.default = "0"
+--o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "xhttp"})
 
 -- [[ MPTCP ]]--
 o = s:option(Flag, "mptcp", translate("MPTCP"), translate("Enable Multipath TCP, need to be enabled in both server and client configuration."))
@@ -1403,6 +1423,17 @@ o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o:depends({type = "v2ray", v2ray_protocol = "http"})
 
+-- [[ HYSTERIA2_tcpcongestion 连接服务器节点的 TCP 拥塞控制算法 ]]--
+o = s:option(ListValue, "hy2_tcpcongestion", translate("custom_tcpcongestion"))
+o.rmempty = true
+o.default = ""
+o:value("", translate("comment_tcpcongestion_disable"))
+o:value("bbr", translate("BBR"))
+o:value("brutal", translate("BRUTAL"))
+o:value("force-brutal", translate("FORCE BRUTAL"))
+o:value("reno", translate("Reno"))
+o:value("cubic", translate("CUBIC"))
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2"})
 
 -- [[ Cert ]]--
 o = s:option(Flag, "certificate", translate("Self-signed Certificate"))
@@ -1462,6 +1493,8 @@ o:depends("type", "ssr")
 o:depends("type", "ss")
 o:depends("type", "trojan")
 o:depends("type", "hysteria2")
+o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "xhttp"})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2"})
 
 o = s:option(Flag, "switch_enable", translate("Enable Auto Switch"))
 o.rmempty = false
