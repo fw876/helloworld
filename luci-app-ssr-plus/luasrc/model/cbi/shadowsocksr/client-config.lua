@@ -141,6 +141,12 @@ local function set_apply_on_parse(map)
     end
 end
 
+local has_xray = is_finded("xray")
+local has_hysteria2 = is_finded("hysteria")
+
+-- 读取当前存储的 xray_hy2_type
+local xray_hy2_type = uci:get_first("shadowsocksr", "server_subscribe", "xray_hy2_type")
+
 local has_ss_rust = is_finded("sslocal") or is_finded("ssserver")
 local has_ss_libev = is_finded("ss-redir") or is_finded("ss-local")
 
@@ -269,6 +275,43 @@ o.rawhtml = true
 o.template = "shadowsocksr/ssrurl"
 o.value = sid
 
+-- 新增一个选择框，用于选择 Xray 或 Hysteria2 核心
+o = s:option(ListValue, "xray_hy2_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Type", "Hysteria2")))
+o.description = translate("The configured type also applies to the core specified when manually importing nodes.")
+-- 设置默认 Xray 或 Hysteria2 核心
+-- 动态添加选项
+if has_xray then
+    o:value("xray", translate("Xray"))
+end
+if has_hysteria2 then
+    o:value("hysteria2", translate("Hysteria2"))
+end
+-- 设置默认值
+if xray_hy2_type == "xray" then
+    o.default = "xray"
+elseif xray_hy2_type == "hysteria2" then
+    o.default = "hysteria2"
+end
+o.write = function(self, section, value)
+    -- 更新 Hysteria 节点的 xray_hy2_type
+    uci:foreach("shadowsocksr", "servers", function(s)
+        local node_type = uci:get("shadowsocksr", s[".name"], "type")  -- 获取节点类型
+        if node_type == "hysteria2" then  -- 仅修改 Hysteria 节点
+            local old_value = uci:get("shadowsocksr", s[".name"], "xray_hy2_type")
+            if old_value ~= value then
+                uci:set("shadowsocksr", s[".name"], "xray_hy2_type", value)
+            end
+        end
+    end)
+    -- 更新 server_subscribe 的 xray_hy2_type
+    local old_value = uci:get("shadowsocksr", "server_subscribe", "xray_hy2_type")
+    if old_value ~= value then
+        uci:set("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type", value)
+    end
+    -- 更新当前 section 的 xray_hy2_type
+    ListValue.write(self, section, value)
+end
+
 o = s:option(ListValue, "type", translate("Server Node Type"))
 if is_finded("xray") or is_finded("v2ray") then
 	o:value("v2ray", translate("V2Ray/XRay"))
@@ -315,7 +358,7 @@ o:depends("type", "tun")
 o.description = translate("Redirect traffic to this network interface")
 
 -- 新增一个选择框，用于选择 Shadowsocks 版本
-o = s:option(ListValue, "has_ss_type", string.format("<b><span style='color:red;'>%s</span></b>", translate("ShadowSocks Node Use Version")))
+o = s:option(ListValue, "has_ss_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Version", "ShadowSocks")))
 o.description = translate("Selection ShadowSocks Node Use Version.")
 -- 设置默认 Shadowsocks 版本
 -- 动态添加选项
@@ -343,15 +386,13 @@ o.write = function(self, section, value)
             end
         end
     end)
-
     -- 更新 server_subscribe 的 ss_type
     local old_value = uci:get("shadowsocksr", "server_subscribe", "ss_type")
     if old_value ~= value then
         uci:set("shadowsocksr", "@server_subscribe[0]", "ss_type", value)
     end
-
     -- 更新当前 section 的 has_ss_type
-    Value.write(self, section, value)
+    ListValue.write(self, section, value)
 end
 
 o = s:option(ListValue, "v2ray_protocol", translate("V2Ray/XRay protocol"))
@@ -363,7 +404,7 @@ if is_finded("xray") then
 	o:value("wireguard", translate("WireGuard"))
 end
 if is_finded("xray") then
-	o:value("hysteria2", translate("hysteria2"))
+	o:value("hysteria2", translate("Hysteria2"))
 end
 o:value("socks", translate("Socks"))
 o:value("http", translate("HTTP"))
