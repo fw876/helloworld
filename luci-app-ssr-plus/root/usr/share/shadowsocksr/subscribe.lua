@@ -34,14 +34,35 @@ local ss_type = ucic:get_first(name, 'server_subscribe', 'ss_type', 'ss-rust')
 -- 根据 ss_type 选择对应的程序
 local ss_program = "sslocal"
 if ss_type == "ss-rust" then
-    ss_program = "sslocal"  -- Rust 版本使用 sslocal
+	ss_program = "sslocal"  -- Rust 版本使用 sslocal
 elseif ss_type == "ss-libev" then
-    ss_program = "ss-redir"  -- Libev 版本使用 ss-redir
+	ss_program = "ss-redir"  -- Libev 版本使用 ss-redir
+end
+-- 从 UCI 配置读取 xray_hy2_type 设置
+local xray_hy2_type = ucic:get_first(name, 'server_subscribe', 'xray_hy2_type', 'hysteria2')
+local xray_hy2_program = "hysteria"
+if xray_hy2_type == "xray" then
+	xray_hy2_program = "xray"  -- Hysteria2 使用 Xray
+elseif xray_hy2_type == "hysteria2" then
+	xray_hy2_program = "hysteria"  -- Hysteria2 使用 Hysteria
 end
 local v2_ss = luci.sys.exec('type -t -p ' .. ss_program .. ' 2>/dev/null') ~= "" and "ss" or "v2ray"
 local has_ss_type = luci.sys.exec('type -t -p ' .. ss_program .. ' 2>/dev/null') ~= "" and ss_type
 local v2_tj = luci.sys.exec('type -t -p trojan') ~= "" and "trojan" or "v2ray"
-local hy2_type = luci.sys.exec('type -t -p hysteria') ~= "" and "hysteria2"
+-- 检查程序是否存在
+local program_exists = luci.sys.exec('type -t -p ' .. xray_hy2_program .. ' 2>/dev/null') ~= ""
+-- 初始化变量
+local hy2_type = nil
+local has_xray_hy2_type = nil
+if program_exists then
+	-- 设置节点类型
+	if xray_hy2_type == "hysteria2" then
+		hy2_type = "hysteria2"
+	else
+		hy2_type = "v2ray"  -- 当使用 Xray 时，节点类型是 "v2ray"
+		has_xray_hy2_type = "hysteria2"  -- 可用的协议类型是 Hysteria2
+	end
+end
 local tuic_type = luci.sys.exec('type -t -p tuic-client') ~= "" and "tuic"
 local log = function(...)
 	print(os.date("%Y-%m-%d %H:%M:%S ") .. table.concat({...}, " "))
@@ -194,19 +215,29 @@ local function processData(szType, content)
 		--	log(k.."="..v)
 		-- end
 
-		-- 如果 hy2 程序未安装则跳过订阅	
-		if not hy2_type then
+		-- 如果 hy2 程序未安装则跳过订阅
+		if not (hy2_type or has_xray_hy2_type) then
 			return nil
+		end
+	
+		if xray_hy2_type == "hysteria2" then
+			if params.protocol then
+				result.flag_transport = "1"
+				result.transport_protocol = params.protocol or "udp"
+			end
+			if params.pinSHA256 then
+				result.pinsha256 = params.pinSHA256
+			end
+		else
+			result.v2ray_protocol = has_xray_hy2_type
 		end
 
 		result.alias = url.fragment and UrlDecode(url.fragment) or nil
+		result.xray_hy2_type = xray_hy2_type
 		result.type = hy2_type
 		result.server = url.host
 		result.server_port = url.port or 443
-		if params.protocol then
-			result.flag_transport = "1"
-			result.transport_protocol = params.protocol or "udp"
-		end
+
 		result.hy2_auth = url.user
 		result.uplink_capacity = tonumber((params.upmbps or ""):match("^(%d+)")) or nil
 		result.downlink_capacity = tonumber((params.downmbps or ""):match("^(%d+)")) or nil
@@ -219,7 +250,7 @@ local function processData(szType, content)
 			result.obfs_type = params.obfs
 			result.salamander = params["obfs-password"] or params["obfs_password"]
 		end
-		if (params.sni and params.sni ~= "") or (params.alpn and params.alpn ~= "") then
+		if (params.security and params.security == "tls") or (params.sni and params.sni ~= "") or (params.alpn and params.alpn ~= "") then
 			result.tls = "1"
 			if params.sni then
 				result.tls_host = params.sni
@@ -234,9 +265,6 @@ local function processData(szType, content)
 		end
 		if params.insecure == "1" then
 			result.insecure = params.insecure
-		end
-		if params.pinSHA256 then
-			result.pinsha256 = params.pinSHA256
 		end
 	elseif szType == 'ssr' then
 		-- 去掉前后空白和#注释
