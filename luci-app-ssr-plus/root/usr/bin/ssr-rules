@@ -869,16 +869,30 @@ ac_rule_nft() {
 		$NFT add rule inet ss_spec ss_spec_output_udp $UDP_EXT_ARGS meta mark set 0x01 comment "\"$TAG\"" 2>/dev/null
 		;;
 	2)
+		# Create ss_spec_output tcp chain
+		if ! $NFT list chain inet ss_spec ss_spec_output >/dev/null 2>&1; then
+			$NFT add chain inet ss_spec ss_spec_output '{ type nat hook output priority 0; policy accept; }'
+		fi
+		$NFT flush chain inet ss_spec ss_spec_output 2>/dev/null
+		
+		# Exclude special local addresses
+		if $NFT list chain inet ss_spec ss_spec_output >/dev/null 2>&1; then
+			for net in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+				$NFT add rule inet ss_spec ss_spec_output ip daddr $net return 2>/dev/null
+			done
+		fi
+
 		# router mode output chain: create ssr_gen_router set & router chain
 		$NFT add set inet ss_spec ssr_gen_router '{ type ipv4_addr; flags interval; }' 2>/dev/null
 		for ip in $(gen_spec_iplist); do
 			[ -n "$ip" ] && $NFT add element inet ss_spec ssr_gen_router "{ $ip }" 2>/dev/null
 		done
 		$NFT add chain inet ss_spec ss_spec_router 2>/dev/null
+		$NFT flush chain inet ss_spec ss_spec_router 2>/dev/null
 		$NFT add rule inet ss_spec ss_spec_router ip daddr @ssr_gen_router return 2>/dev/null
 		$NFT add rule inet ss_spec ss_spec_router jump ss_spec_wan_fw_tcp 2>/dev/null
-		$NFT add rule inet ss_spec ss_spec_output $TCP_EXT_ARGS jump ss_spec_router comment "\"$TAG\"" 2>/dev/null
 		$NFT add rule inet ss_spec ss_spec_router jump ss_spec_wan_fw_udp 2>/dev/null
+		$NFT add rule inet ss_spec ss_spec_output $TCP_EXT_ARGS jump ss_spec_router comment "\"$TAG\"" 2>/dev/null
 		$NFT add rule inet ss_spec ss_spec_output $UDP_EXT_ARGS meta mark set 0x01 comment "\"$TAG\"" 2>/dev/null
 		;;
 	esac
