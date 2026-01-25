@@ -89,6 +89,12 @@ if uci:get_first("shadowsocksr", 'global', 'netflix_enable', '0') == '1' then
 	o.default = "0"
 end
 
+-- [[ Use nftables/iptables ]]--
+o = s:option(ListValue, "prefer_nft", translate("Prefer firewall tools"))
+o.default = "1"
+o:value("0", "Iptables")
+o:value("1", "Nftables")
+
 o = s:option(ListValue, "threads", translate("Multi Threads Option"))
 o:value("0", translate("Auto Threads"))
 o:value("1", translate("1 Thread"))

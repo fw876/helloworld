@@ -2,9 +2,22 @@
 
 . $IPKG_INSTROOT/etc/init.d/shadowsocksr
 
-if command -v nft >/dev/null 2>&1; then
-    nft_support=1
-fi
+check_run_environment
+
+case "$USE_TABLES" in
+	nftables)
+		nft_support=1
+		echolog "gfw2ipset: Using nftables"
+		;;
+	iptables)
+		nft_support=0
+		echolog "gfw2ipset: Using iptables"
+		;;
+	*)
+		echolog "ERROR: No supported firewall backend detected"
+		exit 1
+		;;
+esac
 
 netflix() {
 	local port="$1"
@@ -23,7 +36,7 @@ netflix() {
 	if [ "$nft_support" = "1" ]; then
 		# 移除 ipset
 		cat /etc/ssrplus/netflix.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$port\nnftset=\/&\/inet#ss_spec#netflix/" >$TMP_DNSMASQ_PATH/netflix_forward.conf
-	else
+	elif [ "$nft_support" = "0" ]; then
 		cat /etc/ssrplus/netflix.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$port\nipset=\/&\/netflix/" >$TMP_DNSMASQ_PATH/netflix_forward.conf
 	fi
 }
@@ -88,7 +101,7 @@ esac
 if [ "$nft_support" = "1" ]; then
 	cat /etc/ssrplus/black.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$dns_port\nnftset=\/&\/inet#ss_spec#blacklist/" >$TMP_DNSMASQ_PATH/blacklist_forward.conf
 	cat /etc/ssrplus/white.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1\nnftset=\/&\/inet#ss_spec#whitelist/" >$TMP_DNSMASQ_PATH/whitelist_forward.conf
-else
+elif [ "$nft_support" = "0" ]; then
 	cat /etc/ssrplus/black.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$dns_port\nipset=\/&\/blacklist/" >$TMP_DNSMASQ_PATH/blacklist_forward.conf
 	cat /etc/ssrplus/white.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1\nipset=\/&\/whitelist/" >$TMP_DNSMASQ_PATH/whitelist_forward.conf
 fi
