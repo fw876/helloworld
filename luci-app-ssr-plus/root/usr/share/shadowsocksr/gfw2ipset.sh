@@ -7,7 +7,8 @@ if command -v nft >/dev/null 2>&1; then
 fi
 
 netflix() {
-	if [ -f "$TMP_DNSMASQ_PATH/gfw_list.conf" ] && [ -s /etc/ssrplus/netflix.list ]; then
+	local port="$1"
+	if [ "$run_mode" = "gfw" ] && [ -f "$TMP_DNSMASQ_PATH/gfw_list.conf" ] && [ -s /etc/ssrplus/netflix.list ]; then
 		grep -vE '^\s*#|^\s*$' /etc/ssrplus/netflix.list > /tmp/ssrplus_netflix.list.clean
 		if [ -s /tmp/ssrplus_netflix.list.clean ]; then
 			grep -v -F -f /tmp/ssrplus_netflix.list.clean "$TMP_DNSMASQ_PATH/gfw_list.conf" > "$TMP_DNSMASQ_PATH/gfw_list.conf.tmp"
@@ -21,24 +22,45 @@ netflix() {
 	fi
 	if [ "$nft_support" = "1" ]; then
 		# 移除 ipset
-		cat /etc/ssrplus/netflix.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$1\nnftset=\/&\/inet#ss_spec#netflix/" >$TMP_DNSMASQ_PATH/netflix_forward.conf
+		cat /etc/ssrplus/netflix.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$port\nnftset=\/&\/inet#ss_spec#netflix/" >$TMP_DNSMASQ_PATH/netflix_forward.conf
 	else
-		cat /etc/ssrplus/netflix.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$1\nipset=\/&\/netflix/" >$TMP_DNSMASQ_PATH/netflix_forward.conf
+		cat /etc/ssrplus/netflix.list | sed '/^$/d' | sed '/#/d' | sed "/.*/s/.*/server=\/&\/127.0.0.1#$port\nipset=\/&\/netflix/" >$TMP_DNSMASQ_PATH/netflix_forward.conf
 	fi
 }
 mkdir -p $TMP_DNSMASQ_PATH
-if [ "$(uci_get_by_type global run_mode router)" == "oversea" ]; then
+
+run_mode=$(uci_get_by_type global run_mode router)
+
+if [ "$run_mode" = "oversea" ]; then
 	cp -rf /etc/ssrplus/oversea_list.conf $TMP_DNSMASQ_PATH/
-else
+elif [ "$run_mode" = "gfw" ]; then
 	cp -rf /etc/ssrplus/gfw_list.conf $TMP_DNSMASQ_PATH/
 	cp -rf /etc/ssrplus/gfw_base.conf $TMP_DNSMASQ_PATH/
-fi
 
-if [ "$nft_support" = "1" ]; then
-	# 移除 ipset 指令
-	for conf_file in gfw_base.conf gfw_list.conf; do
-		if [ -f "$TMP_DNSMASQ_PATH/$conf_file" ]; then
-			sed -i 's|ipset=/\([^/]*\)/\([^[:space:]]*\)|nftset=/\1/inet#ss_spec#\2|g' "$TMP_DNSMASQ_PATH/$conf_file"
+	if [ "$nft_support" = "1" ]; then
+		# 移除 ipset
+		for conf_file in gfw_base.conf gfw_list.conf; do
+			if [ -f "$TMP_DNSMASQ_PATH/$conf_file" ]; then
+				sed -i 's|ipset=/\([^/]*\)/\([^[:space:]]*\)|nftset=/\1/inet#ss_spec#\2|g' "$TMP_DNSMASQ_PATH/$conf_file"
+			fi
+		done
+	fi
+
+	# 仅在 gfw 模式下才需要从 gfw 列表中移除黑名单/白名单/拒绝列表的域名
+	# 此处使用 for 方式读取 防止 /etc/ssrplus/ 目录下的 black.list white.list deny.list 等2个或多个文件一行中存在空格 比如:# abc.com 而丢失：server
+	# Optimize: Batch filter using grep
+	for list_file in /etc/ssrplus/black.list /etc/ssrplus/white.list /etc/ssrplus/deny.list; do
+		if [ -s "$list_file" ]; then
+			grep -vE '^\s*#|^\s*$' "$list_file" > "${list_file}.clean"
+			if [ -s "${list_file}.clean" ]; then
+				for target_file in "$TMP_DNSMASQ_PATH/gfw_list.conf" "$TMP_DNSMASQ_PATH/gfw_base.conf"; do
+                	if [ -f "$target_file" ]; then
+                    	grep -v -F -f "${list_file}.clean" "$target_file" > "${target_file}.tmp"
+                    	mv "${target_file}.tmp" "$target_file"
+                	fi
+				done
+			fi
+			rm -f "${list_file}.clean"
 		fi
 	done
 fi
@@ -61,23 +83,6 @@ $(uci_get_by_type global global_server nil) | $switch_server | same)
 	netflix $tmp_shunt_dns_port
 	;;
 esac
-
-# 此处使用while方式读取 防止 /etc/ssrplus/ 目录下的 black.list white.list deny.list 等2个或多个文件一行中存在空格 比如:# abc.com 而丢失：server
-# Optimize: Batch filter using grep
-for list_file in /etc/ssrplus/black.list /etc/ssrplus/white.list /etc/ssrplus/deny.list; do
-	if [ -s "$list_file" ]; then
-		grep -vE '^\s*#|^\s*$' "$list_file" > "${list_file}.clean"
-		if [ -s "${list_file}.clean" ]; then
-			for target_file in "$TMP_DNSMASQ_PATH/gfw_list.conf" "$TMP_DNSMASQ_PATH/gfw_base.conf"; do
-				if [ -f "$target_file" ]; then
-					grep -v -F -f "${list_file}.clean" "$target_file" > "${target_file}.tmp"
-					mv "${target_file}.tmp" "$target_file"
-				fi
-			done
-		fi
-		rm -f "${list_file}.clean"
-	fi
-done
 
 # 此处直接使用 cat 因为有 sed '/#/d' 删除了 数据
 if [ "$nft_support" = "1" ]; then
