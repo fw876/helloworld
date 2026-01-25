@@ -57,6 +57,15 @@ redir_udp=0
 local_enable=0
 kcp_enable_flag=0
 pdnsd_enable_flag=0
+
+USE_TABLES=""
+HAS_NFT=0
+HAS_IPSET=0
+HAS_IPT=0
+HAS_FW4=0
+DNSMASQ_IPSET=0
+DNSMASQ_NFTSET=0
+
 switch_server=$1
 CRON_FILE=/etc/crontabs/root
 EXTRA_COMMANDS='reset'
@@ -190,6 +199,65 @@ ln_start_bin() {
 	${file_func:-echolog "  - ${ln_name}"} "$@" >/dev/null 2>&1 &
 }
 
+check_run_environment() {
+	local prefer_nft="$(uci_get_by_type global prefer_nft 1)"
+	local dnsmasq_info=$(dnsmasq -v 2>/dev/null)
+	local dnsmasq_ver=$(echo "$dnsmasq_info" | sed -n '1s/.*version \([0-9.]*\).*/\1/p')
+
+	DNSMASQ_IPSET=0; [[ "$dnsmasq_info" == *" ipset"* ]] && DNSMASQ_IPSET=1
+	DNSMASQ_NFTSET=0; [[ "$dnsmasq_info" == *" nftset"* ]] && DNSMASQ_NFTSET=1
+	HAS_IPT=0; { command -v iptables-legacy || command -v iptables; } >/dev/null && HAS_IPT=1
+	HAS_IPSET=$(command -v ipset >/dev/null && echo 1 || echo 0)
+	HAS_FW4=$(command -v fw4 >/dev/null && echo 1 || echo 0)
+	HAS_NFT=$(command -v nft >/dev/null && echo 1 || echo 0)
+
+	# 重置 USE_TABLES
+	USE_TABLES=""
+
+	if [ "$prefer_nft" = "1" ]; then
+		echolog "提示：优先使用 nftables..."
+		if [ "$DNSMASQ_NFTSET" -eq 1 ] && [ "$HAS_NFT" -eq 1 ] && [ "$HAS_FW4" -eq 1 ]; then
+			USE_TABLES="nftables"
+		elif [ "$HAS_IPSET" -eq 1 ] && [ "$HAS_IPT" -eq 1 ] && [ "$DNSMASQ_IPSET" -eq 1 ]; then
+			echolog "警告：nftables (fw4) 应用环境不完整，切换至 iptables。(has_fw4:$HAS_FW4/dnsmasq_nftset:$DNSMASQ_NFTSET)"
+			USE_TABLES="iptables"
+		fi
+	else
+		echolog "提示：优先使用 iptables..."
+		if [ "$HAS_IPSET" -eq 1 ] && [ "$HAS_IPT" -eq 1 ] && [ "$DNSMASQ_IPSET" -eq 1 ]; then
+			USE_TABLES="iptables"
+		elif [ "$DNSMASQ_NFTSET" -eq 1 ] && [ "$HAS_FW4" -eq 1 ]; then
+			echolog "警告：iptables (fw3) 应用环境不完整，切换至 nftables。(has_ipt:$HAS_IPT/has_ipset:$HAS_IPSET/dnsmasq_ipset:$DNSMASQ_IPSET)"
+			USE_TABLES="nftables"
+		fi
+	fi
+
+	if [ -n "$USE_TABLES" ]; then
+		local dep_list
+		local file_path="/usr/lib/opkg/info"
+		local file_ext=".control"
+		[ -d "/lib/apk/packages" ] && { file_path="/lib/apk/packages"; file_ext=".list"; }
+
+		if [ "$USE_TABLES" = "iptables" ]; then
+			dep_list="iptables-mod-tproxy iptables-mod-socket iptables-mod-iprange iptables-mod-conntrack-extra kmod-ipt-nat"
+		else
+			dep_list="kmod-nft-socket kmod-nft-tproxy kmod-nft-nat"
+			local v_num=$(echo "$dnsmasq_ver" | tr -cd '0-9')
+			if [ "${v_num:-0}" -lt 290 ]; then
+				echolog "提示：Dnsmasq ($dnsmasq_ver) 低于 2.90，建议升级以增强稳定性。"
+			fi
+		fi
+		local pkg
+		for pkg in $dep_list; do
+			if [ ! -s "${file_path}/${pkg}${file_ext}" ]; then
+				echolog "警告：${USE_TABLES} 透明代理缺失基础依赖 ${pkg}！"
+			fi
+		done
+	else
+		echolog "警告：不满足任何透明代理系统环境。"
+	fi
+}
+
 add_dns_into_ipset() {
 	case "$1" in
 	gfw) ipset add gfwlist ${2%:*} 2>/dev/null ;;
@@ -211,7 +279,7 @@ start_dns() {
 	local run_mode="$(uci_get_by_type global run_mode)"
 
 	if [ "$ssrplus_dns" != "0" ]; then
-		if command -v ipset >/dev/null 2>&1; then
+		if [ "$HAS_IPSET" -eq 1 ]; then
 			if [ -n "$dnsserver" ]; then
 				add_dns_into_ipset $run_mode $dnsserver
 			fi
@@ -238,7 +306,7 @@ start_dns() {
 			output=$(for i in $(echo $mosdns_dnsserver | sed "s/,/ /g"); do
 				dnsserver=${i%:*}
 				dnsserver=${i##*/}
-				if command -v ipset >/dev/null 2>&1; then
+				if [ "$HAS_IPSET" -eq 1 ]; then
 					add_dns_into_ipset $run_mode $dnsserver
 				fi
 				echo "            - addr: $i"
@@ -1042,10 +1110,10 @@ Start_Run() {
 		tcp_config_file=$TMP_PATH/local-ssr-retcp.json
 		[ "$mode" == "tcp,udp" ] && tcp_config_file=$TMP_PATH/local-udp-ssr-retcp.json
 		#[ "$mode" == "tcp,udp" ] && {
-		#	if command -v nft >/dev/null 2>&1; then
+		#	if [ "$USE_TABLES" = "nftables" ]; then
 		#		# nftables / fw4
 		#		tcp_config_file=$TMP_PATH/local-nft-ssr-retcp.json
-		#	else
+		#	elif [ "$USE_TABLES" = "iptables" ]; then
 		#		# iptables / fw3
 		#		tcp_config_file=$TMP_PATH/local-udp-ssr-retcp.json
 		#	fi
@@ -1276,7 +1344,7 @@ start_server() {
 		[ "$(uci_get_by_name $1 enable 0)" == "0" ] && return 1
 		let server_count=server_count+1
 		if [ "$server_count" == "1" ]; then
-			if command -v nft >/dev/null 2>&1; then
+			if [ "$USE_TABLES" = "nftables" ]; then
 				# nftables / fw4
 				if nft list table inet fw4 >/dev/null 2>&1; then
 					if ! nft list chain inet fw4 SSR-SERVER-RULE >/dev/null 2>&1; then
@@ -1287,7 +1355,7 @@ start_server() {
 					fi
 					nft flush chain inet fw4 SSR-SERVER-RULE 2>/dev/null
 				fi
-			else
+			elif [ "$USE_TABLES" = "iptables" ]; then
 				# iptables / fw3
 				if ! (iptables-save -t filter | grep -q "SSR-SERVER-RULE"); then
 					iptables -N SSR-SERVER-RULE
@@ -1327,11 +1395,11 @@ start_server() {
 			;;
 		esac
 		server_port=$(uci_get_by_name $1 server_port)
-		if command -v nft >/dev/null 2>&1; then
+		if [ "$USE_TABLES" = "nftables" ]; then
 			# nftables / fw4
 			nft add rule inet fw4 SSR-SERVER-RULE tcp dport $server_port accept
 			nft add rule inet fw4 SSR-SERVER-RULE udp dport $server_port accept
-		else
+		elif [ "$USE_TABLES" = "iptables" ]; then
 			# iptables / fw3
 			iptables -t filter -A SSR-SERVER-RULE -p tcp --dport $server_port -j ACCEPT
 			iptables -t filter -A SSR-SERVER-RULE -p udp --dport $server_port -j ACCEPT
@@ -1344,7 +1412,7 @@ start_server() {
 		if [ ! -f $FWI ]; then
 			echo '#!/bin/sh' >$FWI
 		fi
-		if command -v nft >/dev/null 2>&1; then
+		if [ "$USE_TABLES" = "nftables" ]; then
 			# nftables / fw4
 			cat <<-'EOF' >>"$FWI"
 				# 确保表存在
@@ -1352,6 +1420,7 @@ start_server() {
 					# 如果不存在 SSR-SERVER-RULE 链，则创建
 					if ! nft list chain inet fw4 SSR-SERVER-RULE >/dev/null 2>&1; then
 						nft add chain inet fw4 SSR-SERVER-RULE 2>/dev/null
+					fi
 					# 从 input 链跳转到 SSR-SERVER-RULE（如果未添加）
 					if ! nft list chain inet fw4 input | grep -q 'jump SSR-SERVER-RULE'; then
 						nft insert rule inet fw4 input jump SSR-SERVER-RULE comment \"SSR Server Input Hook\" 2>/dev/null
@@ -1360,7 +1429,7 @@ start_server() {
 					nft flush chain inet fw4 SSR-SERVER-RULE 2>/dev/null
 				fi
 			EOF
-		else
+		elif [ "$USE_TABLES" = "iptables" ]; then
 			# iptables / fw3
 			extract_rules() {
 				echo "*filter"
@@ -1482,9 +1551,9 @@ start_rules() {
 		2) echo "-O" ;;
 		esac
 	}
-	if command -v nft >/dev/null 2>&1; then
+	if [ "$USE_TABLES" = "nftables" ]; then
 		ARG_A="-A"
-	else
+	elif [ "$USE_TABLES" = "iptables" ]; then
 		ARG_A=""
 	fi
 	/usr/share/shadowsocksr/gfw2ipset.sh
@@ -1516,12 +1585,13 @@ start() {
 	echolog "----------start------------"
 	mkdir -p /var/run /var/lock /var/log $DNSMASQ_CONF_DIR $TMP_BIN_PATH $TMP_DNSMASQ_PATH
 	echo "conf-dir=${TMP_DNSMASQ_PATH}" >"$DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf"
+	check_run_environment
 	if load_config; then
 		Start_Run
 		start_xhttp_addr
 		start_rules
 		# Restore ipsets after rules creation
-		if command -v ipset >/dev/null 2>&1; then
+		if [ "$HAS_IPSET" -eq 1 ]; then
 			for setname in gfwlist china blacklist whitelist netflix; do
 				if [ -f "/tmp/ssrplus_save/${setname}.save" ]; then
 					ipset restore -! < "/tmp/ssrplus_save/${setname}.save" 2>/dev/null
@@ -1557,7 +1627,7 @@ start() {
 	fi
 	/etc/init.d/dnsmasq restart >/dev/null 2>&1
 	check_server
-	if command -v nft >/dev/null 2>&1; then
+	if [ "$USE_TABLES" = "nftables" ]; then
 		local CURRENT_SERVER="$(uci_get_by_type global global_server nil)"
 		if [ "$CURRENT_SERVER" != "nil" ]; then
 			uci set shadowsocksr.@global[0].old_global_server="$CURRENT_SERVER"
@@ -1578,8 +1648,9 @@ boot() {
 }
 
 stop() {
+	check_run_environment
 	# Save ipsets before stopping to persist transparent proxy state
-	if command -v ipset >/dev/null 2>&1; then
+	if [ "$HAS_IPSET" -eq 1 ]; then
 		mkdir -p /tmp/ssrplus_save
 		ipset save gfwlist > /tmp/ssrplus_save/gfwlist.save 2>/dev/null
 		ipset save china > /tmp/ssrplus_save/china.save 2>/dev/null
@@ -1589,7 +1660,7 @@ stop() {
 	fi
 	unlock
 	set_lock
-	if command -v nft >/dev/null 2>&1; then
+	if [ "$USE_TABLES" = "nftables" ]; then
 		/usr/bin/ssr-rules -K
 		local OLD_SERVER="$(uci_get_by_type global old_global_server nil)"
 		local NEW_SERVER="$(uci_get_by_type global global_server nil)"
@@ -1601,18 +1672,18 @@ stop() {
 	fi
 	/usr/bin/ssr-rules -f
 	local srulecount=0
-	if command -v nft >/dev/null 2>&1; then
+	if [ "$USE_TABLES" = "nftables" ]; then
 		# nftables / fw4
 		#local srulecount=$(nft list ruleset 2>/dev/null | grep -c 'SSR-SERVER-RULE')
 		if nft list chain inet fw4 SSR-SERVER-RULE >/dev/null 2>&1; then
 			srulecount=$(nft list chain inet fw4 SSR-SERVER-RULE | grep SSR-SERVER-RULE | wc -l)
 		fi
-	else
+	elif [ "$USE_TABLES" = "iptables" ]; then
 		# iptables / fw3
 		srulecount=$(iptables -L | grep SSR-SERVER-RULE | wc -l)
 	fi
 	if [ $srulecount -gt 0 ]; then
-		if command -v nft >/dev/null 2>&1; then
+		if [ "$USE_TABLES" = "nftables" ]; then
 			# nftables / fw4
 			if nft list table inet fw4 >/dev/null 2>&1; then
 				if nft list chain inet fw4 SSR-SERVER-RULE >/dev/null 2>&1; then
@@ -1624,7 +1695,7 @@ stop() {
 					nft delete chain inet fw4 SSR-SERVER-RULE 2>/dev/null || true
 				fi
 			fi
-		else
+		elif [ "$USE_TABLES" = "iptables" ]; then
 			# iptables / fw3
 			if iptables-save -t filter | grep -q "SSR-SERVER-RULE"; then
 				logger -t ssr-rules "Flushing and deleting SSR-SERVER-RULE chain (iptables)"

@@ -7,21 +7,29 @@
 # See /LICENSE for more information.
 #
 
+. $IPKG_INSTROOT/etc/init.d/shadowsocksr
+
 # Detect firewall version and set appropriate tools
 detect_firewall() {
-	if command -v nft >/dev/null 2>&1 && \
-		{ [ -n "$(uci get firewall.@defaults[0].syn_flood 2>/dev/null)" ] || \
-		  [ -n "$(uci get firewall.@defaults[0].synflood_protect 2>/dev/null)" ]; } && \
-		! grep -q "fw3" /etc/init.d/firewall 2>/dev/null; then
+	check_run_environment
+	case "$USE_TABLES" in
+		nftables)
 			USE_NFT=1  
 			NFT="nft"
-			FWI=$(uci get firewall.shadowsocksr.path 2>/dev/null)  # firewall include file
-	else
-		USE_NFT=0
-		IPT="iptables -t nat"                                 # alias of iptables TCP
-		ipt="iptables -t mangle"                              # alias of iptables UDP
-		FWI=$(uci get firewall.shadowsocksr.path 2>/dev/null) # firewall include file
-	fi
+			echolog "ssr-rules: Using nftables"
+			;;
+		iptables)
+			USE_NFT=0
+			IPT="iptables -t nat"        # alias of iptables TCP
+			ipt="iptables -t mangle"     # alias of iptables UDP
+			echolog "ssr-rules: Using iptables"
+			;;
+		*)
+			echolog "ERROR: No supported firewall backend"
+			return 1
+			;;
+	esac
+	FWI=$(uci get firewall.shadowsocksr.path 2>/dev/null)  # firewall include file
 }
 
 # Initialize firewall detection
