@@ -1590,15 +1590,16 @@ start() {
 		Start_Run
 		start_xhttp_addr
 		start_rules
+		start_dns
 		# Restore ipsets after rules creation
 		if [ "$HAS_IPSET" -eq 1 ]; then
 			for setname in gfwlist china blacklist whitelist netflix; do
+				[ "$setname" = "gfwlist" ] && [ "$run_mode" != "gfw" ] && continue
 				if [ -f "/tmp/ssrplus_save/${setname}.save" ]; then
 					ipset restore -! < "/tmp/ssrplus_save/${setname}.save" 2>/dev/null
 				fi
 			done
 		fi
-		start_dns
 		add_cron
 		start_switch
 	else
@@ -1652,11 +1653,13 @@ stop() {
 	# Save ipsets before stopping to persist transparent proxy state
 	if [ "$HAS_IPSET" -eq 1 ]; then
 		mkdir -p /tmp/ssrplus_save
-		ipset save gfwlist > /tmp/ssrplus_save/gfwlist.save 2>/dev/null
-		ipset save china > /tmp/ssrplus_save/china.save 2>/dev/null
-		ipset save blacklist > /tmp/ssrplus_save/blacklist.save 2>/dev/null
-		ipset save whitelist > /tmp/ssrplus_save/whitelist.save 2>/dev/null
-		ipset save netflix > /tmp/ssrplus_save/netflix.save 2>/dev/null
+		local run_mode="$(uci_get_by_type global run_mode)"
+		if [ "$run_mode" = "gfw" ]; then
+			ipset save gfwlist > /tmp/ssrplus_save/gfwlist.save 2>/dev/null
+		fi
+		for setname in china blacklist whitelist netflix; do
+			ipset save $setname > /tmp/ssrplus_save/$setname.save 2>/dev/null
+		done
 	fi
 	unlock
 	set_lock
