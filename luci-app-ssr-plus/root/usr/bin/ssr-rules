@@ -263,8 +263,12 @@ flush_nftables() {
 	fi
 
 	# Delete policy routing mark rules
-	ip rule del fwmark 0x01/0x01 table 100 2>/dev/null
-	ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null
+	if ip rule show | grep -Eq "fwmark 0x0*1.*lookup 100"; then
+		ip rule del fwmark 0x01/0x01 table 100 2>/dev/null
+	fi
+	if ip route show table 100 | grep -Eq "^local.*dev lo"; then
+		ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null
+	fi
 
 	# Optional: force delete all ss_spec related sets (even if table was accidentally deleted)
 	for setname in ss_spec_lan_ac ss_spec_wan_ac ssr_gen_router \
@@ -297,8 +301,12 @@ flush_iptables_legacy() {
 	}
 	flush_iptables nat
 	flush_iptables mangle
-	ip rule del fwmark 0x01/0x01 table 100 2>/dev/null
-	ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null
+	if ip rule show | grep -Eq "fwmark 0x0*1.*lookup 100"; then
+		ip rule del fwmark 0x01/0x01 table 100 2>/dev/null
+	fi
+	if ip route show table 100 | grep -Eq "^local.*dev lo"; then
+		ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null
+	fi
 	for setname in ss_spec_lan_ac ss_spec_wan_ac ssr_gen_router \
 			china fplan bplan gmlan oversea whitelist blacklist netflix gfwlist music; do
 		ipset -X $setname 2>/dev/null
@@ -532,15 +540,6 @@ fw_rule() {
 }
 
 fw_rule_nft() {
-	# set up routing table for tproxy
-	if ! ip rule show | grep -Eq "fwmark 0x0*1.*lookup 100"; then
-		ip rule add fwmark 0x01/0x01 table 100 2>/dev/null
-	fi
-
-	if ! ip route show table 100 | grep -q "^local.*dev lo"; then
-		ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
-	fi
-
 	# redirect/translation: when PROXY_PORTS present, redirect those tcp ports to local_port
 	if [ -n "$PROXY_PORTS" ]; then
 		PORTS_ARGS=$(echo "$PROXY_PORTS" | sed 's/-m multiport --dports //')
@@ -581,15 +580,6 @@ fw_rule_nft() {
 }
 
 fw_rule_iptables() {
-	# set up routing table for tproxy
-	if ! ip rule show | grep -Eq "fwmark 0x0*1.*lookup 100"; then
-		ip rule add fwmark 0x01/0x01 table 100 2>/dev/null
-	fi
-
-	if ! ip route show table 100 | grep -q "^local.*dev lo"; then
-		ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
-	fi
-
 	# Create TCP chain in NAT table
 	$IPT -N SS_SPEC_WAN_FW 2>/dev/null
 	$IPT -F SS_SPEC_WAN_FW
@@ -861,7 +851,7 @@ tp_rule_nft() {
 		ip rule add fwmark 0x01/0x01 table 100 2>/dev/null
 	fi
 
-	if ! ip route show table 100 | grep -q "^local.*dev lo"; then
+	if ! ip route show table 100 | grep -Eq "^local.*dev lo"; then
 		ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
 	fi
 
@@ -1046,7 +1036,7 @@ tp_rule_iptables() {
 		ip rule add fwmark 0x01/0x01 table 100 2>/dev/null
 	fi
 
-	if ! ip route show table 100 | grep -q "^local.*dev lo"; then
+	if ! ip route show table 100 | grep -Eq "^local.*dev lo"; then
 		ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
 	fi
 	$ipt -N SS_SPEC_TPROXY 2>/dev/null
