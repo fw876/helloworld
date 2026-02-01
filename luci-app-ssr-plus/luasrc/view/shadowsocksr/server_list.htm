@@ -2,6 +2,61 @@
  Copyright 2018-2019 Lienol <lawlienol@gmail.com>
  Licensed to the public under the Apache License 2.0.
 -%>
+<%
+require "luci.sys"
+function is_js_luci()
+    return luci.sys.call('[ -f "/www/luci-static/resources/uci.js" ]') == 0
+end
+-%>
+<% if is_js_luci() then -%>
+<script type="text/javascript">
+	var cbi_t = [];
+	function cbi_t_add(section, tab) {
+		var t = document.getElementById('tab.' + section + '.' + tab);
+		var c = document.getElementById('container.' + section + '.' + tab);
+
+		if( t && c ) {
+			cbi_t[section] = (cbi_t[section] || [ ]);
+			cbi_t[section][tab] = { 'tab': t, 'container': c, 'cid': c.id };
+		}
+	}
+
+	function cbi_t_switch(section, tab) {
+		if( cbi_t[section] && cbi_t[section][tab] ) {
+			//在切换选项卡之前，先取消当前激活选项卡的全选状态
+			dechecked_all_node();
+			var o = cbi_t[section][tab];
+			var h = document.getElementById('tab.' + section);
+			for( var tid in cbi_t[section] ) {
+				var o2 = cbi_t[section][tid];
+				if( o.tab.id != o2.tab.id ) {
+					o2.tab.className = o2.tab.className.replace(/(^| )cbi-tab( |$)/, " cbi-tab-disabled ");
+					o2.container.style.display = 'none';
+				}
+				else {
+					if(h) h.value = tab;
+					o2.tab.className = o2.tab.className.replace(/(^| )cbi-tab-disabled( |$)/, " cbi-tab ");
+					o2.container.style.display = 'block';
+				}
+			}
+		}
+		return false
+	}
+</script>
+<%- else %>
+<script type="text/javascript">
+	(function() {
+		if (typeof(cbi_t_switch) === "function") {
+			var old_switch = cbi_t_switch;
+			cbi_t_switch = function(section, tab) {
+				dechecked_all_node();
+				return old_switch(section, tab);
+			};
+		}
+	})();
+</script>
+<%- end %>
+
 <script type="text/javascript">
 	//<![CDATA[
 	window.addEventListener('load', function () {

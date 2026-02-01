@@ -4,6 +4,7 @@ require "luci.sys"
 require "nixio.fs"
 require "luci.dispatcher"
 require "luci.model.uci"
+local cbi = require "luci.cbi"
 local uci = require "luci.model.uci".cursor()
 
 local m, s, o, node
@@ -12,31 +13,6 @@ local server_count = 0
 -- 确保正确判断程序是否存在
 local function is_finded(e)
     return luci.sys.exec(string.format('type -t -p "%s" 2>/dev/null', e)) ~= ""
-end
-
--- 优化 CBI UI（新版 LuCI 专用）
-local function optimize_cbi_ui()
-	luci.http.write([[
-		<script type="text/javascript">
-			// 修正上移、下移按钮名称
-			document.querySelectorAll("input.btn.cbi-button.cbi-button-up").forEach(function(btn) {
-				btn.value = "]] .. translate("Move up") .. [[";
-			});
-			document.querySelectorAll("input.btn.cbi-button.cbi-button-down").forEach(function(btn) {
-				btn.value = "]] .. translate("Move down") .. [[";
-			});
-			// 删除控件和说明之间的多余换行
-			document.querySelectorAll("div.cbi-value-description").forEach(function(descDiv) {
-				var prev = descDiv.previousSibling;
-				while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === "") {
-					prev = prev.previousSibling;
-				}
-				if (prev && prev.nodeType === Node.ELEMENT_NODE && prev.tagName === "BR") {
-					prev.remove();
-				}
-			});
-		</script>
-	]])
 end
 
 local has_xray = is_finded("xray")
@@ -242,6 +218,7 @@ s = m:section(TypedSection, "servers")
 s.anonymous = true
 s.addremove = true
 s.template = "cbi/tblsection"
+s:append(cbi.Template("shadowsocksr" .. "/optimize_cbi_ui"))
 s.sortable = true
 s.extedit = luci.dispatcher.build_url("admin", "services", "shadowsocksr", "servers", "%s")
 function s.create(...)
@@ -249,12 +226,6 @@ function s.create(...)
 	if sid then
 		luci.http.redirect(s.extedit % sid)
 		return
-	end
-end
-s.render = function(self, ...)
-	Map.render(self, ...)
-	if type(optimize_cbi_ui) == "function" then
-		optimize_cbi_ui()
 	end
 end
 
