@@ -1,5 +1,6 @@
 #!/usr/bin/lua
 
+require "luci.sys"
 local ucursor = require "luci.model.uci".cursor()
 local json = require "luci.jsonc"
 
@@ -16,9 +17,23 @@ local socks_server = ucursor:get_all("shadowsocksr", "@socks5_proxy[0]") or {}
 local xray_fragment = ucursor:get_all("shadowsocksr", "@global_xray_fragment[0]") or {}
 local xray_noise = ucursor:get_all("shadowsocksr", "@xray_noise_packets[0]") or {}
 local outbound_settings = nil
+local xray_version = nil
 
 local node_id = server_section
 local remarks = server.alias or ""
+
+-- 确保正确判断程序是否存在
+local function is_finded(e)
+	return luci.sys.exec(string.format('type -t -p "%s" 2>/dev/null', e)) ~= ""
+end
+
+-- 获取 Xray 版本号
+if is_finded("xray") then
+	local version = luci.sys.exec("xray version 2>&1")
+	if version and version ~= "" then
+		xray_version = version:match("Xray%s+([%d%.]+)")
+	end
+end
 
 function vmess_vless()
 	outbound_settings = {
@@ -238,12 +253,29 @@ end
 						end
 					end)() or nil,
 					fingerprint = server.fingerprint,
-					allowInsecure = (server.insecure == "1" or server.insecure == true or server.insecure == "true"),
+					allowInsecure = (function()
+						if xray_version and xray_version ~= "" then
+							-- 提取所有数字部分，允许版本号有1到3个部分，不足部分补0
+							local major, minor, patch =
+								xray_version:match("(%d+)%.?(%d*)%.?(%d*)")
+							-- 将字符串转换为数字，空字符串转为0
+							major = tonumber(major) or 0
+							minor = tonumber(minor) or 0
+							patch = tonumber(patch) or 0
+							-- 如果版本低于 26.1.31
+							if (major * 10000 + minor * 100 + patch) < 260131 then
+								return (server.insecure == "1" or server.insecure == true or server.insecure == "true")
+							end
+						end
+						return nil
+					end)(),
 					serverName = server.tls_host,
 					certificates = server.certificate and {
 						usage = "verify",
 						certificateFile = server.certpath
 					} or nil,
+					pinnedPeerCertSha256 = server.chain_fingerprint or nil,
+					verifyPeerCertByName = server.verify_name or nil,
 					echConfigList = (server.enable_ech == "1") and server.ech_config or nil,
 					echForceQuery = (server.enable_ech == "1") and (server.ech_ForceQuery or "none") or nil
 				} or nil,

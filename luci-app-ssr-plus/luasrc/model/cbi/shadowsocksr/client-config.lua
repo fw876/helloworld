@@ -12,6 +12,7 @@ local m, s, o
 
 local sid = arg[1]
 local uuid = luci.sys.exec("cat /proc/sys/kernel/random/uuid")
+local xray_version = nil
 
 -- 确保正确判断程序是否存在
 local function is_finded(e)
@@ -20,6 +21,14 @@ end
 
 local function is_installed(e)
 	return luci.model.ipkg.installed(e)
+end
+
+-- 获取 Xray 版本号
+if is_finded("xray") then
+    local version = luci.sys.exec("xray version 2>&1")
+    if version and version ~= "" then
+        xray_version = version:match("Xray%s+([%d%.]+)")
+    end
 end
 
 -- 默认的保存并应用行为
@@ -1266,16 +1275,42 @@ o:depends("tuic_dual_stack", true)
 -- [[ allowInsecure ]]--
 o = s:option(Flag, "insecure", translate("allowInsecure"))
 o.rmempty = false
-o:depends("tls", true)
 o:depends("type", "hysteria2")
+o:depends("type", "trojan")
 o:depends("type", "tuic")
-o:depends({type = "v2ray", v2ray_protocol = "vless", reality = true})
 o.description = translate("If true, allowss insecure connection at TLS client, e.g., TLS server uses unverifiable certificates.")
+-- Xray 的26.1.31 以下版本使用
+if xray_version and xray_version ~= "" then
+	-- 提取所有数字部分，允许版本号有1到3个部分，不足部分补0
+	local major, minor, patch =
+		xray_version:match("(%d+)%.?(%d*)%.?(%d*)")
+	-- 将字符串转换为数字，空字符串转为0
+	major = tonumber(major) or 0
+	minor = tonumber(minor) or 0
+	patch = tonumber(patch) or 0
+	-- 如果版本低于 26.1.31
+	if (major * 10000 + minor * 100 + patch) < 260131 then
+		o:depends("tls", true)
+		o:depends({ type = "v2ray", v2ray_protocol = "vless", reality = true })
+	end
+end
 
 -- [[ Hysteria2 TLS pinSHA256 ]] --
 o = s:option(Value, "pinsha256", translate("Certificate fingerprint"))
 o:depends("type", "hysteria2")
 o.rmempty = true
+
+-- [[ Xray TLS pinSHA256 ]] --
+o = s:option(Value, "chain_fingerprint", translate("TLS Chain Fingerprint (SHA256)"), translate("Once set, connects only when the server’s chain fingerprint matches."))
+o.rmempty = true
+o:depends({type = "v2ray", tls = true})
+o:depends({type = "v2ray", reality = true})
+
+-- [[ Xray TLS verify leaf certificate name ]] --
+o = s:option(Value, "verify_name", translate("TLS Certificate Name (CertName)"), translate("TLS is used to verify the leaf certificate name."))
+o.rmempty = true
+o:depends({type = "v2ray", tls = true})
+o:depends({type = "v2ray", reality = true})
 
 -- [[ Mux.Cool ]] --
 o = s:option(Flag, "mux", translate("Mux"), translate("Enable Mux.Cool"))
