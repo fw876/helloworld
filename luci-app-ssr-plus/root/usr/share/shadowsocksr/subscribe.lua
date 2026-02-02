@@ -230,6 +230,12 @@ local function processData(szType, content)
 			end
 		else
 			result.v2ray_protocol = has_xray_hy2_type
+			if params.pcs then
+				result.chain_fingerprint = params.pcs
+			end
+			if params.vcn then
+				result.verify_name = params.vcn
+			end
 		end
 
 		result.alias = url.fragment and UrlDecode(url.fragment) or nil
@@ -427,6 +433,12 @@ local function processData(szType, content)
 				if insecure == true or insecure == "1" or insecure == "true" then
 					result.insecure = "1"
 				end
+			end
+			if info.pcs and info.pcs ~= "" then
+				result.chain_fingerprint = info.pcs
+			end
+			if info.vcn and info.vcn ~= "" then
+				result.verify_name = info.vcn
 			end
 		else
 			result.tls = "0"
@@ -633,6 +645,12 @@ local function processData(szType, content)
 				end
 				result.tls_alpn = params.alpn
 			end
+			if params.pcs and params.pcs ~= "" then
+				result.chain_fingerprint = params.pcs
+			end
+			if params.vcn and params.vcn ~= "" then
+				result.verify_name = params.vcn
+			end
 			result.tls_host = params.sni
 			result.tls_flow = (params.security == "tls" or params.security == "reality") and params.flow or nil
 			result.fingerprint = params.fp
@@ -834,6 +852,12 @@ local function processData(szType, content)
 				if result.transport == "splithttp" then
 					result.transport = "xhttp"
 				end
+				if params.pcs and params.pcs ~= "" then
+					result.chain_fingerprint = params.pcs
+				end
+				if params.vcn and params.vcn ~= "" then
+					result.verify_name = params.vcn
+				end
 				if result.transport == "ws" then
 					result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
 					result.ws_path = params.path and UrlDecode(params.path) or "/"
@@ -934,6 +958,16 @@ local function processData(szType, content)
 		-- 处理 insecure 参数
 		if params.allowInsecure and params.allowInsecure ~= "" then
 			result.insecure = "1"
+		end
+
+		-- 处理 pinsha256 参数
+		if params.pcs and params.pcs ~= "" then
+			result.chain_fingerprint = params.pcs
+		end
+
+		-- 处理 Leaf Certificate Name 参数
+		if params.vcn and params.vcn ~= "" then
+			result.verify_name = params.vcn
 		end
 
 		-- Reality 参数
