@@ -18,6 +18,7 @@ local xray_fragment = ucursor:get_all("shadowsocksr", "@global_xray_fragment[0]"
 local xray_noise = ucursor:get_all("shadowsocksr", "@xray_noise_packets[0]") or {}
 local outbound_settings = nil
 local xray_version = nil
+local xray_version_val = 0
 
 local node_id = server_section
 local remarks = server.alias or ""
@@ -33,6 +34,18 @@ if is_finded("xray") then
 	if version and version ~= "" then
 		xray_version = version:match("Xray%s+([%d%.]+)")
 	end
+end
+
+-- 将 Xray 版本号转换为数字
+if xray_version and xray_version ~= "" then
+	local major, minor, patch =
+		xray_version:match("(%d+)%.?(%d*)%.?(%d*)")
+
+	major = tonumber(major) or 0
+	minor = tonumber(minor) or 0
+	patch = tonumber(patch) or 0
+
+	xray_version_val = major * 10000 + minor * 100 + patch
 end
 
 function vmess_vless()
@@ -254,18 +267,8 @@ end
 					end)() or nil,
 					fingerprint = server.fingerprint,
 					allowInsecure = (function()
-						if xray_version and xray_version ~= "" then
-							-- 提取所有数字部分，允许版本号有1到3个部分，不足部分补0
-							local major, minor, patch =
-								xray_version:match("(%d+)%.?(%d*)%.?(%d*)")
-							-- 将字符串转换为数字，空字符串转为0
-							major = tonumber(major) or 0
-							minor = tonumber(minor) or 0
-							patch = tonumber(patch) or 0
-							-- 如果版本低于 26.1.31
-							if (major * 10000 + minor * 100 + patch) < 260131 then
-								return (server.insecure == "1" or server.insecure == true or server.insecure == "true")
-							end
+						if xray_version_val < 260131 then
+							return server.insecure == "1"
 						end
 						return nil
 					end)(),
@@ -274,8 +277,16 @@ end
 						usage = "verify",
 						certificateFile = server.certpath
 					} or nil,
-					pinnedPeerCertSha256 = server.chain_fingerprint or nil,
-					verifyPeerCertByName = server.verify_name or nil,
+					pinnedPeerCertSha256 = (function()
+						if xray_version_val < 260131 then return nil end
+						if not server.tls_CertSha then return "" end
+						return server.tls_CertSha
+					end)(),
+					verifyPeerCertByName = (function()
+						if xray_version_val < 260131 then return nil end
+						if not server.tls_CertByName then return "" end
+						return server.tls_CertByName
+					end)(),
 					echConfigList = (server.enable_ech == "1") and server.ech_config or nil,
 					echForceQuery = (server.enable_ech == "1") and (server.ech_ForceQuery or "none") or nil
 				} or nil,

@@ -13,6 +13,7 @@ local m, s, o
 local sid = arg[1]
 local uuid = luci.sys.exec("cat /proc/sys/kernel/random/uuid")
 local xray_version = nil
+local xray_version_val = 0
 
 -- 确保正确判断程序是否存在
 local function is_finded(e)
@@ -25,16 +26,28 @@ end
 
 -- 获取 Xray 版本号
 if is_finded("xray") then
-    local version = luci.sys.exec("xray version 2>&1")
-    if version and version ~= "" then
-        xray_version = version:match("Xray%s+([%d%.]+)")
-    end
+	local version = luci.sys.exec("xray version 2>&1")
+	if version and version ~= "" then
+		xray_version = version:match("Xray%s+([%d%.]+)")
+	end
+end
+
+-- 将 Xray 版本号转换为数字
+if xray_version and xray_version ~= "" then
+	local major, minor, patch =
+		xray_version:match("(%d+)%.?(%d*)%.?(%d*)")
+
+	major = tonumber(major) or 0
+	minor = tonumber(minor) or 0
+	patch = tonumber(patch) or 0
+
+	xray_version_val = major * 10000 + minor * 100 + patch
 end
 
 -- 默认的保存并应用行为
 local function apply_redirect(m)
-    local tmp_uci_file = "/etc/config/" .. "shadowsocksr" .. "_redirect"
-    if m.redirect and m.redirect ~= "" then
+	local tmp_uci_file = "/etc/config/" .. "shadowsocksr" .. "_redirect"
+	if m.redirect and m.redirect ~= "" then
 		if nixio.fs.access(tmp_uci_file) then
 			local redirect
 			for line in io.lines(tmp_uci_file) do
@@ -54,9 +67,9 @@ local function apply_redirect(m)
 				uci:set("shadowsocksr" .. "_redirect", "@redirect[0]", "url", redirect)
 			end
 		end
-    else
+	else
 		luci.sys.call("/bin/rm -f " .. tmp_uci_file)
-    end
+	end
 end
 
 local has_xray = is_finded("xray")
@@ -199,35 +212,35 @@ o.description = translate("The configured type also applies to the core specifie
 -- 设置默认 Xray 或 Hysteria2 核心
 -- 动态添加选项
 if has_xray then
-    o:value("xray", translate("Xray"))
+	o:value("xray", translate("Xray"))
 end
 if has_hysteria2 then
-    o:value("hysteria2", translate("Hysteria2"))
+	o:value("hysteria2", translate("Hysteria2"))
 end
 -- 设置默认值
 if xray_hy2_type == "xray" then
-    o.default = "xray"
+	o.default = "xray"
 elseif xray_hy2_type == "hysteria2" then
-    o.default = "hysteria2"
+	o.default = "hysteria2"
 end
 o.write = function(self, section, value)
-    -- 更新 Hysteria 节点的 xray_hy2_type
-    uci:foreach("shadowsocksr", "servers", function(s)
-        local node_type = uci:get("shadowsocksr", s[".name"], "type")  -- 获取节点类型
-        if node_type == "hysteria2" then  -- 仅修改 Hysteria 节点
-            local old_value = uci:get("shadowsocksr", s[".name"], "xray_hy2_type")
-            if old_value ~= value then
-                uci:set("shadowsocksr", s[".name"], "xray_hy2_type", value)
-            end
-        end
-    end)
-    -- 更新 server_subscribe 的 xray_hy2_type
-    local old_value = uci:get("shadowsocksr", "server_subscribe", "xray_hy2_type")
-    if old_value ~= value then
+	-- 更新 Hysteria 节点的 xray_hy2_type
+	uci:foreach("shadowsocksr", "servers", function(s)
+		local node_type = uci:get("shadowsocksr", s[".name"], "type")  -- 获取节点类型
+		if node_type == "hysteria2" then  -- 仅修改 Hysteria 节点
+			local old_value = uci:get("shadowsocksr", s[".name"], "xray_hy2_type")
+			if old_value ~= value then
+				uci:set("shadowsocksr", s[".name"], "xray_hy2_type", value)
+			end
+		end
+	end)
+	-- 更新 server_subscribe 的 xray_hy2_type
+	local old_value = uci:get("shadowsocksr", "server_subscribe", "xray_hy2_type")
+	if old_value ~= value then
         uci:set("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type", value)
-    end
-    -- 更新当前 section 的 xray_hy2_type
-    ListValue.write(self, section, value)
+	end
+	-- 更新当前 section 的 xray_hy2_type
+	ListValue.write(self, section, value)
 end
 
 o = s:option(ListValue, "type", translate("Server Node Type"))
@@ -281,36 +294,36 @@ o.description = translate("Selection ShadowSocks Node Use Version.")
 -- 设置默认 Shadowsocks 版本
 -- 动态添加选项
 if has_ss_rust then
-    o:value("ss-rust", translate("ShadowSocks-rust Version"))
+	o:value("ss-rust", translate("ShadowSocks-rust Version"))
 end
 if has_ss_libev then
-    o:value("ss-libev", translate("ShadowSocks-libev Version"))
+	o:value("ss-libev", translate("ShadowSocks-libev Version"))
 end
 -- 设置默认值
 if ss_type == "ss-rust" then
-    o.default = "ss-rust"
+	o.default = "ss-rust"
 elseif ss_type == "ss-libev" then
-    o.default = "ss-libev"
+	o.default = "ss-libev"
 end
 o:depends("type", "ss")
 o.write = function(self, section, value)
-    -- 更新 Shadowsocks 节点的 has_ss_type
-    uci:foreach("shadowsocksr", "servers", function(s)
-        local node_type = uci:get("shadowsocksr", s[".name"], "type")  -- 获取节点类型
-        if node_type == "ss" then  -- 仅修改 Shadowsocks 节点
-            local old_value = uci:get("shadowsocksr", s[".name"], "has_ss_type")
-            if old_value ~= value then
-                uci:set("shadowsocksr", s[".name"], "has_ss_type", value)
-            end
-        end
-    end)
-    -- 更新 server_subscribe 的 ss_type
-    local old_value = uci:get("shadowsocksr", "server_subscribe", "ss_type")
-    if old_value ~= value then
-        uci:set("shadowsocksr", "@server_subscribe[0]", "ss_type", value)
-    end
-    -- 更新当前 section 的 has_ss_type
-    ListValue.write(self, section, value)
+	-- 更新 Shadowsocks 节点的 has_ss_type
+	uci:foreach("shadowsocksr", "servers", function(s)
+		local node_type = uci:get("shadowsocksr", s[".name"], "type")  -- 获取节点类型
+		if node_type == "ss" then  -- 仅修改 Shadowsocks 节点
+			local old_value = uci:get("shadowsocksr", s[".name"], "has_ss_type")
+			if old_value ~= value then
+				uci:set("shadowsocksr", s[".name"], "has_ss_type", value)
+			end
+		end
+	end)
+	-- 更新 server_subscribe 的 ss_type
+	local old_value = uci:get("shadowsocksr", "server_subscribe", "ss_type")
+	if old_value ~= value then
+		uci:set("shadowsocksr", "@server_subscribe[0]", "ss_type", value)
+	end
+	-- 更新当前 section 的 has_ss_type
+	ListValue.write(self, section, value)
 end
 
 o = s:option(ListValue, "v2ray_protocol", translate("V2Ray/XRay protocol"))
@@ -1279,38 +1292,28 @@ o:depends("type", "hysteria2")
 o:depends("type", "trojan")
 o:depends("type", "tuic")
 o.description = translate("If true, allowss insecure connection at TLS client, e.g., TLS server uses unverifiable certificates.")
--- Xray 的26.1.31 以下版本使用
-if xray_version and xray_version ~= "" then
-	-- 提取所有数字部分，允许版本号有1到3个部分，不足部分补0
-	local major, minor, patch =
-		xray_version:match("(%d+)%.?(%d*)%.?(%d*)")
-	-- 将字符串转换为数字，空字符串转为0
-	major = tonumber(major) or 0
-	minor = tonumber(minor) or 0
-	patch = tonumber(patch) or 0
-	-- 如果版本低于 26.1.31
-	if (major * 10000 + minor * 100 + patch) < 260131 then
-		o:depends("tls", true)
-		o:depends({ type = "v2ray", v2ray_protocol = "vless", reality = true })
-	end
+-- Xray 版本判断
+if xray_version_val < 260131 then
+	-- Xray 版本小于 26.1.31
+	o:depends("tls", true)
+	o:depends({ type = "v2ray", v2ray_protocol = "vless", reality = true })
+else
+	-- Xray 版本大于等于 26.1.31
+	-- [[ Xray TLS pinSHA256 ]] --
+	o = s:option(Value, "tls_CertSha", translate("TLS Chain Fingerprint (SHA256)"), translate("Once set, connects only when the server’s chain fingerprint matches."))
+	o.rmempty = true
+	o:depends({type = "v2ray", tls = true})
+
+	-- [[ Xray TLS verify leaf certificate name ]] --
+	o = s:option(Value, "tls_CertByName", translate("TLS Certificate Name (CertName)"), translate("TLS is used to verify the leaf certificate name."))
+	o.rmempty = true
+	o:depends({type = "v2ray", tls = true})
 end
 
 -- [[ Hysteria2 TLS pinSHA256 ]] --
 o = s:option(Value, "pinsha256", translate("Certificate fingerprint"))
 o:depends("type", "hysteria2")
 o.rmempty = true
-
--- [[ Xray TLS pinSHA256 ]] --
-o = s:option(Value, "chain_fingerprint", translate("TLS Chain Fingerprint (SHA256)"), translate("Once set, connects only when the server’s chain fingerprint matches."))
-o.rmempty = true
-o:depends({type = "v2ray", tls = true})
-o:depends({type = "v2ray", reality = true})
-
--- [[ Xray TLS verify leaf certificate name ]] --
-o = s:option(Value, "verify_name", translate("TLS Certificate Name (CertName)"), translate("TLS is used to verify the leaf certificate name."))
-o.rmempty = true
-o:depends({type = "v2ray", tls = true})
-o:depends({type = "v2ray", reality = true})
 
 -- [[ Mux.Cool ]] --
 o = s:option(Flag, "mux", translate("Mux"), translate("Enable Mux.Cool"))
