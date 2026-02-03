@@ -132,10 +132,10 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.v2ray_protocol')[0].dispatchEvent(event);
 
 				if (params.get("pcs")) {
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.chain_fingerprint')[0].value = params.get("pcs") || "";
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_CertSha')[0].value = params.get("pcs") || "";
 				}
 				if (params.get("vcn")) {
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.verify_name')[0].value = params.get("vcn") || "";
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_CertByName')[0].value = params.get("vcn") || "";
 				}
 			}
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = url.hostname;
@@ -405,10 +405,10 @@ function import_ssr_url(btn, urlname, sid) {
 						}
 					}
 					if (params.pcs && params.pcs.trim() !== "") {
-						setElementValue('cbid.shadowsocksr.' + sid + '.chain_fingerprint', params.pcs);
+						setElementValue('cbid.shadowsocksr.' + sid + '.tls_CertSha', params.pcs);
 					}
 					if (params.vcn && params.vcn.trim() !== "") {
-						setElementValue('cbid.shadowsocksr.' + sid + '.verify_name', params.vcn);
+						setElementValue('cbid.shadowsocksr.' + sid + '.tls_CertByName', params.vcn);
 					}
 					setElementValue('cbid.shadowsocksr.' + sid + '.tls_flow', params.flow || "none");
 					dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.tls_flow', event);
@@ -570,10 +570,10 @@ function import_ssr_url(btn, urlname, sid) {
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_alpn')[0].value = params.get("alpn") || "";
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.fingerprint')[0].value = params.get("fp") || "";
 					if (params.get("pcs") && params.get("pcs").trim() !== "") {
-						document.getElementsByName('cbid.shadowsocksr.' + sid + '.chain_fingerprint')[0].value = params.get("pcs");
+						document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_CertSha')[0].value = params.get("pcs");
 					}
 					if (params.get("vcn") && params.get("vcn").trim() !== "") {
-						document.getElementsByName('cbid.shadowsocksr.' + sid + '.verify_name')[0].value = params.get("vcn");
+						document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_CertByName')[0].value = params.get("vcn");
 					}
 				}
 				switch (params.get("type")) {
@@ -711,10 +711,10 @@ function import_ssr_url(btn, urlname, sid) {
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.ech_config')[0].value = ssm.ech;
 				}
 				if (params.pcs && params.pcs.trim() !== "") {
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.chain_fingerprint')[0].value = ssm.pcs;
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_CertSha')[0].value = ssm.pcs;
 				}
 				if (params.vcn && params.vcn.trim() !== "") {
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.verify_name')[0].value = ssm.vcn;
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.tls_CertByName')[0].value = ssm.vcn;
 				}
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].checked =
 					!!(ssm.allowInsecure ?? ssm.allowlnsecure ?? ssm['skip-cert-verify']); // 设置 insecure 为 true
@@ -801,10 +801,10 @@ function import_ssr_url(btn, urlname, sid) {
 					}
 				}
 				if (params.get("pcs") && params.get("pcs").trim() !== "") {
-					setElementValue('cbid.shadowsocksr.' + sid + '.chain_fingerprint', params.get("pcs"));
+					setElementValue('cbid.shadowsocksr.' + sid + '.tls_CertSha', params.get("pcs"));
 				}
 				if (params.get("vcn") && params.get("vcn").trim() !== "") {
-					setElementValue('cbid.shadowsocksr.' + sid + '.verify_name', params.get("vcn"));
+					setElementValue('cbid.shadowsocksr.' + sid + '.tls_CertByName', params.get("vcn"));
 				}
 
 				setElementValue('cbid.shadowsocksr.' + sid + '.tls_alpn', params.get("alpn") || "");

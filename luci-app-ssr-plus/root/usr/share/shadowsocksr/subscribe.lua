@@ -231,10 +231,10 @@ local function processData(szType, content)
 		else
 			result.v2ray_protocol = has_xray_hy2_type
 			if params.pcs then
-				result.chain_fingerprint = params.pcs
+				result.tls_CertSha = params.pcs
 			end
 			if params.vcn then
-				result.verify_name = params.vcn
+				result.tls_CertByName = params.vcn
 			end
 		end
 
@@ -435,10 +435,10 @@ local function processData(szType, content)
 				end
 			end
 			if info.pcs and info.pcs ~= "" then
-				result.chain_fingerprint = info.pcs
+				result.tls_CertSha = info.pcs
 			end
 			if info.vcn and info.vcn ~= "" then
-				result.verify_name = info.vcn
+				result.tls_CertByName = info.vcn
 			end
 		else
 			result.tls = "0"
@@ -646,10 +646,10 @@ local function processData(szType, content)
 				result.tls_alpn = params.alpn
 			end
 			if params.pcs and params.pcs ~= "" then
-				result.chain_fingerprint = params.pcs
+				result.tls_CertSha = params.pcs
 			end
 			if params.vcn and params.vcn ~= "" then
-				result.verify_name = params.vcn
+				result.tls_CertByName = params.vcn
 			end
 			result.tls_host = params.sni
 			result.tls_flow = (params.security == "tls" or params.security == "reality") and params.flow or nil
@@ -853,10 +853,10 @@ local function processData(szType, content)
 					result.transport = "xhttp"
 				end
 				if params.pcs and params.pcs ~= "" then
-					result.chain_fingerprint = params.pcs
+					result.tls_CertSha = params.pcs
 				end
 				if params.vcn and params.vcn ~= "" then
-					result.verify_name = params.vcn
+					result.tls_CertByName = params.vcn
 				end
 				if result.transport == "ws" then
 					result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
@@ -962,12 +962,12 @@ local function processData(szType, content)
 
 		-- 处理 pinsha256 参数
 		if params.pcs and params.pcs ~= "" then
-			result.chain_fingerprint = params.pcs
+			result.tls_CertSha = params.pcs
 		end
 
 		-- 处理 Leaf Certificate Name 参数
 		if params.vcn and params.vcn ~= "" then
-			result.verify_name = params.vcn
+			result.tls_CertByName = params.vcn
 		end
 
 		-- Reality 参数
