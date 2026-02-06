@@ -340,8 +340,8 @@ ipset_nft() {
 	done
 
 	# Bulk import china ip list safely (avoid huge single element limitation)
-	if [ -f "${china_ip:=/etc/ssrplus/china_ssr.txt}" ]; then
-		$NFT add element inet ss_spec china "{ $(tr '\n' ',' < "${china_ip}" | sed 's/,$//') }" 2>/dev/null
+	if [ -f "$IGNORE_LIST" ]; then
+		SKIP_INET=1 /usr/share/shadowsocksr/chinaipset.sh "$IGNORE_LIST"
 	fi
 
 	# Bulk import xhttp ip list into nft whitelist (server + shunt)
@@ -907,8 +907,8 @@ tp_rule_nft() {
 	done
 
 	# Bulk import china ip list safely (avoid huge single element limitation)
-	if [ -f "${china_ip:=/etc/ssrplus/china_ssr.txt}" ]; then
-		$NFT add element ip ss_spec_mangle china "{ $(tr '\n' ',' < "${china_ip}" | sed 's/,$//') }" 2>/dev/null
+	if [ -f "$IGNORE_LIST" ]; then
+		SKIP_INET=2 /usr/share/shadowsocksr/chinaipset.sh "$IGNORE_LIST"
 	fi
 
 	# Bulk import xhttp ip list into nft whitelist (server + shunt)
