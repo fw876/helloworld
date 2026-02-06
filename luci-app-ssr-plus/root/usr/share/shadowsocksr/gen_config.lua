@@ -410,12 +410,14 @@ end
 					keepAlivePeriod = (server.flag_quicparam == "1" and server.keepaliveperiod) and tonumber(server.keepaliveperiod) or nil,
 					disablePathMTUDiscovery = (server.flag_quicparam == "1" and tostring(server.disablepathmtudiscovery) == "1") and true or nil
 				} or nil,
-				udpmasks = (server.flag_obfs == "1" and (server.v2ray_protocol == "hysteria2" and server.obfs_type and server.obfs_type ~= "")) and {
-					{
-						type = server.obfs_type,
-						settings = server.salamander and {
-							password = server.salamander
-						} or nil
+				finalmask = (server.flag_obfs == "1" and (server.v2ray_protocol == "hysteria2" and server.obfs_type and server.obfs_type ~= "")) and {
+					udp = {
+						{
+							type = server.obfs_type,
+							settings = server.salamander and {
+								password = server.salamander
+							} or nil
+						}
 					}
 				} or nil,
 				sockopt = {
