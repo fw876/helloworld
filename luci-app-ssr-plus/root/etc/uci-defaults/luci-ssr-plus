@@ -14,7 +14,7 @@ uci -q batch <<-EOF
 	set firewall.shadowsocksr=include
 	set firewall.shadowsocksr.type=script
 	set firewall.shadowsocksr.path=/var/etc/shadowsocksr.include
-	set firewall.shadowsocksr.reload=1
+	$(command -v fw4 >/dev/null 2>&1 || echo "set firewall.shadowsocksr.reload=1")
 	commit firewall
 EOF
 
