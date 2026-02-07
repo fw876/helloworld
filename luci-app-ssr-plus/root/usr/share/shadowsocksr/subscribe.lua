@@ -230,12 +230,6 @@ local function processData(szType, content)
 			end
 		else
 			result.v2ray_protocol = has_xray_hy2_type
-			if params.pcs then
-				result.tls_CertSha = params.pcs
-			end
-			if params.vcn then
-				result.tls_CertByName = params.vcn
-			end
 		end
 
 		result.alias = url.fragment and UrlDecode(url.fragment) or nil
@@ -256,7 +250,10 @@ local function processData(szType, content)
 			result.obfs_type = params.obfs
 			result.salamander = params["obfs-password"] or params["obfs_password"]
 		end
-		if (params.security and params.security == "tls") or (params.sni and params.sni ~= "") or (params.alpn and params.alpn ~= "") then
+		if (params.security and params.security:lower() == "tls")
+				or (params.sni and params.sni ~= "")
+				or (params.alpn and params.alpn ~= "")
+				or (xray_hy2_type == "hysteria2" and (params.pcs or params.vcn)) then
 			result.tls = "1"
 			if params.sni then
 				result.tls_host = params.sni
@@ -266,11 +263,24 @@ local function processData(szType, content)
 				for v in params.alpn:gmatch("[^,;|%s]+") do
 					table.insert(alpn, v)
 				end
-				result.tls_alpn = alpn
+				if #alpn > 0 then
+					result.tls_alpn = alpn
+				end
+			end
+			if xray_hy2_type ~= "hysteria2" then
+				if params.pcs then
+					result.tls_CertSha = params.pcs
+				end
+				if params.vcn then
+					result.tls_CertByName = params.vcn
+				end
 			end
 		end
-		if params.insecure == "1" then
-			result.insecure = params.insecure
+		if params.allowInsecure or params.insecure then
+			local insecure = params.allowInsecure or params.insecure
+			if insecure == true or insecure == "1" or insecure == "true" then
+				result.insecure = "1"
+			end
 		end
 	elseif szType == 'ssr' then
 		-- 去掉前后空白和#注释
@@ -416,7 +426,9 @@ local function processData(szType, content)
 				for v in info.alpn:gmatch("[^,]+") do
 					table.insert(alpn, v)
 				end
-				result.tls_alpn = alpn
+				if #alpn > 0 then
+					result.tls_alpn = alpn
+				end
 			end
 			if info.sni and info.sni ~= "" then
 				result.tls_host = info.sni
@@ -442,10 +454,6 @@ local function processData(szType, content)
 			end
 		else
 			result.tls = "0"
-		end
-		-- 其它可选安全字段
-		if info.security then
-			result.security = info.security
 		end
 	elseif szType == "ss" then
 		local idx_sp = content:find("#") or 0
@@ -643,7 +651,9 @@ local function processData(szType, content)
 				for v in params.alpn:gmatch("[^,;|%s]+") do
 					table.insert(alpn, v)
 				end
-				result.tls_alpn = params.alpn
+				if #alpn > 0 then
+					result.tls_alpn = params.alpn
+				end
 			end
 			if params.pcs and params.pcs ~= "" then
 				result.tls_CertSha = params.pcs
@@ -667,6 +677,12 @@ local function processData(szType, content)
 			if params.pqv and params.pqv ~= "" then
 				result.enable_mldsa65verify = "1"
 				result.reality_mldsa65verify = params.pqv
+			end
+			if params.allowInsecure or params.insecure then
+				local insecure = params.allowInsecure or params.insecure
+				if insecure == true or insecure == "1" or insecure == "true" then
+					result.insecure = "1"
+				end
 			end
 			if result.transport == "ws" then
 				result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
@@ -798,24 +814,27 @@ local function processData(szType, content)
 			result.tls = "1"
 
 			-- 处理参数
-			if params.alpn then
+			if params.alpn and params.alpn ~= "" then
 				-- 处理 alpn 参数
-				result.tls_alpn = params.alpn
+				local alpn = {}
+				for v in params.alpn:gmatch("[^,;|%s]+") do
+					table.insert(alpn, v)
+				end
+				if #alpn > 0 then
+					result.tls_alpn = params.alpn
+				end
 			end
+
 			if params.peer or params.sni then
 				-- 未指定peer（sni）默认使用remote addr
 				result.tls_host = params.peer or params.sni
 			end
-			params.allowinsecure = params.allowinsecure or params.insecure
-			if params.allowinsecure then
-				-- 处理 insecure 参数
-				if params.allowinsecure == "1" or params.allowinsecure == "0" then
-					result.insecure = params.allowinsecure
-				else
-					result.insecure = string.lower(params.allowinsecure) == "true" and "1" or "0"
+			-- 处理 insecure 参数
+			if params.allowInsecure or params.allowinsecure or params.insecure then
+				local insecure = params.allowInsecure or params.allowinsecure or params.insecure
+				if insecure == true or insecure == "1" or insecure == "true" then
+					result.insecure = "1"
 				end
-			else
-				result.insecure = "0"
 			end
 			if params.tfo then
 				-- 处理 fast open 参数
@@ -952,12 +971,17 @@ local function processData(szType, content)
 			for v in params.alpn:gmatch("[^,;|%s]+") do
 				table.insert(alpn, v)
 			end
-			result.tls_alpn = alpn
+			if #alpn > 0 then
+				result.tls_alpn = alpn
+			end
 		end
 
 		-- 处理 insecure 参数
-		if params.allowInsecure and params.allowInsecure ~= "" then
-			result.insecure = "1"
+		if params.allowInsecure or params.insecure then
+			local insecure = params.allowInsecure or params.insecure
+			if insecure == true or insecure == "1" or insecure == "true" then
+				result.insecure = "1"
+			end
 		end
 
 		-- 处理 pinsha256 参数
@@ -1106,7 +1130,9 @@ local function processData(szType, content)
 			for v in params.alpn:gmatch("[^,;|%s]+") do
 				table.insert(alpn, v)
 			end
-			result.tuic_alpn = alpn
+			if #alpn > 0 then
+				result.tuic_alpn = alpn
+			end
 		end
 
 		-- 处理 disable_sni 参数
