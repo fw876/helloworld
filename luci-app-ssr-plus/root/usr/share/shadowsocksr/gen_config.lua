@@ -267,7 +267,8 @@ end
 					end)() or nil,
 					fingerprint = server.fingerprint,
 					allowInsecure = (function()
-						if xray_version_val < 260131 then
+						if server.tls_CertSha and server.tls_CertSha ~= "" then return nil end
+						if os.date("%Y.%m.%d") < "2026.06.01" then
 							return server.insecure == "1"
 						end
 						return nil
@@ -323,9 +324,7 @@ end
 					downlinkCapacity = tonumber(server.downlink_capacity),
 					congestion = (server.congestion == "1") and true or false,
 					readBufferSize = tonumber(server.read_buffer_size),
-					writeBufferSize = tonumber(server.write_buffer_size),
-					header = {type = server.kcp_guise},
-					seed = server.seed or nil
+					writeBufferSize = tonumber(server.write_buffer_size)
 				} or nil,
 				wsSettings = (server.transport == "ws") and (server.ws_path or server.ws_host or server.tls_host) and {
 					-- ws
@@ -410,7 +409,24 @@ end
 					keepAlivePeriod = (server.flag_quicparam == "1" and server.keepaliveperiod) and tonumber(server.keepaliveperiod) or nil,
 					disablePathMTUDiscovery = (server.flag_quicparam == "1" and tostring(server.disablepathmtudiscovery) == "1") and true or nil
 				} or nil,
-				finalmask = (server.flag_obfs == "1" and (server.v2ray_protocol == "hysteria2" and server.obfs_type and server.obfs_type ~= "")) and {
+				finalmask = (server.transport == "kcp") and {
+					udp = (function()
+						local t = {}
+						if server.kcp_guise and server.kcp_guise ~= "none" then
+							local g = { type = server.kcp_guise }
+							if server.kcp_guise == "header-dns" and server.kcp_domain and server.kcp_domain ~= "" then
+								g.settings = { domain = server.kcp_domain }
+							end
+							t[#t + 1] = g
+						end
+						local c = { type = (server.seed and server.seed ~= "") and "mkcp-aes128gcm" or "mkcp-original" }
+						if server.seed and server.seed ~= "" then
+							c.settings = { password = server.seed }
+						end
+						t[#t + 1] = c
+						return t
+					end)()
+				} or (server.flag_obfs == "1" and (server.v2ray_protocol == "hysteria2" and server.obfs_type and server.obfs_type ~= "")) and {
 					udp = {
 						{
 							type = server.obfs_type,

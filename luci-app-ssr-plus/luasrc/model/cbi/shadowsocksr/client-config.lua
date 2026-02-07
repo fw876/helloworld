@@ -1034,18 +1034,23 @@ o:value("wireguard", translate("WireGuard"))
 o = s:option(ListValue, "kcp_guise", translate("Camouflage Type"))
 o:depends("transport", "kcp")
 o:value("none", translate("None"))
-o:value("srtp", translate("VideoCall (SRTP)"))
-o:value("utp", translate("BitTorrent (uTP)"))
-o:value("wechat-video", translate("WechatVideo"))
-o:value("dtls", translate("DTLS 1.2"))
-o:value("wireguard", translate("WireGuard"))
+o:value("header-srtp", translate("VideoCall (SRTP)"))
+o:value("header-utp", translate("BitTorrent (uTP)"))
+o:value("header-wechat", translate("WechatVideo"))
+o:value("header-dtls", translate("DTLS 1.2"))
+o:value("header-wireguard", translate("WireGuard"))
+o:value("header-dns", translate("DNS"))
 o.rmempty = true
+
+o = s:option(Value, "kcp_domain", translate("Camouflage Domain"))
+o.description = translate("Use it together with the DNS disguised type. You can fill in any domain.")
+o:depends("kcp_guise", "header-dns")
 
 o = s:option(Value, "mtu", translate("MTU"))
 o.datatype = "uinteger"
 o:depends("transport", "kcp")
 o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
--- o.default = 1350
+o.default = 1350
 o.rmempty = true
 
 o = s:option(Value, "tti", translate("TTI"))
@@ -1177,8 +1182,7 @@ if is_finded("xray") then
 		end
 	end
 	o.rmempty = true
-	o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "raw"})
-	o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "xhttp"})
+	o:depends({type = "v2ray", v2ray_protocol = "vless"})
 
 	-- [[ uTLS ]]--
 	o = s:option(ListValue, "fingerprint", translate("Finger Print"))
@@ -1292,12 +1296,14 @@ o:depends("type", "hysteria2")
 o:depends("type", "trojan")
 o:depends("type", "tuic")
 o.description = translate("If true, allowss insecure connection at TLS client, e.g., TLS server uses unverifiable certificates.")
--- Xray 版本判断
-if xray_version_val < 260131 then
-	-- Xray 版本小于 26.1.31
+-- Xray 支持时间判断
+if os.date("%Y.%m.%d") < "2026.06.01" then
+	-- Xray 支持到 26.06.01
 	o:depends("tls", true)
 	o:depends({ type = "v2ray", v2ray_protocol = "vless", reality = true })
-else
+end
+
+if xray_version_val >= 260131 then
 	-- Xray 版本大于等于 26.1.31
 	-- [[ Xray TLS pinSHA256 ]] --
 	o = s:option(Value, "tls_CertSha", translate("TLS Chain Fingerprint (SHA256)"), translate("Once set, connects only when the server’s chain fingerprint matches."))
