@@ -258,13 +258,13 @@ local function processData(szType, content)
 			if params.sni then
 				result.tls_host = params.sni
 			end
-			if params.alpn then
+			if params.alpn and params.alpn ~= "" then
 				local alpn = {}
 				for v in params.alpn:gmatch("[^,;|%s]+") do
 					table.insert(alpn, v)
 				end
 				if #alpn > 0 then
-					result.tls_alpn = alpn
+					result.tls_alpn = table.concat(alpn, ",")  -- 确保为字符串
 				end
 			end
 			if xray_hy2_type ~= "hysteria2" then
@@ -427,7 +427,7 @@ local function processData(szType, content)
 					table.insert(alpn, v)
 				end
 				if #alpn > 0 then
-					result.tls_alpn = alpn
+					result.tls_alpn = table.concat(alpn, ",")  -- 确保为字符串
 				end
 			end
 			if info.sni and info.sni ~= "" then
@@ -652,7 +652,7 @@ local function processData(szType, content)
 					table.insert(alpn, v)
 				end
 				if #alpn > 0 then
-					result.tls_alpn = params.alpn
+					result.tls_alpn = table.concat(alpn, ",")  -- 确保为字符串
 				end
 			end
 			if params.pcs and params.pcs ~= "" then
@@ -821,7 +821,7 @@ local function processData(szType, content)
 					table.insert(alpn, v)
 				end
 				if #alpn > 0 then
-					result.tls_alpn = params.alpn
+					result.tls_alpn = table.concat(alpn, ",")  -- 确保为字符串
 				end
 			end
 
@@ -972,7 +972,7 @@ local function processData(szType, content)
 				table.insert(alpn, v)
 			end
 			if #alpn > 0 then
-				result.tls_alpn = alpn
+				result.tls_alpn = table.concat(alpn, ",")  -- 确保为字符串
 			end
 		end
 
@@ -1131,7 +1131,7 @@ local function processData(szType, content)
 				table.insert(alpn, v)
 			end
 			if #alpn > 0 then
-				result.tuic_alpn = alpn
+				result.tls_alpn = table.concat(alpn, ",")  -- 确保为字符串
 			end
 		end
 
