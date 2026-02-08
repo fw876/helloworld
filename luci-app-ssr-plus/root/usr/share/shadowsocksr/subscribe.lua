@@ -395,7 +395,10 @@ local function processData(szType, content)
 			end
 		end
 		if info.net == 'kcp' then
-			result.kcp_guise = info.type
+			result.kcp_guise = info.type or "none"
+			if info.type and info.type == "header-dns" then
+				result.kcp_guise = info.host or ""
+			end
 			result.mtu = 1350
 			result.tti = 50
 			result.uplink_capacity = 5
@@ -439,18 +442,18 @@ local function processData(szType, content)
 				result.enable_ech = "1"
 				result.ech_config = info.ech
 			end
-			-- 兼容 allowInsecure / allowlnsecure / skip-cert-verify
-			if info.allowInsecure or info.allowlnsecure or info["skip-cert-verify"] then
-				local insecure = info.allowInsecure or info.allowlnsecure or info["skip-cert-verify"]
-				if insecure == true or insecure == "1" or insecure == "true" then
-					result.insecure = "1"
-				end
-			end
 			if info.pcs and info.pcs ~= "" then
 				result.tls_CertSha = info.pcs
 			end
 			if info.vcn and info.vcn ~= "" then
 				result.tls_CertByName = info.vcn
+			end
+			-- 兼容 allowInsecure / allowlnsecure / skip-cert-verify
+			if info.allowInsecure or info.allowlnsecure or info.insecure or info["skip-cert-verify"] then
+				local insecure = info.allowInsecure or info.allowlnsecure or info.insecure or info["skip-cert-verify"]
+				if insecure == true or insecure == "1" or insecure == "true" then
+					result.insecure = "1"
+				end
 			end
 		else
 			result.tls = "0"
@@ -716,6 +719,9 @@ local function processData(szType, content)
 				result.h2_path = params.path and UrlDecode(params.path) or nil
 			elseif result.transport == "kcp" then
 				result.kcp_guise = params.headerType or "none"
+				if params.headerType and params.headerType == "header-dns" then
+					result.kcp_domain = params.host or ""
+				end
 				result.seed = params.seed
 				result.mtu = 1350
 				result.tti = 50
@@ -859,7 +865,7 @@ local function processData(szType, content)
 					result.fingerprint = params.fp
 				end
 				-- 处理 ech 参数
-				if params.ech then
+				if params.ech and params.ech ~= "" then
 					result.enable_ech = "1"
 					result.ech_config = params.ech
 				end
@@ -908,6 +914,9 @@ local function processData(szType, content)
 					result.h2_path = params.path and UrlDecode(params.path) or nil
 				elseif result.transport == "kcp" then
 					result.kcp_guise = params.headerType or "none"
+					if params.headerType and params.headerType == "header-dns" then
+						result.kcp_domain = params.host or ""
+					end
 					result.seed = params.seed
 					result.mtu = 1350
 					result.tti = 50
@@ -1045,6 +1054,9 @@ local function processData(szType, content)
 
 		elseif result.transport == "kcp" then
 			result.kcp_guise = params.headerType or "none"
+			if params.headerType and params.headerType == "header-dns" then
+				result.kcp_domain = params.host or ""
+			end
 			result.seed = params.seed
 			result.mtu = 1350
 			result.tti = 50
