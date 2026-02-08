@@ -448,10 +448,10 @@ function import_ssr_url(btn, urlname, sid) {
 					}
 					break;
 				case "kcp":
-					setElementValue('cbid.shadowsocksr.' + sid + '.kcp_guise', params.get("headerType") || "none");
+					setElementValue('cbid.shadowsocksr.' + sid + '.kcp_guise', params.headerType || "none");
 					dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.kcp_guise', event); 
-					setElementValue('cbid.shadowsocksr.' + sid + '.kcp_domain', params.get("host") || "");
-					setElementValue('cbid.shadowsocksr.' + sid + '.seed', params.get("seed") || "");
+					setElementValue('cbid.shadowsocksr.' + sid + '.kcp_domain', params.host || "");
+					setElementValue('cbid.shadowsocksr.' + sid + '.seed', params.seed || "");
 					break;
 				case "http":
 				/* this is non-standard, bullshit */
