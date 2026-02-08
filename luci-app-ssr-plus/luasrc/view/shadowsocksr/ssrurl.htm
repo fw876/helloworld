@@ -438,10 +438,8 @@ function import_ssr_url(btn, urlname, sid) {
 					break;
 				case "xhttp":
 				case "splithttp":
-					if (params.security !== "tls") {
-						setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_host', params.host ? decodeURIComponent(params.host) : "");
-					}
 					setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_mode', params.mode || "auto");
+					setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_host', params.host ? decodeURIComponent(params.host) : "");
 					setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_path', params.path ? decodeURIComponent(params.path) : "/");
 					if (params.extra && params.extra.trim() !== "") {
 						setElementValue('cbid.shadowsocksr.' + sid + '.enable_xhttp_extra', true); // 设置 enable_xhttp_extra 为 true
@@ -604,8 +602,8 @@ function import_ssr_url(btn, urlname, sid) {
 					break;
 				case "xhttp":
 				case "splithttp":
-					document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_mode')[0].value = params.get("mode") || "auto";
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_host')[0].value = params.get("host") ? decodeURIComponent(params.get("host")) : "";
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.xhttp_path')[0].value = params.get("path") ? decodeURIComponent(params.get("path")) : "/";
 					if (params.get("extra") && params.get("extra").trim() !== "") {
 						document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_xhttp_extra')[0].checked = true; // 设置 enable_xhttp_extra 为 true
@@ -842,10 +840,8 @@ function import_ssr_url(btn, urlname, sid) {
 				break;
 			case "xhttp":
 			case "splithttp":
-				if (params.get("security") !== "tls") {
-					setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_host', params.get("host") ? decodeURIComponent(params.get("host")) : "");
-				}
 				setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_mode', params.get("mode") || "auto");
+				setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_host', params.get("host") ? decodeURIComponent(params.get("host")) : "");
 				setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_path', params.get("path") ? decodeURIComponent(params.get("path")) : "/");
 				if (params.get("extra") && params.get("extra").trim() !== "") {
 					setElementValue('cbid.shadowsocksr.' + sid + '.enable_xhttp_extra', true); // 设置 enable_xhttp_extra 为 true
