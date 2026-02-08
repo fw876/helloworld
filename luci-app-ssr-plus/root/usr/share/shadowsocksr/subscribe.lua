@@ -691,8 +691,8 @@ local function processData(szType, content)
 				result.httpupgrade_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
 				result.httpupgrade_path = params.path and UrlDecode(params.path) or "/"
 			elseif result.transport == "xhttp" or result.transport == "splithttp" then
-				result.xhttp_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
 				result.xhttp_mode = params.mode or "auto"
+				result.xhttp_host = params.host and UrlDecode(params.host) or nil
 				result.xhttp_path = params.path and UrlDecode(params.path) or "/"
 				-- 检查 extra 参数是否存在且非空
 				if params.extra and params.extra ~= "" then
@@ -884,8 +884,8 @@ local function processData(szType, content)
 					result.httpupgrade_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
 					result.httpupgrade_path = params.path and UrlDecode(params.path) or "/"
 				elseif result.transport == "xhttp" or result.transport == "splithttp" then
-					result.xhttp_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
 					result.xhttp_mode = params.mode or "auto"
+					result.xhttp_host = params.host and UrlDecode(params.host) or nil
 					result.xhttp_path = params.path and UrlDecode(params.path) or "/"
 					-- 检查 extra 参数是否存在且非空
 					if params.extra and params.extra ~= "" then
@@ -1023,8 +1023,8 @@ local function processData(szType, content)
 			result.httpupgrade_path = params.path and UrlDecode(params.path) or "/"
 
 		elseif result.transport == "xhttp" then
-			result.xhttp_host = (result.tls ~= "1" and result.reality ~= "1") and (params.host and UrlDecode(params.host)) or nil
 			result.xhttp_mode = params.mode or "auto"
+			result.xhttp_host = params.host and UrlDecode(params.host) or nil
 			result.xhttp_path = params.path and UrlDecode(params.path) or "/"
 			if params.extra and params.extra ~= "" then
 				result.enable_xhttp_extra = "1"
