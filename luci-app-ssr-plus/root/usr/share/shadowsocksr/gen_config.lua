@@ -412,9 +412,11 @@ end
 				finalmask = (server.transport == "kcp") and {
 					udp = (function()
 						local t = {}
+						local map = {none = "none", srtp = "header-srtp", utp = "header-utp", ["wechat-video"] = "header-wechat",
+							dtls = "header-dtls", wireguard = "header-wireguard", dns = "header-dns"}
 						if server.kcp_guise and server.kcp_guise ~= "none" then
-							local g = { type = server.kcp_guise }
-							if server.kcp_guise == "header-dns" and server.kcp_domain and server.kcp_domain ~= "" then
+							local g = { type = map[server.kcp_guise] }
+							if server.kcp_guise == "dns" and server.kcp_domain and server.kcp_domain ~= "" then
 								g.settings = { domain = server.kcp_domain }
 							end
 							t[#t + 1] = g

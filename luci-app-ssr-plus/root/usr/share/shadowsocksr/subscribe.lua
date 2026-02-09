@@ -396,7 +396,7 @@ local function processData(szType, content)
 		end
 		if info.net == 'kcp' then
 			result.kcp_guise = info.type or "none"
-			if info.type and info.type == "header-dns" then
+			if info.type and info.type == "dns" then
 				result.kcp_guise = info.host or ""
 			end
 			result.mtu = 1350
@@ -719,7 +719,7 @@ local function processData(szType, content)
 				result.h2_path = params.path and UrlDecode(params.path) or nil
 			elseif result.transport == "kcp" then
 				result.kcp_guise = params.headerType or "none"
-				if params.headerType and params.headerType == "header-dns" then
+				if params.headerType and params.headerType == "dns" then
 					result.kcp_domain = params.host or ""
 				end
 				result.seed = params.seed
@@ -914,7 +914,7 @@ local function processData(szType, content)
 					result.h2_path = params.path and UrlDecode(params.path) or nil
 				elseif result.transport == "kcp" then
 					result.kcp_guise = params.headerType or "none"
-					if params.headerType and params.headerType == "header-dns" then
+					if params.headerType and params.headerType == "dns" then
 						result.kcp_domain = params.host or ""
 					end
 					result.seed = params.seed
@@ -1054,7 +1054,7 @@ local function processData(szType, content)
 
 		elseif result.transport == "kcp" then
 			result.kcp_guise = params.headerType or "none"
-			if params.headerType and params.headerType == "header-dns" then
+			if params.headerType and params.headerType == "dns" then
 				result.kcp_domain = params.host or ""
 			end
 			result.seed = params.seed
