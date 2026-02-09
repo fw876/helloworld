@@ -184,6 +184,11 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.insecure')[0].dispatchEvent(event); // 触发事件
 			}
 
+			if (params.get("tfo") === "1") {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.fast_open')[0].checked = true; // 设置 fast_open 为 true
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.fast_open')[0].dispatchEvent(event); // 触发事件
+			}
+
 			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
 		case "ss":
@@ -324,6 +329,11 @@ function import_ssr_url(btn, urlname, sid) {
 					}
 				} else {
 					document.getElementsByName('cbid.shadowsocksr.' + sid + '.enable_plugin')[0].checked = false;
+				}
+
+				if (params.tfo === "1") {
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.fast_open')[0].checked = true; // 设置 fast_open 为 true
+					document.getElementsByName('cbid.shadowsocksr.' + sid + '.fast_open')[0].dispatchEvent(event); // 触发事件
 				}
 
 				if (param != undefined) {
@@ -509,6 +519,10 @@ function import_ssr_url(btn, urlname, sid) {
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.password')[0].value = b64decsafe(ssm[6]);
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.obfs_param')[0].value = dictvalue(pdict, 'obfsparam');
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.protocol_param')[0].value = dictvalue(pdict, 'protoparam');
+			if (pdict.tfo === "1") {
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.fast_open')[0].checked = true; // 设置 fast_open 为 true
+				document.getElementsByName('cbid.shadowsocksr.' + sid + '.fast_open')[0].dispatchEvent(event); // 触发事件
+			}
 			var rem = pdict['remarks'];
 			if (typeof (rem) != 'undefined' && rem != '' && rem.length > 0) document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = b64decutf8safe(rem);
 			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
@@ -854,6 +868,10 @@ function import_ssr_url(btn, urlname, sid) {
 					setElementValue('cbid.shadowsocksr.' + sid + '.enable_xhttp_extra', true); // 设置 enable_xhttp_extra 为 true
 					dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.enable_xhttp_extra', event); // 触发事件
 					setElementValue('cbid.shadowsocksr.' + sid + '.xhttp_extra', params.get("extra") || "");
+				}
+				if (params.get("tfo") === "1") {
+					setElementValue('cbid.shadowsocksr.' + sid + '.fast_open', true); // 设置 fast_open 为 true
+					dispatchEventIfExists('cbid.shadowsocksr.' + sid + '.fast_open', event); // 触发事件
 				}
 				break;
 			case "kcp":
