@@ -282,6 +282,10 @@ local function processData(szType, content)
 				result.insecure = "1"
 			end
 		end
+		if params.tfo then
+			-- 处理 fast open 参数
+			result.fast_open = params.tfo
+		end
 	elseif szType == 'ssr' then
 		-- 去掉前后空白和#注释
 		local link = trim(content:gsub("#.*$", ""))
@@ -308,6 +312,11 @@ local function processData(szType, content)
 
 		result.obfs_param = base64Decode(params.obfsparam or '')
 		result.protocol_param = base64Decode(params.protoparam or '')
+
+		if params.tfo then
+			-- 处理 fast open 参数
+			result.fast_open = params.tfo
+		end
 
 		local group = base64Decode(params.group or '')
 		local remarks = base64Decode(params.remarks or '')
@@ -559,6 +568,11 @@ local function processData(szType, content)
 			result.password = password
 			result.server = server
 			result.server_port = port
+
+			if params.tfo then
+				-- 处理 fast open 参数
+				result.fast_open = params.tfo
+			end
 
 			-- 插件处理
 			if params.plugin then
@@ -1035,6 +1049,10 @@ local function processData(szType, content)
 			result.xhttp_mode = params.mode or "auto"
 			result.xhttp_host = params.host and UrlDecode(params.host) or nil
 			result.xhttp_path = params.path and UrlDecode(params.path) or "/"
+			if params.tfo then
+				-- 处理 fast open 参数
+				result.fast_open = params.tfo
+			end
 			if params.extra and params.extra ~= "" then
 				result.enable_xhttp_extra = "1"
 				result.xhttp_extra = params.extra
