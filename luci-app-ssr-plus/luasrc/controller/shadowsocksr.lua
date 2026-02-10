@@ -98,10 +98,14 @@ function act_ping()
         end
 
         if not e.ping then
-            e.ping = tonumber(luci.sys.exec(string.format(
+            local ping_result = tonumber(luci.sys.exec(string.format(
                 "nping --udp -c 1 -p %d %s 2>/dev/null | grep -o 'Avg rtt: [0-9.]*ms' | awk '{print $3}' | sed 's/ms//' | head -1",
                 port, domain
             )))
+            local ping_num = tonumber(ping_result)
+            if ping_num then
+                e.ping = math.floor(ping_num)
+            end
         end
     end
 
