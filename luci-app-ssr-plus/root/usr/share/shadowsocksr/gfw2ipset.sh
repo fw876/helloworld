@@ -51,14 +51,21 @@ else
 	cp -rf /etc/ssrplus/gfw_base.conf $TMP_DNSMASQ_PATH/
 fi
 
-if [ "$nft_support" = "1" ]; then
-	# 移除 ipset
-	for conf_file in gfw_base.conf gfw_list.conf; do
-		if [ -f "$TMP_DNSMASQ_PATH/$conf_file" ]; then
-			sed -i 's|ipset=/\([^/]*\)/\([^[:space:]]*\)|nftset=/\1/inet#ss_spec#\2|g' "$TMP_DNSMASQ_PATH/$conf_file"
+for conf_file in gfw_base.conf gfw_list.conf; do
+	conf="$TMP_DNSMASQ_PATH/$conf_file"
+	[ -f "$conf" ] || continue
+
+	if [ "$run_mode" = "gfw" ]; then
+		if [ "$nft_support" = "1" ]; then
+			# gfw + nft：ipset → nftset
+			sed -i 's|ipset=/\([^/]*\)/\([^[:space:]]*\)|nftset=/\1/inet#ss_spec#\2|g' "$conf"
 		fi
-	done
-fi
+	else
+		# 非 gfw：无条件清理所有分流引用
+		# sed -i '/^[[:space:]]*\(ipset=\|nftset=\)/d' "$conf"
+		sed -i '/^[[:space:]]*ipset=/d' "$conf"
+	fi
+done
 
 if [ "$(uci_get_by_type global netflix_enable 0)" == "1" ]; then
 	# 只有开启 NetFlix分流 才需要取值
