@@ -17,6 +17,10 @@ LOCK_FILE=/var/lock/ssrplus.lock
 LOG_FILE=/var/log/ssrplus.log
 TMP_PATH=/var/etc/ssrplus
 TMP_BIN_PATH=$TMP_PATH/bin
+PERSIST_DIR="/usr/share/nftables.d/ruleset-post"
+PERSIST_FILE="$PERSIST_DIR/99-shadowsocksr.nft"
+BACKUP_DIR="/etc/ssrplus/ssrplus-persist"
+BACKUP_FILE="$BACKUP_DIR/99-shadowsocksr.save"
 # 设置 DNSMASQ_CONF_DIR 和 TMP_DNSMASQ_PATH
 if [ -f /etc/openwrt_release ]; then
     # 获取默认的 DNSMASQ 配置 ID
@@ -1553,6 +1557,12 @@ start_rules() {
 	}
 	if [ "$USE_TABLES" = "nftables" ]; then
 		ARG_A="-A"
+		# Restore nft persistence rules
+		if [ -f "$BACKUP_FILE" ]; then
+			mkdir -p "$PERSIST_DIR"
+			mv "$BACKUP_FILE" "$PERSIST_FILE"
+			rm -rf "$BACKUP_DIR"
+		fi
 	elif [ "$USE_TABLES" = "iptables" ]; then
 		ARG_A=""
 	fi
@@ -1649,6 +1659,8 @@ boot() {
 }
 
 stop() {
+	unlock
+	set_lock
 	check_run_environment
 	# Save ipsets before stopping to persist transparent proxy state
 	if [ "$HAS_IPSET" -eq 1 ]; then
@@ -1661,9 +1673,12 @@ stop() {
 			ipset save $setname > /tmp/ssrplus_save/$setname.save 2>/dev/null
 		done
 	fi
-	unlock
-	set_lock
 	if [ "$USE_TABLES" = "nftables" ]; then
+		# Save nft rules before stopping to persist transparent proxy state
+		if [ -f "$PERSIST_FILE" ]; then
+			mkdir -p "$BACKUP_DIR"
+			mv "$PERSIST_FILE" "$BACKUP_FILE"
+		fi
 		/usr/bin/ssr-rules -K
 		local OLD_SERVER="$(uci_get_by_type global old_global_server nil)"
 		local NEW_SERVER="$(uci_get_by_type global global_server nil)"
