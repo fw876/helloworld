@@ -1,4 +1,5 @@
 local m, s, o
+local cbi = require "luci.cbi"
 local uci = require "luci.model.uci".cursor()
 
 -- 获取 LAN IP 地址
@@ -275,33 +276,33 @@ o.rmempty = false
 o = s:option(ListValue, "server", translate("Server"))
 o:value("same", translate("Same as Global Server"))
 for _, key in pairs(key_table) do
-    o:value(key, server_table[key])
+	o:value(key, server_table[key])
 end
 o.default = "same"
 o.rmempty = false
 
 -- Dynamic value handling based on enabled/disabled state
 o.cfgvalue = function(self, section)
-    local enabled = m:get(section, "enabled")
-    if enabled == "0" then
-        return m:get(section, "old_server")
-    end
-    return Value.cfgvalue(self, section)-- Default to `same` when enabled
+	local enabled = m:get(section, "enabled")
+	if enabled == "0" then
+		return m:get(section, "old_server")
+	end
+	return Value.cfgvalue(self, section)-- Default to `same` when enabled
 end
 
 o.write = function(self, section, value)
-    local enabled = m:get(section, "enabled")
-    if enabled == "0" then
-        local old_server = Value.cfgvalue(self, section)
-        if old_server ~= "nil" then
-            m:set(section, "old_server", old_server)
-        end
-        m:set(section, "server", "nil")
-    else
-        m:del(section, "old_server")
-        -- Write the value normally when enabled
-        Value.write(self, section, value)
-    end
+	local enabled = m:get(section, "enabled")
+	if enabled == "0" then
+		local old_server = Value.cfgvalue(self, section)
+		if old_server ~= "nil" then
+			m:set(section, "old_server", old_server)
+		end
+		m:set(section, "server", "nil")
+	else
+		m:del(section, "old_server")
+		-- Write the value normally when enabled
+		Value.write(self, section, value)
+	end
 end
 
 -- Socks Auth
@@ -312,10 +313,10 @@ o:value("noauth", "NOAUTH")
 o:value("password", "PASSWORD")
 o.rmempty = true
 for key, server_type in pairs(type_table) do
-    if server_type == "v2ray" then
-        -- 如果服务器类型是 v2ray，则设置依赖项显示
-        o:depends("server", key)
-    end
+	if server_type == "v2ray" then
+		-- 如果服务器类型是 v2ray，则设置依赖项显示
+		o:depends("server", key)
+	end
 end
 o:depends({server = "same", disable = true})
 
@@ -335,10 +336,10 @@ o = s:option(Flag, "socks5_mixed", translate("Enabled Mixed"), translate("Mixed 
 o.default = "1"
 o.rmempty = false
 for key, server_type in pairs(type_table) do
-    if server_type == "v2ray" then
-        -- 如果服务器类型是 v2ray，则设置依赖项显示
-        o:depends("server", key)
-    end
+	if server_type == "v2ray" then
+		-- 如果服务器类型是 v2ray，则设置依赖项显示
+		o:depends("server", key)
+	end
 end
 o:depends({server = "same", disable = true})
 end
@@ -367,15 +368,13 @@ if is_finded("xray") then
 	o:depends("fragment", true)
 
 	o = s:option(Value, "fragment_length", translate("Fragment Length"), translate("Fragmented packet length (byte)"))
+	o.datatype = "or(uinteger,portrange)"
 	o.default = "100-200"
 	o:depends("fragment", true)
 
 	o = s:option(Value, "fragment_interval", translate("Fragment Interval"), translate("Fragmentation interval (ms)"))
+	o.datatype = "or(uinteger,portrange)"
 	o.default = "10-20"
-	o:depends("fragment", true)
-
-	o = s:option(Value, "fragment_maxsplit", translate("Max Split"), translate("Limit the maximum number of splits."))
-	o.default = "100-200"
 	o:depends("fragment", true)
 
 	o = s:option(Flag, "noise", translate("Noise"), translate("UDP noise, Under some circumstances it can bypass some UDP based protocol restrictions."))
@@ -427,13 +426,8 @@ if is_finded("xray") then
 	o = s:option(Value, "delay", translate("Delay (ms)"))
 	o.datatype = "or(uinteger,portrange)"
 	o.rmempty = false
-
-	o = s:option(Value, "applyto", translate("IP Type"))
-	o.default = "IP"
-	o:value("IP", "ALL")
-	o:value("IPV4", "IPv4")
-	o:value("IPV6", "IPv6")
-	o.rmempty = false
+	
+	s:append(cbi.Template("shadowsocksr/optimize_cbi_ui"))
 end
 
 return m

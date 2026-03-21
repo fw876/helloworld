@@ -16,6 +16,7 @@ local tinsert = table.insert
 local ssub, slen, schar, sbyte, sformat, sgsub = string.sub, string.len, string.char, string.byte, string.format, string.gsub
 local jsonParse, jsonStringify = luci.jsonc.parse, luci.jsonc.stringify
 local b64decode = nixio.bin.b64decode
+local b64encode = nixio.bin.b64encode
 local URL = require "url"
 local cache = {}
 local nodeResult = setmetatable({}, {__index = cache}) -- update result
@@ -34,20 +35,34 @@ local ss_type = ucic:get_first(name, 'server_subscribe', 'ss_type', 'ss-rust')
 -- 根据 ss_type 选择对应的程序
 local ss_program = "sslocal"
 if ss_type == "ss-rust" then
-	ss_program = "sslocal"  -- Rust 版本使用 sslocal
+    ss_program = "sslocal"
 elseif ss_type == "ss-libev" then
-	ss_program = "ss-redir"  -- Libev 版本使用 ss-redir
+    ss_program = "ss-redir"
+elseif ss_type == "v2ray" then
+    ss_program = "xray"
 end
 -- 从 UCI 配置读取 xray_hy2_type 设置
 local xray_hy2_type = ucic:get_first(name, 'server_subscribe', 'xray_hy2_type', 'hysteria2')
 local xray_hy2_program = "hysteria"
-if xray_hy2_type == "xray" then
+if xray_hy2_type == "v2ray" then
 	xray_hy2_program = "xray"  -- Hysteria2 使用 Xray
 elseif xray_hy2_type == "hysteria2" then
 	xray_hy2_program = "hysteria"  -- Hysteria2 使用 Hysteria
 end
-local v2_ss = luci.sys.exec('type -t -p ' .. ss_program .. ' 2>/dev/null') ~= "" and "ss" or "v2ray"
-local has_ss_type = luci.sys.exec('type -t -p ' .. ss_program .. ' 2>/dev/null') ~= "" and ss_type
+local v2_ss_exists = luci.sys.exec('type -t -p ' .. ss_program .. ' 2>/dev/null') ~= ""
+-- 初始化变量
+local v2_ss = nil
+local has_v2_ss_type = nil
+if v2_ss_exists then
+    if ss_type == "v2ray" then
+        -- 使用 Xray
+        v2_ss = "v2ray"
+        has_v2_ss_type = "shadowsocks"
+    else
+        -- 使用 SS (rust 或 libev)
+        v2_ss = "ss"
+    end
+end
 local v2_tj = luci.sys.exec('type -t -p trojan') ~= "" and "trojan" or "v2ray"
 -- 检查程序是否存在
 local program_exists = luci.sys.exec('type -t -p ' .. xray_hy2_program .. ' 2>/dev/null') ~= ""
@@ -176,6 +191,21 @@ local function base64Decode(text)
 		return raw
 	end
 end
+local function base64Encode(text)
+	if not text or text == "" then
+		return ''
+	end
+    local result = b64encode(text)
+    if result then
+        result = result:gsub("%z", "")
+        result = result:gsub("/", "_")
+        result = result:gsub("+", "-")
+        result = result:gsub("=", "")
+        return result
+    else
+        return text
+    end
+end
 -- 检查数组(table)中是否存在某个字符值
 -- https://www.04007.cn/article/135.html
 local function checkTabValue(tab)
@@ -196,7 +226,7 @@ local function isCompleteJSON(str)
 	return success
 end
 -- 处理数据
-local function processData(szType, content)
+local function processData(szType, content, cfgid)
 	local result = {type = szType, local_port = 1234, kcp_param = '--nocomp'}
 	-- 检查JSON的格式如不完整丢弃
 	if not (szType == "sip008" or szType == "ssd") then
@@ -215,17 +245,24 @@ local function processData(szType, content)
 		--	log(k.."="..v)
 		-- end
 
-		-- 如果 hy2 程序未安装则跳过订阅
-		if not (hy2_type or has_xray_hy2_type) then
+		-- 如果 hy2 或 Xray 程序未安装则跳过订阅
+		if not hy2_type then
 			return nil
 		end
 	
 		if xray_hy2_type == "hysteria2" then
-			if params.protocol then
+			if params.protocol and params.protocol ~= "" then
 				result.flag_transport = "1"
-				result.transport_protocol = params.protocol or "udp"
+				result.transport_protocol = params.protocol
+			else
+				result.flag_transport = "1"
+				result.transport_protocol = "udp"
 			end
-			if params.pinSHA256 then
+			if params.fm and params.fm ~= "" then
+				result.enable_finalmask = "1"
+				result.finalmask = base64Encode(params.fm)
+			end
+			if params.pinSHA256 and params.pinSHA256 ~= "" then
 				result.pinsha256 = params.pinSHA256
 			end
 		else
@@ -233,7 +270,6 @@ local function processData(szType, content)
 		end
 
 		result.alias = url.fragment and UrlDecode(url.fragment) or nil
-		result.xray_hy2_type = xray_hy2_type
 		result.type = hy2_type
 		result.server = url.host
 		result.server_port = url.port or 443
@@ -379,14 +415,14 @@ local function processData(szType, content)
 			-- 检查 extra 参数是否存在且非空
 			if info.extra and info.extra ~= "" then
 				result.enable_xhttp_extra = "1"
-				result.xhttp_extra = info.extra
+				result.xhttp_extra = base64Encode(info.extra)
 			end
 			-- 尝试解析 JSON 数据
 			local success, Data = pcall(jsonParse, info.extra or "")
 			if success and type(Data) == "table" then
 				local address = (Data.extra and Data.extra.downloadSettings and Data.extra.downloadSettings.address)
 					or (Data.downloadSettings and Data.downloadSettings.address)
-				result.download_address = (address and address ~= "") and address or nil
+				result.download_address = (address and address ~= "") and address:gsub("^%[", ""):gsub("%]$", "")
 			else
 				-- 如果解析失败，清空下载地址
 				result.download_address = nil
@@ -429,6 +465,11 @@ local function processData(szType, content)
 		end
 		if info.security then
 			result.security = info.security
+		end
+		if info.fm and info.fm ~= "" then
+			info.fm = UrlDecode(info.fm)
+			result.enable_finalmask = "1"
+			result.finalmask = base64Encode(info.fm)
 		end
 		if info.tls == "tls" or info.tls == "1" then
 			result.tls = "1"
@@ -490,7 +531,12 @@ local function processData(szType, content)
 			end
 		end
 
-		if not params.type or params.type == "" then
+		if params.tfo and params.tfo ~= "" then
+			-- 处理 fast open 参数
+			result.fast_open = params.tfo
+		end
+
+		if v2_ss ~= "v2ray" then
 			local is_old_format = find_index:find("@") and not find_index:find("://.*@")
 			local old_base64, host_port, userinfo, server, port, method, password
 
@@ -557,22 +603,16 @@ local function processData(szType, content)
 			end
 
 			-- 如果 SS 程序未安装则跳过订阅	
-			if not (v2_ss or has_ss_type) then
+			if not v2_ss then
 				return nil
 			end
 
 			-- 填充 result
 			result.type = v2_ss
-			result.has_ss_type = has_ss_type
 			result.encrypt_method_ss = method
 			result.password = password
 			result.server = server
 			result.server_port = port
-
-			if params.tfo then
-				-- 处理 fast open 参数
-				result.fast_open = params.tfo
-			end
 
 			-- 插件处理
 			if params.plugin then
@@ -638,9 +678,13 @@ local function processData(szType, content)
 			local url = URL.parse("http://" .. info)
 			local params = url.query
 
-			v2_ss = "v2ray"
+			-- 如果 Xray 程序未安装则跳过订阅	
+			if not v2_ss then
+				return nil
+			end
+
 			result.type = v2_ss
-			result.v2ray_protocol = "shadowsocks"
+			result.v2ray_protocol = has_v2_ss_type
 			result.server = url.host
 			result.server_port = url.port
 
@@ -653,6 +697,11 @@ local function processData(szType, content)
         		-- 旧格式：UUID 直接作为密码
         		result.password = url.user
         		result.encrypt_method_ss = params.encryption or "none"
+			end
+
+			if params.udp then
+        		-- 处理 udp 参数
+        		result.uot = params.udp
 			end
 
 			result.transport = params.type or "raw"
@@ -690,6 +739,11 @@ local function processData(szType, content)
 				result.enable_ech = "1"
 				result.ech_config = params.ech
 			end
+			-- 检查 finalmaskg 参数是否存在且非空
+			if params.fm and params.fm ~= "" then
+				result.enable_finalmask = "1"
+				result.finalmaskg = base64Encode(params.fm)
+			end
 			-- 检查 pqv 参数是否存在且非空
 			if params.pqv and params.pqv ~= "" then
 				result.enable_mldsa65verify = "1"
@@ -714,14 +768,14 @@ local function processData(szType, content)
 				-- 检查 extra 参数是否存在且非空
 				if params.extra and params.extra ~= "" then
 					result.enable_xhttp_extra = "1"
-					result.xhttp_extra = params.extra
+					result.xhttp_extra = base64Encode(params.extra)
 				end
 				-- 尝试解析 JSON 数据
 				local success, Data = pcall(jsonParse, params.extra or "")
 				if success and type(Data) == "table" then
 					local address = (Data.extra and Data.extra.downloadSettings and Data.extra.downloadSettings.address)
 						or (Data.downloadSettings and Data.downloadSettings.address)
-					result.download_address = address and address ~= "" and address or nil
+					result.download_address = (address and address ~= "") and address:gsub("^%[", ""):gsub("%]$", "")
 				else
 					-- 如果解析失败，清空下载地址
 					result.download_address = nil
@@ -760,8 +814,12 @@ local function processData(szType, content)
 		end
 	elseif szType == "sip008" then
 		result.type = v2_ss
-		result.v2ray_protocol = (v2_ss == "v2ray") and "shadowsocks" or nil
-		result.has_ss_type = has_ss_type
+		if v2_ss ~= "v2ray" then
+			result.has_ss_type = has_ss_type
+		else
+			result.xray_has_ss_type = "v2ray"
+			result.v2ray_protocol = has_v2_ss_type
+		end
 		result.server = content.server
 		result.server_port = content.server_port
 		result.password = content.password
@@ -774,8 +832,12 @@ local function processData(szType, content)
 		end
 	elseif szType == "ssd" then
 		result.type = v2_ss
-		result.v2ray_protocol = (v2_ss == "v2ray") and "shadowsocks" or nil
-		result.has_ss_type = has_ss_type
+		if v2_ss ~= "v2ray" then
+			result.has_ss_type = has_ss_type
+		else
+			result.xray_has_ss_type = "v2ray"
+			result.v2ray_protocol = has_v2_ss_type
+		end
 		result.server = content.server
 		result.server_port = content.port
 		result.password = content.password
@@ -883,6 +945,11 @@ local function processData(szType, content)
 					result.enable_ech = "1"
 					result.ech_config = params.ech
 				end
+				-- 检查 finalmaskg 参数是否存在且非空
+				if params.fm and params.fm ~= "" then
+					result.enable_finalmask = "1"
+					result.finalmaskg = base64Encode(params.fm)
+				end
 				-- 处理传输协议
 				result.transport = params.type or "raw" -- 默认传输协议为 raw
 				if result.transport == "tcp" then
@@ -910,14 +977,14 @@ local function processData(szType, content)
 					-- 检查 extra 参数是否存在且非空
 					if params.extra and params.extra ~= "" then
 						result.enable_xhttp_extra = "1"
-						result.xhttp_extra = params.extra
+						result.xhttp_extra = base64Encode(params.extra)
 					end
 					-- 尝试解析 JSON 数据
 					local success, Data = pcall(jsonParse, params.extra or "")
 					if success and type(Data) == "table" then
 						local address = (Data.extra and Data.extra.downloadSettings and Data.extra.downloadSettings.address)
 							or (Data.downloadSettings and Data.downloadSettings.address)
-						result.download_address = address and address ~= "" and address or nil
+						result.download_address = (address and address ~= "")  and address:gsub("^%[", ""):gsub("%]$", "")
 					else
 						-- 如果解析失败，清空下载地址
 						result.download_address = nil
@@ -1007,6 +1074,18 @@ local function processData(szType, content)
 			end
 		end
 
+		-- ECH 参数（TLS 才有）
+		if security == "tls" and params.ech and params.ech ~= "" then
+			result.enable_ech = "1"
+			result.ech_config = params.ech
+		end
+
+		-- 处理 finalmask 参数
+		if params.fm and params.fm ~= "" then
+			result.enable_finalmask = "1"
+			result.finalmask = base64Encode(params.fm)
+		end
+
 		-- 处理 pinsha256 参数
 		if params.pcs and params.pcs ~= "" then
 			result.tls_CertSha = params.pcs
@@ -1023,17 +1102,11 @@ local function processData(szType, content)
 			result.reality_shortid = params.sid
 			result.reality_spiderx = params.spx and UrlDecode(params.spx) or nil
 
-			-- PQ 验证参数
+			-- PQV 验证参数
 			if params.pqv and params.pqv ~= "" then
 				result.enable_mldsa65verify = "1"
 				result.reality_mldsa65verify = params.pqv
 			end
-		end
-
-		-- ECH 参数（TLS 才有）
-		if security == "tls" and params.ech and params.ech ~= "" then
-			result.enable_ech = "1"
-			result.ech_config = params.ech
 		end
 
 		-- 各种传输类型
@@ -1055,13 +1128,13 @@ local function processData(szType, content)
 			end
 			if params.extra and params.extra ~= "" then
 				result.enable_xhttp_extra = "1"
-				result.xhttp_extra = params.extra
+				result.xhttp_extra = base64Encode(params.extra)
 			end
 			local success, Data = pcall(jsonParse, params.extra or "")
 			if success and type(Data) == "table" then
 				local address = (Data.extra and Data.extra.downloadSettings and Data.extra.downloadSettings.address)
 					or (Data.downloadSettings and Data.downloadSettings.address)
-				result.download_address = address and address ~= "" and address or nil
+				result.download_address = (address and address ~= "")  and address:gsub("^%[", ""):gsub("%]$", "")
 			else
 				result.download_address = nil
 			end
@@ -1254,20 +1327,27 @@ local function write_new_md5(groupHash, md5)
 end
 
 -- curl
-local function curl(url)
-	-- 清理 URL 中的隐藏字符
-	url = url:gsub("%s+$", ""):gsub("^%s+", ""):gsub("%z", "")
-
-	-- 构建curl命令（确保 user_agent 为空时不添加 -A 参数）
+local function curl(url, user_agent)
+	-- 清理 URL 中的隐藏字符和前后空白
+	url = url:gsub("%s+$", ""):gsub("^%s+", ""):gsub("%z", ""):gsub("[\r\n]", "")
+	-- 处理 user_agent 参数
+	local ua_opt = ""
+	if user_agent and user_agent ~= "" then
+		-- 转义双引号，防止破坏 -A 参数
+		local safe_ua = user_agent:gsub("[\r\n]", ""):gsub('[\\"`$]', '\\%0')  -- 安全转义
+		ua_opt = '-A "' .. safe_ua .. '"'
+	end
+	-- 安全转义 URL：用单引号包裹，并转义内部的单引号
+	local safe_url = "'" .. url:gsub("'", "'\\''") .. "'"
 	local cmd = string.format(
-		'curl -sSL --connect-timeout 20 --max-time 30 --retry 3 %s --insecure --location "%s"',
-		user_agent ~= "" and ('-A "' .. user_agent .. '"') or "",  -- 添加 or "" 处理 nil 情况
-		url:gsub('["$`\\]', '\\%0')  -- 安全转义
+		'curl -sSL --connect-timeout 20 --max-time 30 --retry 3 -H "Accept-Encoding: identity" %s --insecure --location %s',
+		ua_opt,
+		safe_url
 	)
-
+	-- 执行命令并获取输出
 	local stdout = luci.sys.exec(cmd)
-	stdout = trim(stdout)
-	local md5 = md5_string(stdout)
+	stdout = trim(stdout)  -- 确保 trim 函数存在
+	local md5 = md5_string(stdout)  -- 确保 md5_string 函数存在
 	return stdout, md5
 end
 
@@ -1498,13 +1578,43 @@ local execute = function()
 				end
 			end
 		end)
-		for k, v in ipairs(nodeResult) do
-			for kk, vv in ipairs(v) do
+		-- 1583-1620 行为生成 sid
+		-- 记录已使用编号
+		local used_sid = {}
+		local next_sid = 1
+		-- 扫描已有 section
+		ucic:foreach(name, uciType, function(s)
+			local num = s[".name"]:match("^cfg(%x%x)")  -- 提取两位十六进制序号
+			if num then
+				local n = tonumber(num, 16)
+				used_sid[n] = true
+			end
+		end)
+		-- 获取下一个可用编号（O(1)）
+		local function get_next_sid()
+			while used_sid[next_sid] do
+				next_sid = next_sid + 1
+			end
+			used_sid[next_sid] = true
+			return next_sid
+		end
+		for _, v in ipairs(nodeResult) do
+			for _, vv in ipairs(v) do
 				if not vv._ignore then
-					local section = ucic:add(name, uciType)
-					ucic:tset(name, section, vv)
-					ucic:set(name, section, "switch_enable", switch)
-					add = add + 1
+					local sid = ucic:add(name, uciType)
+					if sid then
+						local suffix = sid:sub(-4)
+						ucic:delete(name, sid)
+						local id = get_next_sid()
+						local cfgid = string.format("cfg%02x%s", id, suffix)
+						local section = ucic:section(name, uciType, cfgid)
+						if section then
+							ucic:tset(name, section, vv)
+							ucic:set(name, section, "switch_enable", switch)
+							add = add + 1
+						end
+					end
+
 				end
 			end
 		end

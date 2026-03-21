@@ -22,6 +22,35 @@ local xray_version_val = 0
 
 local node_id = server_section
 local remarks = server.alias or ""
+local b64decode = nixio.bin.b64decode
+
+local function base64Decode(text)
+	local raw = text
+	if not text or text == "" then
+		return ''
+	end
+	text = text:gsub("%z", "")
+	text = text:gsub("_", "/")
+	text = text:gsub("-", "+")
+	local mod4 = #text % 4
+	text = text .. string.sub('====', mod4 + 1)
+	local result = b64decode(text)
+	if result then
+		return result:gsub("%z", "")
+	else
+		return raw
+	end
+end
+
+local function cleanEmptyTables(t)
+	if type(t) ~= "table" then return nil end
+	for k, v in pairs(t) do
+		if type(v) == "table" then
+			t[k] = cleanEmptyTables(v)
+		end
+	end
+	return next(t) and t or nil
+end
 
 -- 确保正确判断程序是否存在
 local function is_finded(e)
@@ -103,6 +132,25 @@ function socks_http()
 	}
 end
 function wireguard()
+	-- 处理 reserved 字段，支持逗号分隔的数字或 Base64 编码
+	local reserved = nil
+	if server.reserved then
+		local bytes = {}
+		if not server.reserved:match("[^%d,]+") then
+			-- 纯数字和逗号，解析为数字列表
+			server.reserved:gsub("%d+", function(b)
+				bytes[#bytes + 1] = tonumber(b)
+			end)
+		else
+			-- Base64 编码的二进制数据
+			local result = base64Decode(server.reserved)
+			for i = 1, #result do
+				bytes[i] = result:byte(i)
+			end
+		end
+		reserved = #bytes > 0 and bytes or nil
+	end
+
 	outbound_settings = {
 		secretKey = server.private_key,
 		address = server.local_addresses,
@@ -116,7 +164,7 @@ function wireguard()
 			}
 		},
 		noKernelTun = (server.kernelmode == "1") and true or false,
-		reserved = server.reserved and { server.reserved } or nil,
+		reserved = reserved,
 		mtu = tonumber(server.mtu)
 	}
 end
@@ -305,14 +353,22 @@ end
 					mldsa65Verify = (server.enable_mldsa65verify == '1') and server.reality_mldsa65verify or nil,
 					serverName = server.tls_host
 				} or nil,
-				rawSettings = (server.transport == "raw" or server.transport == "tcp") and {
+				rawSettings = ((server.transport == "raw" or server.transport == "tcp") and (server.tcp_guise and server.tcp_guise ~= "none")) and {
 					-- tcp
 					header = {
 						type = server.tcp_guise,
 						request = (server.tcp_guise == "http") and {
-							-- request
-							path = {server.http_path} or {"/"},
-							headers = {Host = {server.http_host} or {}}
+							path = server.http_path and (function()
+								local t, r = server.http_path, {}
+								for _, v in ipairs(t) do
+									r[#r + 1] = (v == "" and "/" or v)
+								end
+								return r
+							end)() or {"/"},
+							headers = (server.http_path or server.user_agent) and {
+								Host = server.http_path,
+								["User-Agent"] = server.user_agent and {server.user_agent} or nil
+							} or nil
 						} or nil
 					}
 				} or nil,
@@ -330,34 +386,45 @@ end
 					-- ws
 					host = server.ws_host or server.tls_host or nil,
 					path = server.ws_path or "/",
+					headers = server.user_agent and {
+						["User-Agent"] = server.user_agent
+					} or nil,
 					maxEarlyData = tonumber(server.ws_ed) or nil,
-					earlyDataHeaderName = server.ws_ed_header or nil
+					earlyDataHeaderName = server.ws_ed_header or nil,
+					heartbeatPeriod = tonumber(server.ws_heartbeatPeriod) or nil
 				} or nil,
 				httpupgradeSettings = (server.transport == "httpupgrade") and {
 					-- httpupgrade
 					host = (server.httpupgrade_host or server.tls_host) or nil,
-					path = server.httpupgrade_path or ""
+					path = server.httpupgrade_path or "",
+					headers =  server.user_agent and {
+						["User-Agent"] = server.user_agent
+					} or nil
 				} or nil,
 				xhttpSettings = (server.transport == "xhttp" or server.transport == "splithttp") and {
 					-- xhttp
 					mode = server.xhttp_mode or "auto",
 					host = (server.xhttp_host or server.tls_host) or nil,
 					path = server.xhttp_path or "/",
-					extra = (server.enable_xhttp_extra == "1" and server.xhttp_extra) and (function()
-						local success, parsed = pcall(json.parse, server.xhttp_extra)
-						if not success or not parsed then return nil end
-						-- 如果包含 "extra" 节，就使用它，否则直接使用 tbl
-						local tbl = parsed.extra or parsed
-						-- 枚举第1层字段，如果值为空表或 nil 就删除(简单容错)
-						for k, v in pairs(tbl) do
-							if type(v) == "table" and next(v) == nil then
-								tbl[k] = nil
-							elseif v == nil then
-								tbl[k] = nil
+					extra = (function()
+						local extra = {}
+						-- 解析 xhttp_extra（Base64 编码的 JSON）
+						if (server.enable_xhttp_extra == "1" and server.xhttp_extra) then
+							local ok, parsed = pcall(json.parse, base64Decode(server.xhttp_extra))
+							if ok and type(parsed) == "table" then
+								extra = parsed.extra or parsed   -- 取 "extra" 节，若无则整个 parsed
 							end
 						end
-						return tbl
-					end)() or nil
+						-- 处理 User-Agent
+						if server.user_agent and server.user_agent ~= "" then
+							extra.headers = extra.headers or {}
+							if not extra.headers["User-Agent"] and not extra.headers["user-agent"] then
+								extra.headers["User-Agent"] = server.user_agent
+							end
+						end
+						-- 递归清理空表（如空 headers 会被删除）
+						return cleanEmptyTables(extra)
+					end)()
 				} or nil,
 				httpSettings = (server.transport == "h2") and {
 					-- h2
@@ -374,12 +441,13 @@ end
 				} or nil,
 				grpcSettings = (server.transport == "grpc") and {
 					-- grpc
-					serviceName = server.serviceName or "",
-					multiMode = (server.grpc_mode == "multi") and true or false,
-					idle_timeout = tonumber(server.idle_timeout) or nil,
-					health_check_timeout = tonumber(server.health_check_timeout) or nil,
+					serviceName = (server.serviceName and server.serviceName ~= "") and server.serviceName or nil,
+					multiMode = (server.grpc_mode == "multi") and true or nil,
+					idle_timeout = server.idle_timeout and (tonumber(server.idle_timeout) < 10 and 10 or tonumber(server.idle_timeout)) or nil,
+					health_check_timeout = server.health_check_timeout and tonumber(server.health_check_timeout) or nil,
 					permit_without_stream = (server.permit_without_stream == "1") and true or nil,
-					initial_windows_size = tonumber(server.initial_windows_size) or nil
+					initial_windows_size = server.initial_windows_size and tonumber(server.initial_windows_size) or nil,
+					user_agent = server.user_agent
 				} or nil,
 				hysteriaSettings = (server.v2ray_protocol == "hysteria2") and {
 					-- hysteria2
@@ -409,35 +477,43 @@ end
 					keepAlivePeriod = (server.flag_quicparam == "1" and server.keepaliveperiod) and tonumber(server.keepaliveperiod) or nil,
 					disablePathMTUDiscovery = (server.flag_quicparam == "1" and tostring(server.disablepathmtudiscovery) == "1") and true or nil
 				} or nil,
-				finalmask = (server.transport == "kcp") and {
-					udp = (function()
-						local t = {}
+				finalmask = (function()
+					local finalmask
+					if server.transport == "kcp" then
 						local map = {none = "none", srtp = "header-srtp", utp = "header-utp", ["wechat-video"] = "header-wechat",
 							dtls = "header-dtls", wireguard = "header-wireguard", dns = "header-dns"}
+						local udp = {}
 						if server.kcp_guise and server.kcp_guise ~= "none" then
 							local g = { type = map[server.kcp_guise] }
 							if server.kcp_guise == "dns" and server.kcp_domain and server.kcp_domain ~= "" then
 								g.settings = { domain = server.kcp_domain }
 							end
-							t[#t + 1] = g
+							udp[#udp+1] = g
 						end
 						local c = { type = (server.seed and server.seed ~= "") and "mkcp-aes128gcm" or "mkcp-original" }
 						if server.seed and server.seed ~= "" then
 							c.settings = { password = server.seed }
 						end
-						t[#t + 1] = c
-						return t
-					end)()
-				} or (server.flag_obfs == "1" and (server.v2ray_protocol == "hysteria2" and server.obfs_type and server.obfs_type ~= "")) and {
-					udp = {
-						{
-							type = server.obfs_type,
-							settings = server.salamander and {
-								password = server.salamander
-							} or nil
+						udp[#udp+1] = c
+						finalmask = { udp = udp }
+					elseif (server.flag_obfs == "1" and (server.v2ray_protocol == "hysteria2" and server.obfs_type and server.obfs_type ~= "")) then
+						finalmask = {
+							udp = {{
+								type = server.obfs_type,
+								settings = server.salamander and {
+									password = server.salamander
+								} or nil
+							}}
 						}
-					}
-				} or nil,
+					end
+					if server.finalmask and server.finalmask ~= "" then
+						local ok, fm = pcall(json.parse, base64Decode(server.finalmask))
+						if ok and type(fm) == "table" then
+							finalmask = fm
+						end
+					end
+					return cleanEmptyTables(finalmask)
+				end)(),
 				sockopt = {
 					mark = 250,
 					tcpFastOpen = (function()
@@ -474,17 +550,15 @@ if xray_fragment.fragment ~= "0" or (xray_fragment.noise ~= "0" and xray_noise.e
 		settings = {
 			domainStrategy = (xray_fragment.noise == "1" and xray_noise.enabled == "1") and xray_noise.domainStrategy,
 			fragment = (xray_fragment.fragment == "1") and {
-				packets = (xray_fragment.fragment_packets ~= "") and xray_fragment.fragment_packets or nil,
-				length = (xray_fragment.fragment_length ~= "") and xray_fragment.fragment_length or nil,
-				interval = (xray_fragment.fragment_interval ~= "") and xray_fragment.fragment_interval or nil,
-				maxSplit = (xray_fragment.fragment_maxsplit ~= "") and xray_fragment.fragment_maxsplit or nil
+				packets = (xray_fragment.fragment_packets and xray_fragment.fragment_packets ~= "") and xray_fragment.fragment_packets or nil,
+				length = (xray_fragment.fragment_length and xray_fragment.fragment_length ~= "") and xray_fragment.fragment_length or nil,
+				interval = (xray_fragment.fragment_interval and xray_fragment.fragment_interval ~= "") and xray_fragment.fragment_interval or nil
 			} or nil,
 			noises = (xray_fragment.noise == "1" and xray_noise.enabled == "1") and {
 				{
 					type = xray_noise.type,
 					packet = xray_noise.packet,
-					delay = xray_noise.delay:find("-") and xray_noise.delay or tonumber(xray_noise.delay),
-					applyTo = xray_noise.applyto
+					delay = xray_noise.delay:find("-") and xray_noise.delay or tonumber(xray_noise.delay)
 				}
 			} or nil
 		},
@@ -752,10 +826,10 @@ local tuic = {
 			certificates = server.certificate and { server.certpath } or nil,
 			udp_relay_mode = server.udp_relay_mode,
 			congestion_control = server.congestion_control,
-			heartbeat = server.heartbeat and server.heartbeat .. "s" or nil,
-			timeout = server.timeout and server.timeout .. "s" or nil,
-			gc_interval = server.gc_interval and server.gc_interval .. "s" or nil,
-			gc_lifetime = server.gc_lifetime and server.gc_lifetime .. "s" or nil,
+			heartbeat = server.heartbeat and tonumber(server.heartbeat) .. "s" or nil,
+			timeout = server.timeout and tonumber(server.timeout) .. "s" or nil,
+			gc_interval = server.gc_interval and tonumber(server.gc_interval) .. "s" or nil,
+			gc_lifetime = server.gc_lifetime and tonumber(server.gc_lifetime) .. "s" or nil,
 			alpn = (server.tuic_alpn and server.tuic_alpn ~= "") and (function()
 				local alpn = {}
 				string.gsub(server.tuic_alpn, '[^,]+', function(w)
