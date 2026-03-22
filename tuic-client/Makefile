@@ -56,10 +56,22 @@ $(strip \
 )
 endef
 
+define Select/RustFlags
+$(strip \
+  $(if $(or \
+    $(findstring mips,$(RUSTC_TARGET_ARCH)), \
+    $(findstring mipsel,$(RUSTC_TARGET_ARCH)), \
+    $(findstring i386,$(RUSTC_TARGET_ARCH)), \
+    $(findstring i686,$(RUSTC_TARGET_ARCH)) \
+  ),--cfg portable_atomic_unsafe_assume_single_core) \
+)
+endef
+
 define Build/Compile
 	( \
 		pushd $(PKG_BUILD_DIR) ; \
 		$(CARGO_PKG_CONFIG_VARS) \
+		RUSTFLAGS="$(call Select/RustFlags)" \
 		cargo build --release \
 			-p tuic-client \
 			--target $(RUSTC_TARGET_ARCH) \
