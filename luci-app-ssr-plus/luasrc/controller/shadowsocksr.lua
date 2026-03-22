@@ -1,6 +1,49 @@
 -- Copyright (C) 2017 yushi studio <ywb94@qq.com>
 -- Licensed to the public under the GNU General Public License v3.
 module("luci.controller.shadowsocksr", package.seeall)
+require "nixio"
+require "nixio.fs"
+local uci = require("luci.model.uci").cursor()
+
+local function sh_uci_commit(config)
+	luci.sys.call(string.format("uci -q commit %s", config))
+end
+
+local function is_old_uci()
+	return luci.sys.call("grep -E 'require[ \t]*\"uci\"' /usr/lib/lua/luci/model/uci.lua >/dev/null 2>&1") == 0
+end
+
+local function uci_save(cursor, config, commit, apply)
+	if is_old_uci() then
+		cursor:save(config)
+		if commit then
+			cursor:commit(config)
+			if apply then
+				luci.sys.call("/etc/init.d/" .. config .. " reload > /dev/null 2>&1 &")
+			end
+		end
+	else
+		commit = true
+		if commit then
+			if apply then
+				cursor:commit(config)
+			else
+				sh_uci_commit(config)
+			end
+		end
+	end
+end
+
+local function url(...)
+	local url = string.format("admin/services/%s", "shadowsocksr")
+	local args = { ... }
+	for i, v in ipairs(args) do
+		if v and v ~= "" then
+			url = url .. "/" .. v
+		end
+	end
+	return require "luci.dispatcher".build_url(url)
+end
 
 function index()
 	if not nixio.fs.access("/etc/config/shadowsocksr") then
@@ -28,9 +71,13 @@ function index()
 	entry({"admin", "services", "shadowsocksr", "reset"}, call("act_reset"))
 	entry({"admin", "services", "shadowsocksr", "restart"}, call("act_restart"))
 	entry({"admin", "services", "shadowsocksr", "delete"}, call("act_delete"))
-		--[[Backup]]
+	--[[ API ]]
+	entry({"admin", "services", "shadowsocksr", "add_node"}, call("act_add_node")).leaf = true
+	entry({"admin", "services", "shadowsocksr", "remove_node"}, call("act_remove"))
+	entry({"admin", "services", "shadowsocksr", "save_node_order"}, call("act_save_order")).leaf = true
+	entry({"admin", "services", "shadowsocksr", "get_now_use_node"}, call("act_get_now_use_node")).leaf = true
+	--[[Backup]]
 	entry({"admin", "services", "shadowsocksr", "backup"}, call("create_backup")).leaf = true
-	
 end
 
 function subscribe()
@@ -47,78 +94,132 @@ function act_status()
 end
 
 function act_ping()
-    local e = {}
-    local domain = luci.http.formvalue("domain")
-    local port = tonumber(luci.http.formvalue("port") or 0)
-    local transport = luci.http.formvalue("transport")
-    local wsPath = luci.http.formvalue("wsPath") or ""
-    local tls = luci.http.formvalue("tls")
-    e.index = luci.http.formvalue("index")
+	local e = {}
+	local domain = luci.http.formvalue("domain")
+	local port = tonumber(luci.http.formvalue("port") or 0)
+	local transport = (luci.http.formvalue("transport") or ""):lower()
+	local wsPath = luci.http.formvalue("wsPath") or ""
+	local tls = luci.http.formvalue("tls")
+	local host = luci.http.formvalue("host")
+	local type = (luci.http.formvalue("type") or ""):lower()
+	local proto = (luci.http.formvalue("proto") or ""):lower()
+	e.index = luci.http.formvalue("index")
 
-    local use_nft = luci.sys.call("command -v nft >/dev/null") == 0
-    local iret = false
+	local is_ip = domain and domain:match("^%d+%.%d+%.%d+%.%d+$")
 
-    if use_nft then
-        iret = luci.sys.call("nft add element inet ss_spec ss_spec_wan_ac { " .. domain .. " } 2>/dev/null") == 0
-    else
-        iret = luci.sys.call("ipset add ss_spec_wan_ac " .. domain .. " 2>/dev/null") == 0
-    end
+	-- 临时放行防火墙逻辑
+	local use_nft = luci.sys.call("command -v nft >/dev/null") == 0
+	local iret = false
+	if domain then
+		if use_nft then
+			iret = luci.sys.call("nft add element inet ss_spec ss_spec_wan_ac { " .. domain .. " } 2>/dev/null") == 0
+		else
+			iret = luci.sys.call("ipset add ss_spec_wan_ac " .. domain .. " 2>/dev/null") == 0
+		end
+	end
+	-- Hysteria2 节点检测
+	if proto:find("hysteria2") or type:find("hysteria2") then
+		local node_id = e.index    
+		-- 调用Shell测试脚本
+		local cmd = string.format(
+			"/usr/share/shadowsocksr/hy2_test.sh url_test_hy2 %s",
+			node_id
+		)
+		local res = luci.sys.exec(cmd) or ""    
+		-- 解析结果
+		local http_code, time_pre = string.match(res, "(%d+):([%d%.]+)")    
+		if http_code == "200" or http_code == "204" then
+			e.socket = true
+			e.ping = math.floor(tonumber(time_pre or 0) * 1000)
+		else
+			e.socket = false
+			e.ping = 0
+		end
+	elseif transport == "ws" then
+		-- WebSocket 探测
+		local result = ""
+		local success = false
+		-- WebSocket 探测 (适用于域名，或带 SNI 的 IP)
+		if not is_ip or (host and host ~= "") then
+			local resolve_arg = ""
+			local final_domain = domain
+			if is_ip and host and host ~= "" then
+				-- IP 模式下使用 --resolve 强制指定 SNI，解决 TLS 握手失败
+				resolve_arg = string.format("--resolve '%s:%d:%s' ", host, port, domain)
+				final_domain = host
+			end
+			local prefix = (tls == '1') and "https://" or "http://"
+			local address = prefix .. final_domain .. ':' .. port .. wsPath
+			local cmd = string.format(
+				"curl --http1.1 -m 2 -ksN -o /dev/null %s" ..
+				"-w 'time_connect=%%{time_connect}\\nhttp_code=%%{http_code}' " ..
+				"-H 'Connection: Upgrade' -H 'Upgrade: websocket' " ..
+				"-H 'Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==' " ..
+				"-H 'Sec-WebSocket-Version: 13' '%s'",
+				resolve_arg, address
+			)
+			result = luci.sys.exec(cmd) or ""
+			success = (string.match(result, "http_code=(%d+)") == "101")
+		end
+		-- 如果深度探测失败，或是不支持深测的纯 IP
+		if not success then
+			local socket = nixio.socket("inet", "stream")
+			if socket then
+				socket:setopt("socket", "rcvtimeo", 3)
+				socket:setopt("socket", "sndtimeo", 3)
+				success = socket:connect(domain, port)
+				socket:close()
+			end
+			--luci.sys.exec(string.format("echo 'Node %s (ws) failed deep test, using TCP fallback' >> /tmp/ping.log", domain))
+		end
+		e.socket = success
+		-- 解析延迟 (优先用 curl 数据，失败则回退到 tcping)
+		local ping_time = tonumber(string.match(result, "time_connect=(%d+.%d%d%d)"))
+		if ping_time and ping_time > 0 then
+			e.ping = math.floor(ping_time * 1000)
+		else
+			local tcping_cmd = string.format("tcping -q -c 1 -t 1 -p %d %s 2>/dev/null | grep -o 'time=[0-9]*' | cut -d= -f2", port, domain)
+			e.ping = tonumber(luci.sys.exec(tcping_cmd)) or 0
+		end
+	else
+		-- 3. 非 WebSocket 节点的探测逻辑 (TCP / ICMP / UDP)
+		local socket = nixio.socket("inet", "stream")
+		if socket then
+			socket:setopt("socket", "rcvtimeo", 3)
+			socket:setopt("socket", "sndtimeo", 3)
+			e.socket = socket:connect(domain, port)
+			socket:close()
+		end
 
-    if transport == "ws" then
-        local prefix = tls == '1' and "https://" or "http://"
-        local address = prefix .. domain .. ':' .. port .. wsPath
-        local result = luci.sys.exec(
-            "curl --http1.1 -m 2 -ksN -o /dev/null " ..
-            "-w 'time_connect=%{time_connect}\nhttp_code=%{http_code}' " ..
-            "-H 'Connection: Upgrade' -H 'Upgrade: websocket' " ..
-            "-H 'Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==' " ..
-            "-H 'Sec-WebSocket-Version: 13' " .. address
-        )
-        e.socket = string.match(result,"http_code=(%d+)") == "101"
-        local ping_time = tonumber(string.match(result, "time_connect=(%d+.%d%d%d)"))
-        e.ping = ping_time and ping_time * 1000 or nil
-    else
-        -- TCP ping
-        local socket = nixio.socket("inet", "stream")
-        socket:setopt("socket", "rcvtimeo", 3)
-        socket:setopt("socket", "sndtimeo", 3)
-        e.socket = socket:connect(domain, port)
-        socket:close()
+		-- 延迟：tcping -> ping -> nping(udp)
+		local tcping_cmd = string.format("tcping -q -c 1 -t 1 -p %d %s 2>/dev/null | grep -o 'time=[0-9]*' | cut -d= -f2", port, domain)
+		e.ping = tonumber(luci.sys.exec(tcping_cmd))
+		if not e.ping then
+			local icmp_cmd = string.format("ping -c 1 -W 1 %s 2>/dev/null | grep -o 'time=[0-9.]*' | cut -d= -f2", domain)
+			e.ping = tonumber(luci.sys.exec(icmp_cmd))
+		end
 
-        e.ping = tonumber(luci.sys.exec(string.format(
-            "tcping -q -c 1 -i 1 -t 2 -p %d %s 2>/dev/null | grep -o 'time=[0-9]*' | awk -F '=' '{print $2}'",
-            port, domain
-        )))
+		if not e.ping then
+			local udp_cmd = string.format("nping --udp -c 1 -p %d %s 2>/dev/null | grep -o 'Avg rtt: [0-9.]*ms' | awk '{print $3}' | sed 's/ms//' | head -1", port, domain)
+			local udp_res = luci.sys.exec(udp_cmd)
+			if udp_res and udp_res ~= "" then
+				local ping_num = tonumber(udp_res)
+				if ping_num then e.ping = math.floor(ping_num) end
+			end
+		end
+	end
 
-        if not e.ping then
-            e.ping = tonumber(luci.sys.exec(string.format(
-                "ping -c 1 -W 1 %s 2>/dev/null | grep -o 'time=[0-9]*' | awk -F '=' '{print $2}'",
-                domain
-            )))
-        end
+	-- 4. 清理防火墙规则
+	if iret then
+		if use_nft then
+			luci.sys.call("nft delete element inet ss_spec ss_spec_wan_ac { " .. domain .. " } 2>/dev/null")
+		else
+			luci.sys.call("ipset del ss_spec_wan_ac " .. domain .. " 2>/dev/null")
+		end
+	end
 
-        if not e.ping then
-            local ping_result = tonumber(luci.sys.exec(string.format(
-                "nping --udp -c 1 -p %d %s 2>/dev/null | grep -o 'Avg rtt: [0-9.]*ms' | awk '{print $3}' | sed 's/ms//' | head -1",
-                port, domain
-            )))
-            local ping_num = tonumber(ping_result)
-            if ping_num then
-                e.ping = math.floor(ping_num)
-            end
-        end
-    end
-
-    if iret then
-        if use_nft then
-            luci.sys.call("nft delete element inet ss_spec ss_spec_wan_ac { " .. domain .. " } 2>/dev/null")
-        else
-            luci.sys.call("ipset del ss_spec_wan_ac " .. domain .. " 2>/dev/null")
-        end
-    end
-
-    luci.http.prepare_content("application/json")
-    luci.http.write_json(e)
+	luci.http.prepare_content("application/json")
+	luci.http.write_json(e)
 end
 
 function check_status()
@@ -190,13 +291,107 @@ function act_reset()
 end
 
 function act_restart()
-	luci.sys.call("/etc/init.d/shadowsocksr restart &")
 	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr"))
 end
 
 function act_delete()
-	luci.sys.call("/etc/init.d/shadowsocksr restart &")
+	uci:delete_all("shadowsocksr", "servers", function(s)
+		if s.hashkey or s.isSubscribe then
+			return true
+		else
+			return false
+		end
+	end)
+	uci:commit("shadowsocksr")
+	for file in nixio.fs.glob("/tmp/sub_md5_*") do
+		nixio.fs.remove(file)
+	end
+	luci.sys.call("/etc/init.d/shadowsocksr restart >/dev/null 2>&1 &")
 	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr", "servers"))
+end
+
+function act_add_node()
+	local redirect = luci.http.formvalue("redirect")
+	local used_sid = {}
+	local next_sid = 1
+
+	uci:foreach("shadowsocksr", "servers", function(s)
+		local num = s[".name"]:match("^cfg(%x%x)")
+		if num then
+			local n = tonumber(num, 16)
+			used_sid[n] = true
+		end
+	end)
+
+	local function get_next_sid()
+		while used_sid[next_sid] do
+			next_sid = next_sid + 1
+		end
+		used_sid[next_sid] = true
+		return next_sid
+	end
+
+	local sid = uci:section("shadowsocksr", "servers", nil)
+	local suffix = sid:sub(-4)
+	uci:delete("shadowsocksr", sid)
+
+	local id = get_next_sid()
+	local cfgid = string.format("cfg%02x%s", id, suffix)
+	uci:section("shadowsocksr", "servers", cfgid)
+	uci_save(uci, "shadowsocksr")
+
+	if redirect == "1" then
+		luci.http.redirect(url("servers", cfgid))
+	else
+		luci.http.write_json({ result = cfgid })
+	end
+end
+
+function act_remove()
+	local id = luci.http.formvalue("id")
+	if id then
+		uci:delete("shadowsocksr", id)
+		uci:commit("shadowsocksr")
+	end
+	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr", "servers"))
+end
+
+function act_save_order()
+	local ids = luci.http.formvalue("ids") or ""
+	local new_order = {}
+	for id in ids:gmatch("([^,]+)") do
+		new_order[#new_order + 1] = id
+	end
+
+	for idx, name in ipairs(new_order) do
+		luci.sys.call(string.format("uci -q reorder %s.%s=%d", "shadowsocksr", name, idx - 1))
+	end
+
+	sh_uci_commit("shadowsocksr")
+	luci.http.write_json({ status = "ok" })
+end
+
+function act_get_now_use_node()
+	local result = {}
+	local tcp_node = uci:get_first("shadowsocksr", "global", "global_server")
+	if tcp_node then
+		result["TCP"] = tcp_node
+	end
+	local udp_node = uci:get_first("shadowsocksr", "global", "udp_relay_server")
+	if udp_node then
+		result["UDP"] = udp_node
+	end
+	local netflix_node = uci:get_first("shadowsocksr", "global", "netflix_server")
+	if netflix_node then
+		result["netflix"] = netflix_node
+	end
+	local socks5_node = uci:get_first("shadowsocksr", "socks5_proxy", "server")
+	if socks5_node then
+		result["socks5"] = socks5_node
+	end
+
+	luci.http.prepare_content("application/json")
+	luci.http.write_json(result)
 end
 
 function get_log()

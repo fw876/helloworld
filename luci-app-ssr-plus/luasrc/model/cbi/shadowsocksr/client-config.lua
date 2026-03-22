@@ -12,6 +12,8 @@ local m, s, o
 
 local sid = arg[1]
 local uuid = luci.sys.exec("cat /proc/sys/kernel/random/uuid")
+local b64decode = nixio.bin.b64decode
+local b64encode = nixio.bin.b64encode
 local xray_version = nil
 local xray_version_val = 0
 
@@ -24,11 +26,59 @@ local function is_installed(e)
 	return luci.model.ipkg.installed(e)
 end
 
+local function is_js_luci()
+	return luci.sys.call('[ -f "/www/luci-static/resources/uci.js" ]') == 0
+end
+
+-- trim
+local function trim(text)
+	if not text or text == "" then
+		return ""
+	end
+	return (text:gsub("^%s*(.-)%s*$", "%1"))
+end
+
+-- base64
+local function base64Decode(text)
+	local raw = text
+	if not text or text == "" then
+		return ''
+	end
+	text = text:gsub("%z", "")
+	text = text:gsub("_", "/")
+	text = text:gsub("-", "+")
+	local mod4 = #text % 4
+	text = text .. string.sub('====', mod4 + 1)
+	local result = b64decode(text)
+	if result then
+		return result:gsub("%z", "")
+	else
+		return raw
+	end
+end
+
+local function base64Encode(text)
+	if not text or text == "" then
+		return ''
+	end
+	local result = b64encode(text)
+	if result then
+		result = result:gsub("%z", "")
+		result = result:gsub("/", "_")
+		result = result:gsub("+", "-")
+		result = result:gsub("=", "")
+		return result
+	else
+		return text
+	end
+end
+
 -- 获取 Xray 版本号
 if is_finded("xray") then
 	local version = luci.sys.exec("xray version 2>&1")
 	if version and version ~= "" then
 		xray_version = version:match("Xray%s+([%d%.]+)")
+		-- xray_version = version:match("([0-9]+%.[0-9]+%.[0-9]+)")
 	end
 end
 
@@ -42,6 +92,17 @@ if xray_version and xray_version ~= "" then
 	patch = tonumber(patch) or 0
 
 	xray_version_val = major * 10000 + minor * 100 + patch
+end
+
+local function url(...)
+	local url = string.format("admin/services/%s", "shadowsocksr")
+	local args = { ... }
+	for i, v in ipairs(args) do
+		if v and v ~= "" then
+			url = url .. "/" .. v
+		end
+	end
+	return require "luci.dispatcher".build_url(url)
 end
 
 -- 默认的保存并应用行为
@@ -64,7 +125,7 @@ local function apply_redirect(m)
 		m.on_after_save = function(self)
 			local redirect = self.redirect
 			if redirect and redirect ~= "" then
-				uci:set("shadowsocksr" .. "_redirect", "@redirect[0]", "url", redirect)
+				m.uci:set("shadowsocksr" .. "_redirect", "@redirect[0]", "url", redirect)
 			end
 		end
 	else
@@ -72,17 +133,23 @@ local function apply_redirect(m)
 	end
 end
 
+local function set_apply_on_parse(map)
+	if not map then return end
+	if is_js_luci() then
+		apply_redirect(map)
+		local old = map.on_after_save
+		map.on_after_save = function(self)
+			if old then old(self) end
+			map:set("@global[0]", "timestamp", os.time())
+		end
+	end
+end
+
 local has_xray = is_finded("xray")
 local has_hysteria2 = is_finded("hysteria")
 
--- 读取当前存储的 xray_hy2_type
-local xray_hy2_type = uci:get_first("shadowsocksr", "server_subscribe", "xray_hy2_type")
-
 local has_ss_rust = is_finded("sslocal") or is_finded("ssserver")
 local has_ss_libev = is_finded("ss-redir") or is_finded("ss-local")
-
--- 读取当前存储的 ss_type
-local ss_type = uci:get_first("shadowsocksr", "server_subscribe", "ss_type")
 
 local server_table = {}
 local encrypt_methods = {
@@ -188,13 +255,13 @@ local tls_flows = {
 }
 
 m = Map("shadowsocksr", translate("Edit ShadowSocksR Server"))
-m.redirect = luci.dispatcher.build_url("admin/services/shadowsocksr/servers")
-if m.uci:get("shadowsocksr", sid) ~= "servers" then
+m.redirect = url("servers")
+if not sid or m.uci:get("shadowsocksr", sid) ~= "servers" then
 	luci.http.redirect(m.redirect)
 	return
 end
 -- 保存&应用成功后跳转到节点列表
-apply_redirect(m)
+set_apply_on_parse(m)
 
 -- [[ Servers Setting ]]--
 s = m:section(NamedSection, sid, "servers")
@@ -207,40 +274,27 @@ o.template = "shadowsocksr/ssrurl"
 o.value = sid
 
 -- 新增一个选择框，用于选择 Xray 或 Hysteria2 核心
-o = s:option(ListValue, "xray_hy2_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Type", "Hysteria2")))
+o = s:option(ListValue, "_xray_hy2_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Type", "Hysteria2")))
 o.description = translate("The configured type also applies to the core specified when manually importing nodes.")
 -- 设置默认 Xray 或 Hysteria2 核心
 -- 动态添加选项
 if has_xray then
-	o:value("xray", translate("Xray"))
+	o:value("v2ray", translate("Xray (Hysteria2)"))
 end
 if has_hysteria2 then
 	o:value("hysteria2", translate("Hysteria2"))
 end
--- 设置默认值
-if xray_hy2_type == "xray" then
-	o.default = "xray"
-elseif xray_hy2_type == "hysteria2" then
-	o.default = "hysteria2"
+-- 读取全局 xray_hy2_type
+o.cfgvalue = function(self, section)
+	return self.map.uci:get("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type") or "hysteria2"
 end
+o.rmempty = false
 o.write = function(self, section, value)
-	-- 更新 Hysteria 节点的 xray_hy2_type
-	uci:foreach("shadowsocksr", "servers", function(s)
-		local node_type = uci:get("shadowsocksr", s[".name"], "type")  -- 获取节点类型
-		if node_type == "hysteria2" then  -- 仅修改 Hysteria 节点
-			local old_value = uci:get("shadowsocksr", s[".name"], "xray_hy2_type")
-			if old_value ~= value then
-				uci:set("shadowsocksr", s[".name"], "xray_hy2_type", value)
-			end
-		end
-	end)
 	-- 更新 server_subscribe 的 xray_hy2_type
-	local old_value = uci:get("shadowsocksr", "server_subscribe", "xray_hy2_type")
+	local old_value = self.map.uci:get("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type")
 	if old_value ~= value then
-        uci:set("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type", value)
+		self.map.uci:set("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type", value)
 	end
-	-- 更新当前 section 的 xray_hy2_type
-	ListValue.write(self, section, value)
 end
 
 o = s:option(ListValue, "type", translate("Server Node Type"))
@@ -289,7 +343,7 @@ o:depends("type", "tun")
 o.description = translate("Redirect traffic to this network interface")
 
 -- 新增一个选择框，用于选择 Shadowsocks 版本
-o = s:option(ListValue, "has_ss_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Version", "ShadowSocks")))
+o = s:option(ListValue, "_has_ss_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Version", "ShadowSocks")))
 o.description = translate("Selection ShadowSocks Node Use Version.")
 -- 设置默认 Shadowsocks 版本
 -- 动态添加选项
@@ -299,31 +353,18 @@ end
 if has_ss_libev then
 	o:value("ss-libev", translate("ShadowSocks-libev Version"))
 end
--- 设置默认值
-if ss_type == "ss-rust" then
-	o.default = "ss-rust"
-elseif ss_type == "ss-libev" then
-	o.default = "ss-libev"
+-- 读取全局 ss_type
+o.cfgvalue = function(self, section)
+	return self.map.uci:get("shadowsocksr", "@server_subscribe[0]", "ss_type") or "ss-rust"
 end
 o:depends("type", "ss")
+o.rmempty = false
 o.write = function(self, section, value)
-	-- 更新 Shadowsocks 节点的 has_ss_type
-	uci:foreach("shadowsocksr", "servers", function(s)
-		local node_type = uci:get("shadowsocksr", s[".name"], "type")  -- 获取节点类型
-		if node_type == "ss" then  -- 仅修改 Shadowsocks 节点
-			local old_value = uci:get("shadowsocksr", s[".name"], "has_ss_type")
-			if old_value ~= value then
-				uci:set("shadowsocksr", s[".name"], "has_ss_type", value)
-			end
-		end
-	end)
 	-- 更新 server_subscribe 的 ss_type
-	local old_value = uci:get("shadowsocksr", "server_subscribe", "ss_type")
+	local old_value = self.map.uci:get("shadowsocksr", "@server_subscribe[0]", "ss_type")
 	if old_value ~= value then
-		uci:set("shadowsocksr", "@server_subscribe[0]", "ss_type", value)
+		self.map.uci:set("shadowsocksr", "@server_subscribe[0]", "ss_type", value)
 	end
-	-- 更新当前 section 的 has_ss_type
-	ListValue.write(self, section, value)
 end
 
 o = s:option(ListValue, "v2ray_protocol", translate("V2Ray/XRay protocol"))
@@ -851,6 +892,11 @@ o = s:option(Value, "ws_path", translate("WebSocket Path"))
 o:depends("transport", "ws")
 o.rmempty = true
 
+-- WS间隔
+o = s:option(Value, "ws_heartbeatPeriod", translate("HeartbeatPeriod(second)"))
+o.datatype = "integer"
+o:depends("transport", "ws")
+
 if is_finded("v2ray") then
 	-- WS前置数据
 	o = s:option(Value, "ws_ed", translate("Max Early Data"))
@@ -910,39 +956,47 @@ o:depends("transport", "xhttp")
 
 o = s:option(TextValue, "xhttp_extra", " ")
 o.description = translate(
-    "<font><b>" .. translate("Configure XHTTP Extra Settings (JSON format), see:") .. "</b></font>" ..
-    " <a href='https://xtls.github.io/config/transports/splithttp.html#extra' target='_blank'>" ..
-    "<font style='color:green'><b>" .. translate("Click to the page") .. "</b></font></a>")
+		"<font><b>" .. translate("Configure XHTTP Extra Settings (JSON format), see:") .. "</b></font>" ..
+		" <a href='https://xtls.github.io/config/transports/splithttp.html#extra' target='_blank'>" ..
+		"<font style='color:green'><b>" .. translate("Click to the page") .. "</b></font></a>")
 o:depends("enable_xhttp_extra", true)
-o.rmempty = true
+--o.rmempty = true
 o.rows = 10
 o.wrap = "off"
-o.custom_write = function(self, section, value)
-    m:set(section, "xhttp_extra", value)
-    local success, data = pcall(luci.jsonc.parse, value)
-    if success and data then
-        local address = (data.extra and data.extra.downloadSettings and data.extra.downloadSettings.address)
-            or (data.downloadSettings and data.downloadSettings.address)
-        if address and address ~= "" then
-            m:set(section, "download_address", address)
-        else
-            m:del(section, "download_address")
-        end
-    else
+o.cfgvalue = function(self, section, value)
+	local raw = m:get(section, "xhttp_extra")
+	if raw then
+		return base64Decode(raw)
+	end
+end
+o.write = function(self, section, value)
+	m:set(section, "xhttp_extra", base64Encode(value) or "")
+	local success, data = pcall(luci.jsonc.parse, value)
+	if success and data then
+		local address = (data.extra and data.extra.downloadSettings and data.extra.downloadSettings.address)
+					or (data.downloadSettings and data.downloadSettings.address)
+		if address and address ~= "" then
+			address = address:gsub("^%[", ""):gsub("%]$", "")
+			m:set(section, "download_address", address)
+		else
+			m:del(section, "download_address")
+		end
+	else
         m:del(section, "download_address")
-    end
+	end
 end
 o.validate = function(self, value)
-    value = value:gsub("\r\n", "\n"):gsub("^[ \t]*\n", ""):gsub("\n[ \t]*$", ""):gsub("\n[ \t]*\n", "\n")
-    if value:sub(-1) == "\n" then
-        value = value:sub(1, -2)
-    end
-    local success, data = pcall(luci.jsonc.parse, value)
-    if not success or not data then
-        return nil, translate("Invalid JSON format")
-    end
-
-    return value
+	value = trim(value):gsub("\r\n", "\n"):gsub("^[ \t]*\n", ""):gsub("\n[ \t]*$", ""):gsub("\n[ \t]*\n", "\n")
+	local ok, data = pcall(luci.jsonc.parse, value)
+	if ok and data then
+		return value
+	else
+		return nil, "XHTTP Extra " .. translate("Must be JSON text!")
+	end
+end
+o.remove = function(self, section, value)
+	m:del(section, "xhttp_extra")
+	m:del(section, "download_address")
 end
 
 -- [[ H2部分 ]]--
@@ -1097,7 +1151,12 @@ o.rmempty = true
 
 -- [[ WireGuard 部分 ]]--
 o = s:option(Flag, "kernelmode", translate("Enabled Kernel virtual NIC TUN(optional)"))
-o.description = translate("Virtual NIC TUN of Linux kernel can be used only when system supports and have root permission. If used, IPv6 routing table 1023 is occupied.")
+o.description = translate(
+		"<ul>" ..
+		"<li>" .. translate("Linux kernel TUN virtual NIC requires system support and root privileges.") .. "</li>" ..
+		"<li>" .. translate("When enabled, it occupies IPv6 routing table 1023.") .. "</li>" ..
+		"</ul>"
+)
 o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
 o.default = "0"
 o.rmempty = true
@@ -1108,7 +1167,7 @@ o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
 o.rmempty = true
 
 o = s:option(DynamicList, "reserved", translate("Reserved bytes(optional)"))
-o.description = translate("Wireguard reserved bytes.")
+o.description = translate("Decimal numbers separated by \",\" or Base64-encoded strings.")
 o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
 o.rmempty = true
 
@@ -1132,6 +1191,48 @@ o.datatype = "cidr"
 o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
 o.default = "0.0.0.0/0"
 o.rmempty = true
+
+-- [[ User-Agent部分 ]]--
+o = s:option(Value, "user_agent", translate("User-Agent"))
+o:depends("tcp_guise", "http")
+o:depends("transport", "ws")
+o:depends("transport", "httpupgrade")
+o:depends("transport", "xhttp")
+o:depends("transport", "grpc")
+
+--[[ FinalMask部分 ]]--
+o = s:option(Flag, "enable_finalmask", translate("FinalMask"))
+o.rmempty = true
+o.default = "0"
+o:depends({type = "v2ray", v2ray_protocol = "vless"})
+o:depends({type = "v2ray", v2ray_protocol = "vmess"})
+o:depends({type = "v2ray", v2ray_protocol = "trojan"})
+o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
+o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
+o:depends({type = "v2ray", v2ray_protocol = "hysteria2"})
+
+o = s:option(TextValue, "finalmask", " ")
+o.description = translate("An FinalMaskObject in JSON format, used for sharing.")
+o:depends("enable_finalmask", true)
+o.rows = 10
+o.wrap = "off"
+o.custom_cfgvalue = function(self, section, value)
+	local raw = m:get(section, "finalmask")
+	if raw then
+		return base64Decode(raw)
+	end
+end
+o.custom_write = function(self, section, value)
+	m:set(section, "finalmask", base64Encode(value) or "")
+end
+o.validate = function(self, value)
+	value = trim(value):gsub("\r\n", "\n"):gsub("^[ \t]*\n", ""):gsub("\n[ \t]*$", ""):gsub("\n[ \t]*\n", "\n")
+	if luci.jsonc.parse(value) then
+		return value
+	else
+		return nil, "FinalMask " .. translate("Must be JSON text!")
+	end
+end
 
 -- [[ TLS ]]--
 o = s:option(Flag, "tls", translate("TLS"))
@@ -1297,6 +1398,7 @@ o:depends("type", "trojan")
 o:depends("type", "tuic")
 o.description = translate("If true, allowss insecure connection at TLS client, e.g., TLS server uses unverifiable certificates.")
 -- Xray 支持时间判断
+-- if os.time() < os.time({year=2026,month=6,day=1}) then
 if os.date("%Y.%m.%d") < "2026.06.01" then
 	-- Xray 支持到 26.06.01
 	o:depends("tls", true)
