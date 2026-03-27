@@ -9,7 +9,7 @@ Subject: [PATCH 3/5] add response for bad request in ServeHTTP handler
 
 --- a/pkg/server/http_handler.go
 +++ b/pkg/server/http_handler.go
-@@ -93,6 +93,7 @@ func (h *HttpHandler) ServeHTTP(w http.R
+@@ -91,6 +91,7 @@ func (h *HttpHandler) ServeHTTP(w http.R
  	if err != nil {
  		h.warnErr(req, "invalid request", err)
  		w.WriteHeader(http.StatusBadRequest)
