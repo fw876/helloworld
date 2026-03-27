@@ -452,33 +452,10 @@ end
 				hysteriaSettings = (server.v2ray_protocol == "hysteria2") and {
 					-- hysteria2
 					version = 2,
-					auth = server.hy2_auth,
-					congestion = server.hy2_tcpcongestion or nil,
-					up = tonumber(server.uplink_capacity) and tonumber(server.uplink_capacity) .. " mbps" or nil,
-					down = tonumber(server.downlink_capacity) and tonumber(server.downlink_capacity) .. " mbps" or nil,
-					udphop = (server.flag_port_hopping == "1") and {
-						port = string.gsub(server.port_range, ":", "-"),
-						interval = (function()
-							local v = tonumber((server.hopinterval or "30"):match("^%d+"))
-							return (v and v >= 5) and v or 30
-							end)()
-					} or nil,
-					initStreamReceiveWindow = (server.flag_quicparam == "1" and server.initstreamreceivewindow) and tonumber(server.initstreamreceivewindow) or nil,
-					maxStreamReceiveWindow = (server.flag_quicparam == "1" and server.maxstreamreceivewindow) and tonumber(server.maxstreamreceivewindow) or nil,
-					initConnectionReceiveWindow = (server.flag_quicparam == "1" and server.initconnreceivewindow) and tonumber(server.initconnreceivewindow) or nil,
-					maxConnectionReceiveWindow = (server.flag_quicparam == "1" and server.maxconnreceivewindow) and tonumber(server.maxconnreceivewindow) or nil,
-					maxIdleTimeout = (server.flag_quicparam == "1" and (function()
-						local timeoutStr = tostring(server.maxidletimeout or "")
-						local timeout = tonumber(timeoutStr:match("^%d+"))
-						if timeout and timeout >= 4 and timeout <= 120 then
-							return timeout
-						end
-					end)()) or 30,
-					keepAlivePeriod = (server.flag_quicparam == "1" and server.keepaliveperiod) and tonumber(server.keepaliveperiod) or nil,
-					disablePathMTUDiscovery = (server.flag_quicparam == "1" and tostring(server.disablepathmtudiscovery) == "1") and true or nil
+					auth = server.hy2_auth
 				} or nil,
 				finalmask = (function()
-					local finalmask
+					local finalmask = {}
 					if server.transport == "kcp" then
 						local map = {none = "none", srtp = "header-srtp", utp = "header-utp", ["wechat-video"] = "header-wechat",
 							dtls = "header-dtls", wireguard = "header-wireguard", dns = "header-dns"}
@@ -495,15 +472,39 @@ end
 							c.settings = { password = server.seed }
 						end
 						udp[#udp+1] = c
-						finalmask = { udp = udp }
-					elseif (server.flag_obfs == "1" and (server.v2ray_protocol == "hysteria2" and server.obfs_type and server.obfs_type ~= "")) then
-						finalmask = {
-							udp = {{
+						finalmask.udp = udp
+					elseif server.v2ray_protocol == "hysteria2" then
+						if (server.flag_obfs == "1" and (server.obfs_type and server.obfs_type ~= "")) then
+							finalmask.udp = {{
 								type = server.obfs_type,
 								settings = server.salamander and {
 									password = server.salamander
 								} or nil
 							}}
+						end
+						local up = tonumber(server.uplink_capacity) or 0
+						local down = tonumber(server.downlink_capacity) or 0
+						finalmask.quicParams = {
+							congestion = server.hy2_tcpcongestion or nil,
+							brutalUp = up > 0 and (up .. "mbps") or nil,
+							brutalDown = down > 0 and (down .. "mbps") or nil,
+							udpHop = (server.flag_port_hopping == "1") and {
+								ports = string.gsub(server.port_range, ":", "-"),
+								interval = (function(v)
+									v = tonumber((v or "30"):match("^%d+"))
+									return (v and v >= 5) and v or 30
+								end)(server.hopinterval)
+							} or nil,
+							initStreamReceiveWindow = (server.flag_quicparam == "1" and server.initstreamreceivewindow) and tonumber(server.initstreamreceivewindow) or nil,
+							maxStreamReceiveWindow = (server.flag_quicparam == "1" and server.maxstreamreceivewindow) and tonumber(server.maxstreamreceivewindow) or nil,
+							initConnectionReceiveWindow = (server.flag_quicparam == "1" and server.initconnreceivewindow) and tonumber(server.initconnreceivewindow) or nil,
+							maxConnectionReceiveWindow = (server.flag_quicparam == "1" and server.maxconnreceivewindow) and tonumber(server.maxconnreceivewindow) or nil,
+							maxIdleTimeout = (server.flag_quicparam == "1" and (function(t)
+								t = tonumber(tostring(t or "30"):match("^%d+"))
+								return (t and t >= 4 and t <= 120) and t or 30
+							end)(server.maxidletimeout) or 30),
+							keepAlivePeriod = (server.flag_quicparam == "1" and server.keepaliveperiod) and tonumber(server.keepaliveperiod) or nil,
+							disablePathMTUDiscovery = (server.flag_quicparam == "1" and tostring(server.disablepathmtudiscovery) == "1") and true or nil
 						}
 					end
 					if server.finalmask and server.finalmask ~= "" then
