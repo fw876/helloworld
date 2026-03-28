@@ -337,7 +337,7 @@ end
 						return server.tls_CertByName
 					end)(),
 					echConfigList = (server.enable_ech == "1") and server.ech_config or nil,
-					echForceQuery = (server.enable_ech == "1") and (server.ech_ForceQuery or "none") or nil
+					echForceQuery = (server.enable_ech == "1") and (server.ech_ForceQuery or "full") or nil
 				} or nil,
 				xtlsSettings = (server.xtls == '1') and server.tls_host and {
 					-- xtls

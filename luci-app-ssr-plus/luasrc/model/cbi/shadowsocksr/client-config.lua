@@ -1323,7 +1323,7 @@ if is_finded("xray") then
 
 	o = s:option(ListValue, "ech_ForceQuery", translate("ECH Query Policy"))
 	o.description = translate("Controls the policy used when performing DNS queries for ECH configuration.")
-	o.default = "none"
+	o.default = "full"
 	o:value("none")
 	o:value("half")
 	o:value("full")
