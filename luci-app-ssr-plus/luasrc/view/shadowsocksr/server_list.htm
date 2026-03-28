@@ -40,9 +40,13 @@ table td, .table .td {
 .cbi-section-table th:nth-child(2) {
 	width: 180px;
 	max-width: 180px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	cursor: help;
+}
+
+.cbi-section-table td:nth-child(2) div {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .node-wrapper {
@@ -115,9 +119,9 @@ table td, .table .td {
 }*/
 
 .socket-connected {
-		flex: 0 0 40px;
-		white-space: nowrap;
-		min-width: 0;
+	flex: 0 0 40px;
+	white-space: nowrap;
+	min-width: 0;
 }
 
 @media screen and (max-width: 1152px) {
@@ -158,6 +162,14 @@ table td, .table .td {
         font-weight: bold;
         margin-right: 4px;
         color: #555;
+    }
+
+    /* 手机端完整显示节点名称 */
+    .cbi-section-table td:nth-child(2) div {
+        overflow: visible;
+        white-space: normal;
+        text-overflow: clip;
+        word-break: break-word;
     }
 
     .cbi-section-table td.cbi-section-actions {
@@ -696,6 +708,15 @@ table td, .table .td {
 
 		// 初始化排序功能
 		initSortable();
+
+		// 为节点名称列添加 title 属性
+		document.querySelectorAll("#cbi-shadowsocksr-servers table tbody tr").forEach(function(row) {
+			var nameCell = row.querySelector("td:nth-child(2)");
+			if (nameCell) {
+				var fullName = nameCell.innerText.trim();
+				if (fullName) nameCell.setAttribute("title", fullName);
+			}
+		});
 
 		// 绑定保存按钮点击事件
 		var saveBtn = document.getElementById("save_order_btn");
