@@ -38,15 +38,18 @@ local function trim(text)
 	return (text:gsub("^%s*(.-)%s*$", "%1"))
 end
 
--- base64
+-- base64 解码
 local function base64Decode(text)
 	local raw = text
 	if not text or text == "" then
 		return ''
 	end
 	text = text:gsub("%z", "")
+	text = text:gsub("%c", "")
+	text = text:gsub("%s", "")
 	text = text:gsub("_", "/")
 	text = text:gsub("-", "+")
+	text = text:gsub("=", "")
 	local mod4 = #text % 4
 	text = text .. string.sub('====', mod4 + 1)
 	local result = b64decode(text)
@@ -57,6 +60,7 @@ local function base64Decode(text)
 	end
 end
 
+-- base64 编码
 local function base64Encode(text)
 	if not text or text == "" then
 		return ''
@@ -64,9 +68,6 @@ local function base64Encode(text)
 	local result = b64encode(text)
 	if result then
 		result = result:gsub("%z", "")
-		result = result:gsub("/", "_")
-		result = result:gsub("+", "-")
-		result = result:gsub("=", "")
 		return result
 	else
 		return text
@@ -1212,7 +1213,8 @@ o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
 o:depends({type = "v2ray", v2ray_protocol = "hysteria2"})
 
 o = s:option(TextValue, "finalmask", " ")
-o.description = translate("An FinalMaskObject in JSON format, used for sharing.")
+o.description = translate("An FinalMaskObject in JSON format, used for sharing.") .. "<br>" ..
+		translate("Custom finalmask overrides mkcp, hysteria2, fragment, noise, and related settings.")
 o:depends("enable_finalmask", true)
 o.rows = 10
 o.wrap = "off"
@@ -1510,6 +1512,7 @@ o.rmempty = true
 o.default = ""
 o:value("", translate("comment_tcpcongestion_disable"))
 o:value("bbr", translate("BBR"))
+o:value("brutal", translate("BRUTAL"))
 o:value("cubic", translate("CUBIC"))
 o:value("reno", translate("Reno"))
 o:depends({type = "v2ray", v2ray_protocol = "vless"})

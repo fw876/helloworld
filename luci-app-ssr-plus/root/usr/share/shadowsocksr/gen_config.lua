@@ -23,15 +23,20 @@ local xray_version_val = 0
 local node_id = server_section
 local remarks = server.alias or ""
 local b64decode = nixio.bin.b64decode
+local b64encode = nixio.bin.b64encode
 
+-- base64 解码
 local function base64Decode(text)
 	local raw = text
 	if not text or text == "" then
 		return ''
 	end
 	text = text:gsub("%z", "")
+	text = text:gsub("%c", "")
+	text = text:gsub("%s", "")
 	text = text:gsub("_", "/")
 	text = text:gsub("-", "+")
+	text = text:gsub("=", "")
 	local mod4 = #text % 4
 	text = text .. string.sub('====', mod4 + 1)
 	local result = b64decode(text)
@@ -39,6 +44,20 @@ local function base64Decode(text)
 		return result:gsub("%z", "")
 	else
 		return raw
+	end
+end
+
+-- base64 编码
+local function base64Encode(text)
+	if not text or text == "" then
+		return ''
+	end
+	local result = b64encode(text)
+	if result then
+		result = result:gsub("%z", "")
+		return result
+	else
+		return text
 	end
 end
 
@@ -456,6 +475,8 @@ end
 				} or nil,
 				finalmask = (function()
 					local finalmask = {}
+					local PT = server.v2ray_protocol
+					local TP = server.transport
 					if server.transport == "kcp" then
 						local map = {none = "none", srtp = "header-srtp", utp = "header-utp", ["wechat-video"] = "header-wechat",
 							dtls = "header-dtls", wireguard = "header-wireguard", dns = "header-dns"}
@@ -473,7 +494,7 @@ end
 						end
 						udp[#udp+1] = c
 						finalmask.udp = udp
-					elseif server.v2ray_protocol == "hysteria2" then
+					elseif PT == "hysteria2" then
 						if (server.flag_obfs == "1" and (server.obfs_type and server.obfs_type ~= "")) then
 							finalmask.udp = {{
 								type = server.obfs_type,
@@ -507,6 +528,46 @@ end
 							disablePathMTUDiscovery = (server.flag_quicparam == "1" and tostring(server.disablepathmtudiscovery) == "1") and true or nil
 						}
 					end
+					if xray_fragment.fragment == "1" and ({raw=1, ws=1, httpupgrade=1, grpc=1, xhttp=1})[TP] then
+						local n_packets = xray_fragment.fragment_packets
+						local n_length = xray_fragment.fragment_length
+						local n_delay = xray_fragment.fragment_delay
+						local n_maxsplit = xray_fragment.fragment_maxSplit
+						--local domainstr = xray_noise.domainStrategy
+						finalmask.tcp = finalmask.tcp or {}
+						finalmask.tcp[#finalmask.tcp + 1] = {
+							type = "fragment",
+							settings = {
+								--domainStrategy = (xray_fragment.noise == "1" and xray_noise.enabled == "1") and domainstr or nil,
+								packets = (n_packets and n_packets ~= "") and n_packets or nil,
+								length = (n_length and n_length ~= "") and n_length or nil,
+								delay = (type(n_delay) == "string" and string.find(n_delay, "-")) and n_delay or (n_delay and tonumber(n_delay)),
+								maxSplit = (n_maxsplit and n_maxsplit ~= "") and n_maxsplit or nil
+							}
+						}
+					end
+					if xray_fragment.noise == "1" and (TP == "kcp" or (TP == "xhttp" and (server.tls_alpn == "h3" or server.tls_alpn == "h3,h2"))) then 
+						if xray_noise.enabled == "1" then
+							local n_type = xray_noise.type
+							local n_delay = xray_noise.delay
+							local n_packet = xray_noise.packet
+							finalmask.udp = finalmask.udp or {}
+							finalmask.udp[#finalmask.udp + 1] = {
+								type = "noise",
+								settings = {
+									reset = 0,
+									noise = {
+										{
+											rand = (n_type == "rand") and (n_packet and (type(n_packet) == "string" and (n_packet:find("-")) and n_packet or tonumber(n_packet))) or nil,
+											type = (type(n_type) == "string" and n_type ~= "rand") and n_type or nil,
+											packet = (n_type ~= "rand") and (n_type ~= "str" and (n_packet and type(n_packet) == "string" and base64Encode(n_packet)) or n_packet) or nil,
+											delay = (type(n_delay) == "string" and string.find(n_delay, "-")) and n_delay or (n_delay and tonumber(n_delay))
+										}
+									}
+								}
+							}
+						end
+					end
 					if server.finalmask and server.finalmask ~= "" then
 						local ok, fm = pcall(json.parse, base64Decode(server.finalmask))
 						if ok and type(fm) == "table" then
@@ -516,7 +577,7 @@ end
 					return cleanEmptyTables(finalmask)
 				end)(),
 				sockopt = {
-					mark = 250,
+					mark = 255,
 					tcpFastOpen = (function()
 						if server.transport == "xhttp" then
 							return (server.fast_open == "1") and true or false
@@ -545,27 +606,16 @@ end
 
 -- 添加带有 fragment 设置的 dialerproxy 配置
 if xray_fragment.fragment ~= "0" or (xray_fragment.noise ~= "0" and xray_noise.enabled ~= "0") then
+	local n_domainstrategy = xray_noise.domainStrategy
 	table.insert(Xray.outbounds, {
 		protocol = "freedom",
 		tag = (remarks ~= nil and remarks ~= "") and (node_id .. "." .. remarks) or node_id,
 		settings = {
-			domainStrategy = (xray_fragment.noise == "1" and xray_noise.enabled == "1") and xray_noise.domainStrategy,
-			fragment = (xray_fragment.fragment == "1") and {
-				packets = (xray_fragment.fragment_packets and xray_fragment.fragment_packets ~= "") and xray_fragment.fragment_packets or nil,
-				length = (xray_fragment.fragment_length and xray_fragment.fragment_length ~= "") and xray_fragment.fragment_length or nil,
-				interval = (xray_fragment.fragment_interval and xray_fragment.fragment_interval ~= "") and xray_fragment.fragment_interval or nil
-			} or nil,
-			noises = (xray_fragment.noise == "1" and xray_noise.enabled == "1") and {
-				{
-					type = xray_noise.type,
-					packet = xray_noise.packet,
-					delay = xray_noise.delay:find("-") and xray_noise.delay or tonumber(xray_noise.delay)
-				}
-			} or nil
+			domainStrategy = (xray_fragment.noise == "1" and xray_noise.enabled == "1") and n_domainstrategy or nil
 		},
 		streamSettings = {
 			sockopt = {
-			mark = 250,
+			mark = 255,
 			tcpFastOpen = (function()
 				if server.transport == "xhttp" then
 					return (server.fast_open == "1") and true or false
