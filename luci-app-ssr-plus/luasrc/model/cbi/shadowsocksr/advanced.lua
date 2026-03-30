@@ -372,9 +372,14 @@ if is_finded("xray") then
 	o.default = "100-200"
 	o:depends("fragment", true)
 
-	o = s:option(Value, "fragment_interval", translate("Fragment Interval"), translate("Fragmentation interval (ms)"))
+	o = s:option(Value, "fragment_delay", translate("Fragment Delay"), translate("Fragmentation interval (ms)"))
 	o.datatype = "or(uinteger,portrange)"
 	o.default = "10-20"
+	o:depends("fragment", true)
+
+	o = s:option(Value, "fragment_maxSplit", translate("Max Split"), translate("Limit the maximum number of splits."))
+	o.datatype = "or(uinteger,portrange)"
+	o.default = "100-200"
 	o:depends("fragment", true)
 
 	o = s:option(Flag, "noise", translate("Noise"), translate("UDP noise, Under some circumstances it can bypass some UDP based protocol restrictions."))
@@ -383,6 +388,7 @@ if is_finded("xray") then
 	s = m:section(TypedSection, "xray_noise_packets", translate("Xray Noise Packets"))
 	s.description = translate(
 		"<font style='color:red'>" .. translate("To send noise packets, select \"Noise\" in Xray Settings.") .. "</font>" ..
+		"<br/><font><b>" .. translate("Packet or Rand length as a string, e.g., 10-20.") .. "</b></font>" ..
 		"<br/><font><b>" .. translate("For specific usage, see:") .. "</b></font>" ..
 		"<a href='https://xtls.github.io/config/outbounds/freedom.html' target='_blank'>" ..
 		"<font style='color:green'><b>" .. translate("Click to the page") .. "</b></font></a>")
@@ -406,12 +412,13 @@ if is_finded("xray") then
 	o = s:option(ListValue, "type", translate("Type"))
 	o.default = "base64"
 	o:value("rand", "rand")
+	o:value("array", "array")
 	o:value("str", "str")
 	o:value("hex", "hex")
 	o:value("base64", "base64")
 
 	o = s:option(Value, "domainStrategy", translate("Domain Strategy"))
-	o.default = "UseIP"
+	o.default = "AsIs"
 	o:value("AsIs", "AsIs")
 	o:value("UseIP", "UseIP")
 	o:value("UseIPv4", "UseIPv4")
@@ -419,7 +426,7 @@ if is_finded("xray") then
 	o:value("ForceIPv4", "ForceIPv4")
 	o.rmempty = false
 
-	o = s:option(Value, "packet", translate("Packet"))
+	o = s:option(Value, "packet", translate("Packet | Rand Length"))
 	o.datatype = "minlength(1)"
 	o.rmempty = false
 

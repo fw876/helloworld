@@ -173,15 +173,18 @@ local function md5(content)
 	-- assert(nixio.errno() == 0)
 	return trim(stdout)
 end
--- base64
+-- base64 解码
 local function base64Decode(text)
 	local raw = text
-	if not text then
+	if not text or text == "" then
 		return ''
 	end
 	text = text:gsub("%z", "")
+	text = text:gsub("%c", "")
+	text = text:gsub("%s", "")
 	text = text:gsub("_", "/")
 	text = text:gsub("-", "+")
+	text = text:gsub("=", "")
 	local mod4 = #text % 4
 	text = text .. string.sub('====', mod4 + 1)
 	local result = b64decode(text)
@@ -191,20 +194,18 @@ local function base64Decode(text)
 		return raw
 	end
 end
+-- base64 编码
 local function base64Encode(text)
 	if not text or text == "" then
 		return ''
 	end
-    local result = b64encode(text)
-    if result then
-        result = result:gsub("%z", "")
-        result = result:gsub("/", "_")
-        result = result:gsub("+", "-")
-        result = result:gsub("=", "")
-        return result
-    else
-        return text
-    end
+	local result = b64encode(text)
+	if result then
+		result = result:gsub("%z", "")
+		return result
+	else
+		return text
+	end
 end
 -- 检查数组(table)中是否存在某个字符值
 -- https://www.04007.cn/article/135.html
