@@ -372,20 +372,22 @@ end
 					mldsa65Verify = (server.enable_mldsa65verify == '1') and server.reality_mldsa65verify or nil,
 					serverName = server.tls_host
 				} or nil,
-				rawSettings = ((server.transport == "raw" or server.transport == "tcp") and (server.tcp_guise and server.tcp_guise ~= "none")) and {
+				rawSettings = ((server.transport == "raw" or server.transport == "tcp")
+					and (server.tcp_guise and server.tcp_guise ~= "none")) and {
 					-- tcp
 					header = {
 						type = server.tcp_guise,
 						request = (server.tcp_guise == "http") and {
 							path = server.http_path and (function()
 								local t, r = server.http_path, {}
+								if type(t) == "string" then t = {t} end
 								for _, v in ipairs(t) do
 									r[#r + 1] = (v == "" and "/" or v)
 								end
 								return r
 							end)() or {"/"},
 							headers = (server.http_path or server.user_agent) and {
-								Host = server.http_path,
+								Host = (type(server.http_host) == "string") and {server.http_host} or server.http_host,
 								["User-Agent"] = server.user_agent and {server.user_agent} or nil
 							} or nil
 						} or nil
