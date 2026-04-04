@@ -555,7 +555,7 @@ msgstr ""
 "定义上游逻辑模式，可选择值：负载均衡、并行查询、最快响应（默认值：负载均"
 "衡）。"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:433
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:432
 msgid "Delay (ms)"
 msgstr "延迟（ms）"
 
@@ -624,7 +624,7 @@ msgstr "是否要恢复客户端默认配置？"
 msgid "DoT upstream (Need use wolfssl version)"
 msgstr "DoT 上游（需使用 wolfssl 版本）"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:420
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:419
 msgid "Domain Strategy"
 msgstr "域名解析策略"
 
@@ -1483,7 +1483,7 @@ msgstr ""
 msgid "Packet or Rand length as a string, e.g., 10-20."
 msgstr "数据包或 Rand 长度以字符串形式输入，例如：10-20。"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:429
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:428
 msgid "Packet | Rand Length"
 msgstr "数据包 | Rand 长度"
 
