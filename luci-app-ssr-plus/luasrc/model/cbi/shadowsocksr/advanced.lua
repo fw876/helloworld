@@ -412,7 +412,6 @@ if is_finded("xray") then
 	o = s:option(ListValue, "type", translate("Type"))
 	o.default = "base64"
 	o:value("rand", "rand")
-	o:value("array", "array")
 	o:value("str", "str")
 	o:value("hex", "hex")
 	o:value("base64", "base64")

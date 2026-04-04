@@ -61,6 +61,19 @@ local function base64Encode(text)
 	end
 end
 
+-- Hex 编码
+local function hexEncode(text)
+	if not text or text == "" then
+		return ''
+	end
+	local hex = ''
+	for i = 1, #text do
+		local byte = string.byte(text, i)
+		hex = hex .. string.format('%02X', byte)
+	end
+	return hex
+end
+
 local function cleanEmptyTables(t)
 	if type(t) ~= "table" then return nil end
 	for k, v in pairs(t) do
@@ -562,7 +575,7 @@ end
 										{
 											rand = (n_type == "rand") and (n_packet and (type(n_packet) == "string" and (n_packet:find("-")) and n_packet or tonumber(n_packet))) or nil,
 											type = (type(n_type) == "string" and n_type ~= "rand") and n_type or nil,
-											packet = (n_type ~= "rand") and (n_type ~= "str" and (n_packet and type(n_packet) == "string" and base64Encode(n_packet)) or n_packet) or nil,
+											packet = (n_type ~= "rand") and ((n_packet and type(n_packet) == "string") and ((n_type == "hex" and hexEncode(n_packet)) or (n_type == "base64" and base64Encode(n_packet))) or n_packet) or nil,
 											delay = (type(n_delay) == "string" and string.find(n_delay, "-")) and n_delay or (n_delay and tonumber(n_delay))
 										}
 									}
