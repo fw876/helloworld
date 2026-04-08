@@ -30,54 +30,20 @@ local subscribe_url = ucic:get_first(name, 'server_subscribe', 'subscribe_url', 
 local filter_words = ucic:get_first(name, 'server_subscribe', 'filter_words', '过期时间/剩余流量')
 local save_words = ucic:get_first(name, 'server_subscribe', 'save_words', '')
 local user_agent = ucic:get_first(name, 'server_subscribe', 'user_agent', 'v2rayN/9.99')
+
 -- 读取 ss_type 设置
-local ss_type = ucic:get_first(name, 'server_subscribe', 'ss_type', 'ss-rust')
--- 根据 ss_type 选择对应的程序
-local ss_program = "sslocal"
-if ss_type == "ss-rust" then
-    ss_program = "sslocal"
-elseif ss_type == "ss-libev" then
-    ss_program = "ss-redir"
-elseif ss_type == "v2ray" then
-    ss_program = "xray"
-end
--- 从 UCI 配置读取 xray_hy2_type 设置
-local xray_hy2_type = ucic:get_first(name, 'server_subscribe', 'xray_hy2_type', 'hysteria2')
-local xray_hy2_program = "hysteria"
-if xray_hy2_type == "v2ray" then
-	xray_hy2_program = "xray"  -- Hysteria2 使用 Xray
-elseif xray_hy2_type == "hysteria2" then
-	xray_hy2_program = "hysteria"  -- Hysteria2 使用 Hysteria
-end
-local v2_ss_exists = luci.sys.exec('type -t -p ' .. ss_program .. ' 2>/dev/null') ~= ""
--- 初始化变量
-local v2_ss = nil
-local has_v2_ss_type = nil
-if v2_ss_exists then
-    if ss_type == "v2ray" then
-        -- 使用 Xray
-        v2_ss = "v2ray"
-        has_v2_ss_type = "shadowsocks"
-    else
-        -- 使用 SS (rust 或 libev)
-        v2_ss = "ss"
-    end
-end
-local v2_tj = luci.sys.exec('type -t -p trojan') ~= "" and "trojan" or "v2ray"
--- 检查程序是否存在
-local program_exists = luci.sys.exec('type -t -p ' .. xray_hy2_program .. ' 2>/dev/null') ~= ""
--- 初始化变量
-local hy2_type = nil
-local has_xray_hy2_type = nil
-if program_exists then
-	-- 设置节点类型
-	if xray_hy2_type == "hysteria2" then
-		hy2_type = "hysteria2"
-	else
-		hy2_type = "v2ray"  -- 当使用 Xray 时，节点类型是 "v2ray"
-		has_xray_hy2_type = "hysteria2"  -- 可用的协议类型是 Hysteria2
-	end
-end
+local ss_type = ucic:get_first(name, 'server_subscribe', 'ss_type')
+-- 读取 xray_hy2_type 设置
+local xray_hy2_type = ucic:get_first(name, 'server_subscribe', 'xray_hy2_type')
+-- 读取 xray_tj_type 设置
+local xray_tj_type = ucic:get_first(name, 'server_subscribe', 'xray_tj_type')
+
+local has_ss_rust = luci.sys.exec('type -t -p sslocal 2>/dev/null || type -t -p ssserver 2>/dev/null') ~= ""
+local has_ss_libev = luci.sys.exec('type -t -p ss-redir 2>/dev/null || type -t -p ss-local 2>/dev/null') ~= ""
+local has_hysteria = luci.sys.exec('type -t -p hysteria 2>/dev/null') ~= ""
+local has_trojan = luci.sys.exec('type -t -p trojan 2>/dev/null') ~= ""
+local has_xray = luci.sys.exec('type -t -p xray 2>/dev/null') ~= ""
+
 local tuic_type = luci.sys.exec('type -t -p tuic-client') ~= "" and "tuic"
 local log = function(...)
 	print(os.date("%Y-%m-%d %H:%M:%S ") .. table.concat({...}, " "))
@@ -246,67 +212,66 @@ local function processData(szType, content, cfgid)
 		--	log(k.."="..v)
 		-- end
 
-		-- 如果 hy2 或 Xray 程序未安装则跳过订阅
-		if not hy2_type then
+		-- 自动决定模式（true=Xray, false=普通）
+		local xray_hy2_mode = false  -- 默认普通模式
+		if xray_hy2_type == "v2ray" then
+			-- Xray 模式
+			if has_xray then
+				xray_hy2_mode = true
+			elseif has_hysteria then
+				xray_hy2_mode = false   -- 回退到普通 Hysteria2
+			else
+				xray_hy2_mode = nil
+			end
+		elseif xray_hy2_type == "hysteria2" then
+			-- 普通 Hysteria2 模式
+			if has_hysteria then
+				xray_hy2_mode = false
+			elseif has_xray then
+				xray_hy2_mode = true   -- 回退到 Xray
+			else
+				xray_hy2_mode = nil
+			end
+		else
+			-- auto 或空：优先普通 Hysteria2，若不存在则使用 Xray
+			if has_hysteria then
+				xray_hy2_mode = false
+			elseif has_xray then
+				xray_hy2_mode = true   -- 回退到 Xray
+			else
+				xray_hy2_mode = nil
+			end
+		end
+	
+		-- 如果无法确定模式，跳过该订阅
+		if xray_hy2_mode == nil then
 			return nil
 		end
 	
-		if xray_hy2_type == "hysteria2" then
-			if params.protocol and params.protocol ~= "" then
-				result.flag_transport = "1"
-				result.transport_protocol = params.protocol
-			else
-				result.flag_transport = "1"
-				result.transport_protocol = "udp"
-			end
+		if xray_hy2_mode then
+			result.type = "v2ray"
+			result.v2ray_protocol = "hysteria2"
 			if params.fm and params.fm ~= "" then
 				result.enable_finalmask = "1"
 				result.finalmask = base64Encode(params.fm)
 			end
-			if params.pinSHA256 and params.pinSHA256 ~= "" then
-				result.pinsha256 = params.pinSHA256
-			end
-		else
-			result.v2ray_protocol = has_xray_hy2_type
-		end
-
-		local raw_alias = url.fragment and UrlDecode(url.fragment) or nil
-		result.raw_alias = raw_alias   -- 新增
-		result.alias = raw_alias       -- 临时赋值（后面会被覆盖）
-		result.type = hy2_type
-		result.server = url.host
-		result.server_port = url.port or 443
-
-		result.hy2_auth = url.user
-		result.uplink_capacity = tonumber((params.upmbps or ""):match("^(%d+)")) or nil
-		result.downlink_capacity = tonumber((params.downmbps or ""):match("^(%d+)")) or nil
-		if params.mport then
-			result.flag_port_hopping = "1"
-			result.port_range = params.mport
-		end
-		if params.obfs and params.obfs ~= "none" then
-			result.flag_obfs = "1"
-			result.obfs_type = params.obfs
-			result.salamander = params["obfs-password"] or params["obfs_password"]
-		end
-		if (params.security and params.security:lower() == "tls")
-				or (params.sni and params.sni ~= "")
-				or (params.alpn and params.alpn ~= "")
-				or (xray_hy2_type == "hysteria2" and (params.pcs or params.vcn)) then
-			result.tls = "1"
-			if params.sni then
-				result.tls_host = params.sni
-			end
-			if params.alpn and params.alpn ~= "" then
-				local alpn = {}
-				for v in params.alpn:gmatch("[^,;|%s]+") do
-					table.insert(alpn, v)
+			if (params.security and params.security:lower() == "tls")
+					or (params.sni and params.sni ~= "")
+					or (params.alpn and params.alpn ~= "")
+					or (params.pcs or params.vcn) then
+				result.tls = "1"
+				if params.sni then
+					result.tls_host = params.sni
 				end
-				if #alpn > 0 then
-					result.tls_alpn = table.concat(alpn, ",")  -- 确保为字符串
+				if params.alpn and params.alpn ~= "" then
+					local alpn = {}
+					for v in params.alpn:gmatch("[^,;|%s]+") do
+						table.insert(alpn, v)
+					end
+					if #alpn > 0 then
+						result.tls_alpn = table.concat(alpn, ",")  -- 确保为字符串
+					end
 				end
-			end
-			if xray_hy2_type ~= "hysteria2" then
 				if params.pcs then
 					result.tls_CertSha = params.pcs
 				end
@@ -314,6 +279,55 @@ local function processData(szType, content, cfgid)
 					result.tls_CertByName = params.vcn
 				end
 			end
+		else
+			result.type = "hysteria2"
+			if params.protocol and params.protocol ~= "" then
+				result.flag_transport = "1"
+				result.transport_protocol = params.protocol
+			else
+				result.flag_transport = "1"
+				result.transport_protocol = "udp"
+			end
+			if params.lazy and params.lazy ~= "" then
+				result.lazy_mode = "1"
+			end
+			if (params.sni and params.sni ~= "") or (params.alpn and params.alpn ~= "") then
+				result.tls = "1"
+				if params.sni then
+					result.tls_host = params.sni
+				end
+				if params.alpn and params.alpn ~= "" then
+					local alpn = {}
+					for v in params.alpn:gmatch("[^,;|%s]+") do
+						table.insert(alpn, v)
+					end
+					if #alpn > 0 then
+						result.tls_alpn = table.concat(alpn, ",")  -- 确保为字符串
+					end
+				end
+			end
+			if params.pinSHA256 and params.pinSHA256 ~= "" then
+				result.pinsha256 = params.pinSHA256
+			end
+		end
+
+		local raw_alias = url.fragment and UrlDecode(url.fragment) or nil
+		result.raw_alias = raw_alias   -- 新增
+		result.alias = raw_alias       -- 临时赋值（后面会被覆盖）
+		result.server = url.host
+		result.server_port = url.port or 443
+		result.hy2_auth = url.user
+
+		if params.mport then
+			result.flag_port_hopping = "1"
+			result.port_range = params.mport
+		end
+		result.uplink_capacity = tonumber((params.upmbps or ""):match("^(%d+)")) or nil
+		result.downlink_capacity = tonumber((params.downmbps or ""):match("^(%d+)")) or nil
+		if params.obfs and params.obfs ~= "none" then
+			result.flag_obfs = "1"
+			result.obfs_type = params.obfs
+			result.salamander = params["obfs-password"] or params["obfs_password"]
 		end
 		if params.allowInsecure or params.insecure then
 			local insecure = params.allowInsecure or params.insecure
@@ -543,153 +557,69 @@ local function processData(szType, content, cfgid)
 			result.fast_open = params.tfo
 		end
 
-		if v2_ss ~= "v2ray" then
-			local is_old_format = find_index:find("@") and not find_index:find("://.*@")
-			local old_base64, host_port, userinfo, server, port, method, password
-
-			if is_old_format then
-				-- 旧格式：base64(method:pass)@host:port
-				old_base64, host_port = find_index:match("^([^@]+)@(.-)$")
-				log("SS 节点旧格式解析:", old_base64)
-				if not old_base64 or not host_port then
-					log("SS 节点旧格式解析失败:", find_index)
-					return nil
-				end
-				local decoded = base64Decode(UrlDecode(old_base64))
-				if not decoded then
-					log("SS base64 解码失败（旧格式）:", old_base64)
-					return nil
-				end
-				userinfo = decoded
+		-- 自动决定模式（true=Xray, false=普通 SS）
+		local xray_ss_mode = false
+		if ss_type == "v2ray" then
+			-- Xray 模式
+			if has_xray then
+				xray_ss_mode = true
+			elseif has_ss_rust or has_ss_libev then
+				xray_ss_mode = false   -- 回退到普通 SS
 			else
-				-- 新格式：base64(method:pass@host:port)
-				local decoded = base64Decode(UrlDecode(find_index))
-				if not decoded then
-					log("SS base64 解码失败（新格式）:", find_index)
-					return nil
-				end
-				userinfo, host_port = decoded:match("^(.-)@(.-)$")
-				if not userinfo or not host_port then
-					log("SS 解码内容缺失 @ 分隔:", decoded)
-					return nil
-				end
+				xray_ss_mode = nil
 			end
-
-			-- 解析加密方式和密码（允许密码包含冒号）
-			local meth_pass = userinfo:find(":")
-			if not meth_pass then
-				log("SS 用户信息格式错误:", userinfo)
-				return nil
-			end
-			method = userinfo:sub(1, meth_pass - 1)
-			password = userinfo:sub(meth_pass + 1)
-
-			-- 判断密码是否经过url编码
-			local function isURLEncodedPassword(pwd)
-				if not pwd:find("%%[0-9A-Fa-f][0-9A-Fa-f]") then
-					return false
-				end
-				local ok, decoded = pcall(UrlDecode, pwd)
-				return ok and urlEncode(decoded) == pwd
-			end
-
-			local decoded = UrlDecode(password)
-			if isURLEncodedPassword(password) and decoded then
-				password = decoded
-			end
-
-			-- 解析服务器地址和端口（兼容 IPv6）
-			if host_port:find("^%[.*%]:%d+$") then
-				server, port = host_port:match("^%[(.*)%]:(%d+)$")
+		elseif ss_type == "ss-rust" or ss_type == "ss-libev" then
+			-- 普通 SS 模式
+			local user_core = (ss_type == "ss-rust" and has_ss_rust) or (ss_type == "ss-libev" and has_ss_libev)
+			if user_core then
+				xray_ss_mode = false  -- 否则普通 SS
 			else
-				server, port = host_port:match("^(.-):(%d+)$")
-			end
-			if not server or not port then
-				log("SS 节点服务器信息格式错误:", host_port)
-				return nil
-			end
-
-			-- 如果 SS 程序未安装则跳过订阅	
-			if not v2_ss then
-				return nil
-			end
-
-			-- 填充 result
-			result.type = v2_ss
-			result.encrypt_method_ss = method
-			result.password = password
-			result.server = server
-			result.server_port = port
-
-			-- 插件处理
-			if params.plugin then
-				local plugin_info = UrlDecode(params.plugin)
-				local idx_pn = plugin_info:find(";")
-				if idx_pn then
-					result.plugin = plugin_info:sub(1, idx_pn - 1)
-					result.plugin_opts = plugin_info:sub(idx_pn + 1, #plugin_info)
+				-- 指定的核心不存在，尝试另一个 SS 核心
+				local other_core = (ss_type == "ss-rust" and has_ss_libev) or (ss_type == "ss-libev" and has_ss_rust)
+				if other_core then
+					xray_ss_mode = false  -- 使用存在的另一个 SS 核心
+				elseif has_xray then
+					xray_ss_mode = true    -- 回退到 Xray
 				else
-					result.plugin = plugin_info
-					result.plugin_opts = ""
+					xray_ss_mode = nil
 				end
-				-- 部分机场下发的插件名为 simple-obfs，这里应该改为 obfs-local
-				if result.plugin == "simple-obfs" then
-					result.plugin = "obfs-local"
-				end
-				-- 如果插件不为 none，确保 enable_plugin 为 1
-				if result.plugin ~= "none" and result.plugin ~= "" then
-					result.enable_plugin = 1
-				end
-			elseif has_ss_type and has_ss_type ~= "ss-libev" then
-				if params["shadow-tls"] then
-					-- 特别处理 shadow-tls 作为插件
-					-- log("原始 shadow-tls 参数:", params["shadow-tls"])
-					local decoded_tls = base64Decode(UrlDecode(params["shadow-tls"]))
-					--log("SS 节点 shadow-tls 解码后:", decoded_tls or "nil")
-					if decoded_tls then
-						local ok, st = pcall(jsonParse, decoded_tls)
-						if ok and st then
-							result.plugin = "shadow-tls"
-							result.enable_plugin = 1
-							local version_flag = ""
-							if st.version and tonumber(st.version) then
-								version_flag = string.format("v%s=1;", st.version)
-							end
-					
-							-- 合成 plugin_opts 格式：v%s=1;host=xxx;password=xxx
-							result.plugin_opts = string.format("%shost=%s;passwd=%s",
-								version_flag,
-								st.host or "",
-								st.password or "")
-						else
-							log("shadow-tls JSON 解析失败")
-						end
-					end
-				end
-			else
-				if params["shadow-tls"] then
-					log("错误：ShadowSocks-libev 不支持使用 shadow-tls 插件")
-					return nil, "ShadowSocks-libev 不支持使用 shadow-tls 插件"
-				end
-			end
-
-			-- 检查加密方法是否受支持
-			if not checkTabValue(encrypt_methods_ss)[method] then
-				-- 1202 年了还不支持 SS AEAD 的屑机场
-				-- log("不支持的SS加密方法:", method)
-				result.server = nil
 			end
 		else
+		    -- ss_type 为空或 auto：根据链接中是否有 type 参数决定
+			local has_type = params.type and params.type ~= ""
+			if has_type then
+				-- 有 type 参数，优先 Xray
+				if has_xray then
+					xray_ss_mode = true
+				elseif has_ss_rust or has_ss_libev then
+					xray_ss_mode = false   -- 回退到普通 SS
+				else
+					xray_ss_mode = nil
+				end
+			else
+				-- 无 type 参数，优先普通 SS
+				if has_ss_rust or has_ss_libev then
+					-- 普通 SS 模式
+					xray_ss_mode = false
+				elseif has_xray then
+					xray_ss_mode = true    -- 回退到 Xray
+				else
+					xray_ss_mode = nil
+				end
+			end
+		end
+
+		-- 如果最终无可用核心，跳过该订阅
+		if xray_ss_mode == nil then
+			return nil
+		end
+
+		if xray_ss_mode then
 			local url = URL.parse("http://" .. info)
 			local params = url.query
 
-			-- 如果 Xray 程序未安装则跳过订阅	
-			if not v2_ss then
-				return nil
-			end
-
-			result.type = v2_ss
-			result.v2ray_protocol = has_v2_ss_type
+			result.type = "v2ray"
+			result.v2ray_protocol = "shadowsocks"
 			result.server = url.host
 			result.server_port = url.port
 
@@ -816,6 +746,143 @@ local function processData(szType, content, cfgid)
 					result.tcp_path = params.path and UrlDecode(params.path) or nil
 				end
 			end
+		else
+			local is_old_format = find_index:find("@") and not find_index:find("://.*@")
+			local old_base64, host_port, userinfo, server, port, method, password
+
+			if is_old_format then
+				-- 旧格式：base64(method:pass)@host:port
+				old_base64, host_port = find_index:match("^([^@]+)@(.-)$")
+				log("SS 节点旧格式解析:", old_base64)
+				if not old_base64 or not host_port then
+					log("SS 节点旧格式解析失败:", find_index)
+					return nil
+				end
+				local decoded = base64Decode(UrlDecode(old_base64))
+				if not decoded then
+					log("SS base64 解码失败（旧格式）:", old_base64)
+					return nil
+				end
+				userinfo = decoded
+			else
+				-- 新格式：base64(method:pass@host:port)
+				local decoded = base64Decode(UrlDecode(find_index))
+				if not decoded then
+					log("SS base64 解码失败（新格式）:", find_index)
+					return nil
+				end
+				userinfo, host_port = decoded:match("^(.-)@(.-)$")
+				if not userinfo or not host_port then
+					log("SS 解码内容缺失 @ 分隔:", decoded)
+					return nil
+				end
+			end
+
+			-- 解析加密方式和密码（允许密码包含冒号）
+			local meth_pass = userinfo:find(":")
+			if not meth_pass then
+				log("SS 用户信息格式错误:", userinfo)
+				return nil
+			end
+			method = userinfo:sub(1, meth_pass - 1)
+			password = userinfo:sub(meth_pass + 1)
+
+			-- 判断密码是否经过url编码
+			local function isURLEncodedPassword(pwd)
+				if not pwd:find("%%[0-9A-Fa-f][0-9A-Fa-f]") then
+					return false
+				end
+				local ok, decoded = pcall(UrlDecode, pwd)
+				return ok and urlEncode(decoded) == pwd
+			end
+
+			local decoded = UrlDecode(password)
+			if isURLEncodedPassword(password) and decoded then
+				password = decoded
+			end
+
+			-- 解析服务器地址和端口（兼容 IPv6）
+			if host_port:find("^%[.*%]:%d+$") then
+				server, port = host_port:match("^%[(.*)%]:(%d+)$")
+			else
+				server, port = host_port:match("^(.-):(%d+)$")
+			end
+			if not server or not port then
+				log("SS 节点服务器信息格式错误:", host_port)
+				return nil
+			end
+
+			-- 填充 result
+			local xray_ss_type
+			if ss_type == "ss-rust" or ss_type == "ss-libev" then
+				xray_ss_type = ss_type
+			else
+				xray_ss_type = has_ss_rust and "ss-rust" or "ss-libev"
+			end
+			result.type = xray_ss_type
+			result.encrypt_method_ss = method
+			result.password = password
+			result.server = server
+			result.server_port = port
+
+			-- 插件处理
+			if params.plugin then
+				local plugin_info = UrlDecode(params.plugin)
+				local idx_pn = plugin_info:find(";")
+				if idx_pn then
+					result.plugin = plugin_info:sub(1, idx_pn - 1)
+					result.plugin_opts = plugin_info:sub(idx_pn + 1, #plugin_info)
+				else
+					result.plugin = plugin_info
+					result.plugin_opts = ""
+				end
+				-- 部分机场下发的插件名为 simple-obfs，这里应该改为 obfs-local
+				if result.plugin == "simple-obfs" then
+					result.plugin = "obfs-local"
+				end
+				-- 如果插件不为 none，确保 enable_plugin 为 1
+				if result.plugin ~= "none" and result.plugin ~= "" then
+					result.enable_plugin = 1
+				end
+			elseif has_ss_type and has_ss_type ~= "ss-libev" then
+				if params["shadow-tls"] then
+					-- 特别处理 shadow-tls 作为插件
+					-- log("原始 shadow-tls 参数:", params["shadow-tls"])
+					local decoded_tls = base64Decode(UrlDecode(params["shadow-tls"]))
+					--log("SS 节点 shadow-tls 解码后:", decoded_tls or "nil")
+					if decoded_tls then
+						local ok, st = pcall(jsonParse, decoded_tls)
+						if ok and st then
+							result.plugin = "shadow-tls"
+							result.enable_plugin = 1
+							local version_flag = ""
+							if st.version and tonumber(st.version) then
+								version_flag = string.format("v%s=1;", st.version)
+							end
+					
+							-- 合成 plugin_opts 格式：v%s=1;host=xxx;password=xxx
+							result.plugin_opts = string.format("%shost=%s;passwd=%s",
+								version_flag,
+								st.host or "",
+								st.password or "")
+						else
+							log("shadow-tls JSON 解析失败")
+						end
+					end
+				end
+			else
+				if params["shadow-tls"] then
+					log("错误：ShadowSocks-libev 不支持使用 shadow-tls 插件")
+					return nil, "ShadowSocks-libev 不支持使用 shadow-tls 插件"
+				end
+			end
+
+			-- 检查加密方法是否受支持
+			if not checkTabValue(encrypt_methods_ss)[method] then
+				-- 1202 年了还不支持 SS AEAD 的屑机场
+				-- log("不支持的SS加密方法:", method)
+				result.server = nil
+			end
 		end
 	elseif szType == "sip008" then
 		result.type = v2_ss
@@ -936,102 +1003,143 @@ local function processData(szType, content, cfgid)
 			result.server_port = port
 		end
 
-		-- 如果 Tojan 程序未安装则跳过订阅	
-		if not v2_tj or v2_tj == "" then
+		-- 自动决定模式（true=Xray, false=普通 Trojan）
+		local xray_tj_mode = false
+		if xray_tj_type == "v2ray" then
+			-- Xray 模式
+			if has_xray then
+				xray_tj_mode = true
+			elseif has_trojan then
+				xray_tj_mode = false   -- 回退到普通 Trojan
+			else
+				xray_tj_mode = nil  -- 两类核心均不存在，停止订阅
+			end
+		elseif xray_tj_type == "trojan" then
+			-- 普通 Trojan 模式
+			if has_trojan then
+				xray_tj_mode = false
+			elseif has_xray then
+				xray_tj_mode = true    -- 回退到 Xray
+			else
+				xray_tj_mode = nil  -- 两类核心均不存在，停止订阅
+			end
+		else
+			-- 全局配置为空或 auto，根据链接中是否有 type 参数决定
+			local has_type = params.type and params.type ~= ""
+			-- 有 type 参数，优先 Xray
+			if has_type then
+				if has_xray then
+					xray_tj_mode = true   -- 有 type 参数使用 Xray
+				elseif has_trojan then
+					xray_tj_mode = false  -- 否则普通 Trojan
+				else
+					xray_tj_mode = nil -- 两类核心均不存在，停止订阅
+				end
+			else
+				-- 无 type 参数，优先普通 Trojan
+				if has_trojan then
+					xray_tj_mode = false  -- 普通 Trojan
+				elseif has_xray then
+					xray_tj_mode = true   -- 否则使用 Xray
+				else
+					xray_tj_mode = nil -- 两类核心均不存在，停止订阅
+				end
+			end
+		end
+
+		-- 如果最终无可用核心，跳过该订阅
+		if xray_tj_mode == nil then
 			return nil
 		end
 
-		if params.type and params.type ~= "" then
-			v2_tj = "v2ray"
-			result.type = v2_tj
+		if xray_tj_mode then
+			result.type = "v2ray"
 			result.v2ray_protocol = "trojan"
-			if v2_tj ~= "trojan" then
-				if params.fp then
-					-- 处理 fingerprint 参数
-					result.fingerprint = params.fp
-				end
-				-- 处理 ech 参数
-				if params.ech and params.ech ~= "" then
-					result.enable_ech = "1"
-					result.ech_config = params.ech
-				end
-				-- 检查 finalmaskg 参数是否存在且非空
-				if params.fm and params.fm ~= "" then
-					result.enable_finalmask = "1"
-					result.finalmaskg = base64Encode(params.fm)
-				end
-				-- 处理传输协议
-				result.transport = params.type or "raw" -- 默认传输协议为 raw
-				if result.transport == "tcp" then
-					result.transport = "raw"
-				end
-				if result.transport == "splithttp" then
-					result.transport = "xhttp"
-				end
-				if params.pcs and params.pcs ~= "" then
-					result.tls_CertSha = params.pcs
-				end
-				if params.vcn and params.vcn ~= "" then
-					result.tls_CertByName = params.vcn
-				end
-				if result.transport == "ws" then
-					result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
-					result.ws_path = params.path and UrlDecode(params.path) or "/"
-				elseif result.transport == "httpupgrade" then
-					result.httpupgrade_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
-					result.httpupgrade_path = params.path and UrlDecode(params.path) or "/"
-				elseif result.transport == "xhttp" or result.transport == "splithttp" then
-					result.xhttp_mode = params.mode or "auto"
-					result.xhttp_host = params.host and UrlDecode(params.host) or nil
-					result.xhttp_path = params.path and UrlDecode(params.path) or "/"
-					-- 检查 extra 参数是否存在且非空
-					if params.extra and params.extra ~= "" then
-						result.enable_xhttp_extra = "1"
-						result.xhttp_extra = base64Encode(params.extra)
-					end
-					-- 尝试解析 JSON 数据
-					local success, Data = pcall(jsonParse, params.extra or "")
-					if success and type(Data) == "table" then
-						local address = (Data.extra and Data.extra.downloadSettings and Data.extra.downloadSettings.address)
-							or (Data.downloadSettings and Data.downloadSettings.address)
-						result.download_address = (address and address ~= "") and address:gsub("^%[", ""):gsub("%]$", "")
-					else
-						-- 如果解析失败，清空下载地址
-						result.download_address = nil
-					end
-				elseif result.transport == "http" or result.transport == "h2" then
-					result.transport = "h2"
-					result.h2_host = params.host and UrlDecode(params.host) or nil
-					result.h2_path = params.path and UrlDecode(params.path) or nil
-				elseif result.transport == "kcp" then
-					result.kcp_guise = params.headerType or "none"
-					if params.headerType and params.headerType == "dns" then
-						result.kcp_domain = params.host or ""
-					end
-					result.seed = params.seed
-					result.mtu = 1350
-					result.tti = 50
-					result.uplink_capacity = 5
-					result.downlink_capacity = 20
-					result.read_buffer_size = 2
-					result.write_buffer_size = 2
-				elseif result.transport == "quic" then
-					result.quic_guise = params.headerType or "none"
-					result.quic_security = params.quicSecurity or "none"
-					result.quic_key = params.key
-				elseif result.transport == "grpc" then
-					result.serviceName = params.serviceName
-					result.grpc_mode = params.mode or "gun"
-				elseif result.transport == "tcp" or result.transport == "raw" then
-					result.tcp_guise = params.headerType and params.headerType ~= "" and params.headerType or "none"
-					if result.tcp_guise == "http" then
-						result.tcp_host = params.host and UrlDecode(params.host) or nil
-						result.tcp_path = params.path and UrlDecode(params.path) or nil
-					end
-				end
-			else
-				result.type = v2_tj
+			if params.fp then
+				-- 处理 fingerprint 参数
+				result.fingerprint = params.fp
 			end
+			-- 处理 ech 参数
+			if params.ech and params.ech ~= "" then
+				result.enable_ech = "1"
+				result.ech_config = params.ech
+			end
+			-- 检查 finalmaskg 参数是否存在且非空
+			if params.fm and params.fm ~= "" then
+				result.enable_finalmask = "1"
+				result.finalmaskg = base64Encode(params.fm)
+			end
+			-- 处理传输协议
+			result.transport = params.type or "raw" -- 默认传输协议为 raw
+			if result.transport == "tcp" then
+				result.transport = "raw"
+			end
+			if result.transport == "splithttp" then
+				result.transport = "xhttp"
+			end
+			if params.pcs and params.pcs ~= "" then
+				result.tls_CertSha = params.pcs
+			end
+			if params.vcn and params.vcn ~= "" then
+				result.tls_CertByName = params.vcn
+			end
+			if result.transport == "ws" then
+				result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+				result.ws_path = params.path and UrlDecode(params.path) or "/"
+			elseif result.transport == "httpupgrade" then
+				result.httpupgrade_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+				result.httpupgrade_path = params.path and UrlDecode(params.path) or "/"
+			elseif result.transport == "xhttp" or result.transport == "splithttp" then
+				result.xhttp_mode = params.mode or "auto"
+				result.xhttp_host = params.host and UrlDecode(params.host) or nil
+				result.xhttp_path = params.path and UrlDecode(params.path) or "/"
+				-- 检查 extra 参数是否存在且非空
+				if params.extra and params.extra ~= "" then
+					result.enable_xhttp_extra = "1"
+					result.xhttp_extra = base64Encode(params.extra)
+				end
+				-- 尝试解析 JSON 数据
+				local success, Data = pcall(jsonParse, params.extra or "")
+				if success and type(Data) == "table" then
+					local address = (Data.extra and Data.extra.downloadSettings and Data.extra.downloadSettings.address)
+						or (Data.downloadSettings and Data.downloadSettings.address)
+					result.download_address = (address and address ~= "") and address:gsub("^%[", ""):gsub("%]$", "")
+				else
+					-- 如果解析失败，清空下载地址
+					result.download_address = nil
+				end
+			elseif result.transport == "http" or result.transport == "h2" then
+				result.transport = "h2"
+				result.h2_host = params.host and UrlDecode(params.host) or nil
+				result.h2_path = params.path and UrlDecode(params.path) or nil
+			elseif result.transport == "kcp" then
+				result.kcp_guise = params.headerType or "none"
+				if params.headerType and params.headerType == "dns" then
+					result.kcp_domain = params.host or ""
+				end
+				result.seed = params.seed
+				result.mtu = 1350
+				result.tti = 50
+				result.uplink_capacity = 5
+				result.downlink_capacity = 20
+				result.read_buffer_size = 2
+				result.write_buffer_size = 2
+			elseif result.transport == "quic" then
+				result.quic_guise = params.headerType or "none"
+				result.quic_security = params.quicSecurity or "none"
+				result.quic_key = params.key
+			elseif result.transport == "grpc" then
+				result.serviceName = params.serviceName
+				result.grpc_mode = params.mode or "gun"
+			elseif result.transport == "tcp" or result.transport == "raw" then
+				result.tcp_guise = params.headerType and params.headerType ~= "" and params.headerType or "none"
+				if result.tcp_guise == "http" then
+					result.tcp_host = params.host and UrlDecode(params.host) or nil
+					result.tcp_path = params.path and UrlDecode(params.path) or nil
+				end
+			end
+		else
+			result.type = "trojan"
 		end
 	elseif szType == "vless" then
 		local url = URL.parse("http://" .. content)

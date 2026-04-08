@@ -5,6 +5,7 @@ require "nixio.fs"
 require "luci.sys"
 require "luci.http"
 require "luci.jsonc"
+local nixio = require "nixio"
 require "luci.model.uci"
 local uci = require "luci.model.uci".cursor()
 
@@ -146,11 +147,11 @@ local function set_apply_on_parse(map)
 	end
 end
 
-local has_xray = is_finded("xray")
-local has_hysteria2 = is_finded("hysteria")
-
 local has_ss_rust = is_finded("sslocal") or is_finded("ssserver")
 local has_ss_libev = is_finded("ss-redir") or is_finded("ss-local")
+local has_trojan = is_finded("trojan")
+local has_xray = is_finded("xray")
+local has_hysteria2 = is_finded("hysteria")
 
 local server_table = {}
 local encrypt_methods = {
@@ -277,25 +278,63 @@ o.value = sid
 -- 新增一个选择框，用于选择 Xray 或 Hysteria2 核心
 o = s:option(ListValue, "_xray_hy2_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Type", "Hysteria2")))
 o.description = translate("The configured type also applies to the core specified when manually importing nodes.")
--- 设置默认 Xray 或 Hysteria2 核心
--- 动态添加选项
-if has_xray then
-	o:value("v2ray", translate("Xray (Hysteria2)"))
-end
+-- 注意：Auto 选项使用特殊字符串 "__auto__" 而不是空字符串
+o:value("__auto__", translate("Auto"))
 if has_hysteria2 then
-	o:value("hysteria2", translate("Hysteria2"))
+    o:value("hysteria2", translate("Hysteria2"))
+end
+if has_xray then
+    o:value("v2ray", translate("Xray (Hysteria2)"))
 end
 -- 读取全局 xray_hy2_type
 o.cfgvalue = function(self, section)
-	return self.map.uci:get("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type") or "hysteria2"
+    local val = uci:get("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type")
+    if val == nil or val == "" then
+		return "__auto__"   -- 对应 Auto 选项
+    end
+    return val
 end
 o.rmempty = true
+-- 保存时更新全局配置
 o.write = function(self, section, value)
-	-- 更新 server_subscribe 的 xray_hy2_type
-	local old_value = self.map.uci:get("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type")
-	if old_value ~= value then
-		self.map.uci:set("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type", value)
-	end
+    if value == "__auto__" then
+		-- 删除全局配置
+		uci:delete("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type")
+    else
+		-- 设置具体值
+		uci:set("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type", value)
+    end
+end
+
+-- 新增一个选择框，用于选择 Xray 或 Trojan 核心
+o = s:option(ListValue, "_xray_tj_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Type", "Trojan")))
+o.description = translate("The configured type also applies to the core specified when manually importing nodes.")
+-- 注意：Auto 选项使用特殊字符串 "__auto__" 而不是空字符串
+o:value("__auto__", translate("Auto"))
+if has_hysteria2 then
+    o:value("trojan", translate("Trojan"))
+end
+if has_xray then
+    o:value("v2ray", translate("Xray (Trojan)"))
+end
+-- 读取全局 xray_tj_type
+o.cfgvalue = function(self, section)
+    local val = uci:get("shadowsocksr", "@server_subscribe[0]", "xray_tj_type")
+    if val == nil or val == "" then
+		return "__auto__"   -- 对应 Auto 选项
+    end
+    return val
+end
+o.rmempty = true
+-- 保存时更新全局配置
+o.write = function(self, section, value)
+    if value == "__auto__" then
+		-- 删除全局配置
+		uci:delete("shadowsocksr", "@server_subscribe[0]", "xray_tj_type")
+    else
+		-- 设置具体值
+		uci:set("shadowsocksr", "@server_subscribe[0]", "xray_tj_type", value)
+    end
 end
 
 o = s:option(ListValue, "type", translate("Server Node Type"))
@@ -329,6 +368,29 @@ end
 if is_finded("redsocks2") then
 	o:value("tun", translate("Network Tunnel"))
 end
+local old_cfgvalue = o.cfgvalue
+o.cfgvalue = function(self, section)
+    local val = self.map.uci:get("shadowsocksr", section, "type")
+    if val == "ss-rust" or val == "ss-libev" then
+		return "ss"
+    end
+    if old_cfgvalue then
+		return old_cfgvalue(self, section)
+    end
+    return val
+end
+-- 重写 write，当用户选择 "ss" 时不写入（由 _ss_core 负责写入具体核心）
+local old_write = o.write
+o.write = function(self, section, value)
+    if value == "ss" then
+		return  -- 不做任何写入，等待 _ss_core 写入
+    end
+    if old_write then
+		old_write(self, section, value)
+    else
+		self.map.uci:set("shadowsocksr", section, "type", value)
+    end
+end
 
 o.description = translate("Using incorrect encryption mothod may causes service fail to start")
 
@@ -343,29 +405,37 @@ end
 o:depends("type", "tun")
 o.description = translate("Redirect traffic to this network interface")
 
--- 新增一个选择框，用于选择 Shadowsocks 版本
-o = s:option(ListValue, "_has_ss_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Version", "ShadowSocks")))
+-- 新增一个选择框，用于选择 Shadowsocks 具体版本（仅当节点类型为 ss 或其具体子类型时显示）
+o = s:option(ListValue, "_ss_core", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Version", "ShadowSocks")))
 o.description = translate("Selection ShadowSocks Node Use Version.")
--- 设置默认 Shadowsocks 版本
--- 动态添加选项
 if has_ss_rust then
-	o:value("ss-rust", translate("ShadowSocks-rust Version"))
+    o:value("ss-rust", translate("ShadowSocks-rust Version"))
 end
 if has_ss_libev then
-	o:value("ss-libev", translate("ShadowSocks-libev Version"))
+    o:value("ss-libev", translate("ShadowSocks-libev Version"))
 end
--- 读取全局 ss_type
 o.cfgvalue = function(self, section)
-	return self.map.uci:get("shadowsocksr", "@server_subscribe[0]", "ss_type") or "ss-rust"
+    -- 读取当前节点的 type 值，如果已经是具体核心则显示对应的选项
+    local node_type = self.map.uci:get("shadowsocksr", section, "type")
+    if node_type == "ss-rust" or node_type == "ss-libev" then
+		return node_type
+    end
+    -- 如果全局 ss_type 有值且为具体核心则返回该值
+    local ss_type = self.map.uci:get("shadowsocksr", "@server_subscribe[0]", "ss_type")
+    if ss_type == "ss-rust" or ss_type == "ss-libev" then
+		return ss_type
+    end
+    -- 如果节点 type 是旧的 "ss"，则返回空，手动选择
+    return nil
 end
+-- 显示条件：当节点类型为 "ss" 或其具体核心时显示
 o:depends("type", "ss")
 o.rmempty = true
+-- 保存时，将选择的值直接写入当前节点的 type 字段
 o.write = function(self, section, value)
-	-- 更新 server_subscribe 的 ss_type
-	local old_value = self.map.uci:get("shadowsocksr", "@server_subscribe[0]", "ss_type")
-	if old_value ~= value then
-		self.map.uci:set("shadowsocksr", "@server_subscribe[0]", "ss_type", value)
-	end
+    if value and value ~= "" then
+		self.map.uci:set("shadowsocksr", section, "type", value)
+    end
 end
 
 o = s:option(ListValue, "v2ray_protocol", translate("V2Ray/XRay protocol"))

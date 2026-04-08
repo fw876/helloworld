@@ -70,9 +70,14 @@ local function set_apply_on_parse(map)
 	end
 end
 
+local has_ss_rust = is_finded("sslocal") or is_finded("ssserver")
+local has_ss_libev = is_finded("ss-redir") or is_finded("ss-local")
+local has_trojan = is_finded("trojan")
 local has_xray = is_finded("xray")
 local has_hysteria2 = is_finded("hysteria")
 
+local ss_type_list = {}
+local tj_type_list = {}
 local hy2_type_list = {}
 
 if has_hysteria2 then
@@ -82,19 +87,12 @@ if has_xray then
 	table.insert(hy2_type_list, { id = "v2ray", name = translate("Xray (Hysteria2)") })
 end
 
--- 如果用户没有手动设置，则自动选择
-if not xray_hy2_type or xray_hy2_type == "" then
-	if has_hysteria2 then
-		xray_hy2_type = "hysteria2"
-	elseif has_xray then
-		xray_hy2_type = "v2ray"
-	end
+if has_trojan then
+	table.insert(tj_type_list, { id = "trojan", name = translate("Trojan") })
 end
-
-local has_ss_rust = is_finded("sslocal") or is_finded("ssserver")
-local has_ss_libev = is_finded("ss-redir") or is_finded("ss-local")
-
-local ss_type_list = {}
+if has_xray then
+	table.insert(tj_type_list, { id = "v2ray", name = translate("Xray (Trojan)") })
+end
 
 if has_ss_rust then
 	table.insert(ss_type_list, { id = "ss-rust", name = translate("ShadowSocks-rust Version") })
@@ -104,17 +102,6 @@ if has_ss_libev then
 end
 if has_xray then
 	table.insert(ss_type_list, { id = "v2ray", name = translate("Xray (ShadowSocks)") })
-end
-
--- 如果用户没有手动设置，则自动选择
-if not ss_type or ss_type == "" then
-	if has_ss_rust then
-		ss_type = "ss-rust"
-	elseif has_ss_libev then
-		ss_type = "ss-libev"
-	elseif has_xray then
-		ss_type = "v2ray"
-	end
 end
 
 uci:foreach("shadowsocksr", "servers", function(s)
@@ -162,22 +149,87 @@ o:depends("auto_update", "1")
 
 -- 确保 hy2_type_list 不为空
 if #hy2_type_list > 0 then
+	local sid = uci:get_first("shadowsocksr", "server_subscribe")
+	if not sid then
+		uci:foreach("shadowsocksr", "server_subscribe", function(section)
+			sid = section[".name"]
+			return false
+		end)
+	end
+	if sid then
+		local old_val = uci:get("shadowsocksr", sid, "xray_hy2_type")
+		if old_val and old_val ~= "" then
+			if (old_val == "hysteria2" and not has_hysteria2) or
+			   (old_val == "v2ray" and not has_xray) then
+				-- 核心不可用，设置为空（删除配置）
+				uci:set("shadowsocksr", sid, "xray_hy2_type", "")
+				uci:commit("shadowsocksr")
+			end
+		end
+	end
 	o = s:option(ListValue, "xray_hy2_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Type", "Hysteria2")))
 	o.description = translate("The configured type also applies to the core specified when manually importing nodes.")
+	o:value("", translate("Auto"))
 	for _, v in ipairs(hy2_type_list) do
 		o:value(v.id, v.name) -- 存储 "Xray" / "Hysteria2"，但 UI 显示完整名称
 	end
-	o.default = xray_hy2_type  -- 设置默认值
+end
+
+-- 确保 tj_type_list 不为空
+if #tj_type_list > 0 then
+	local sid = uci:get_first("shadowsocksr", "server_subscribe")
+	if not sid then
+		uci:foreach("shadowsocksr", "server_subscribe", function(section)
+			sid = section[".name"]
+			return false
+		end)
+	end
+	if sid then
+		local old_val = uci:get("shadowsocksr", sid, "xray_tj_type")
+		if old_val and old_val ~= "" then
+			if (old_val == "trojan" and not has_trojan) or
+			   (old_val == "v2ray" and not has_xray) then
+				-- 核心不可用，设置为空（删除配置）
+				uci:set("shadowsocksr", sid, "xray_tj_type", "")
+				uci:commit("shadowsocksr")
+			end
+		end
+	end
+	o = s:option(ListValue, "xray_tj_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Type", "Trojan")))
+	o.description = translate("The configured type also applies to the core specified when manually importing nodes.")
+	o:value("", translate("Auto"))
+	for _, v in ipairs(tj_type_list) do
+		o:value(v.id, v.name) -- 存储 "Xray" / "Trojan"，但 UI 显示完整名称
+	end
 end
 
 -- 确保 ss_type_list 不为空
 if #ss_type_list > 0 then
+	local sid = uci:get_first("shadowsocksr", "server_subscribe")
+	if not sid then
+		uci:foreach("shadowsocksr", "server_subscribe", function(section)
+			sid = section[".name"]
+			return false
+		end)
+	end
+	if sid then
+		local old_val = uci:get("shadowsocksr", sid, "ss_type")
+		if old_val and old_val ~= "" then
+			if (old_val == "ss-rust" and not has_ss_rust) or
+			   (old_val == "ss-libev" and not has_ss_libev) or
+			   (old_val == "v2ray" and not has_xray) then
+				-- 核心不可用，设置为空（删除配置）
+				uci:set("shadowsocksr", sid, "ss_type", "")
+				uci:commit("shadowsocksr")
+			end
+		end
+	end
 	o = s:option(ListValue, "ss_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Version", "ShadowSocks")))
 	o.description = translate("Selection ShadowSocks Node Use Version.")
+	o:value("", translate("Auto"))
 	for _, v in ipairs(ss_type_list) do
 		o:value(v.id, v.name) -- 存储 "ss-libev" / "ss-rust"，但 UI 显示完整名称
 	end
-	o.default = ss_type  -- 设置默认值
 end
 
 o = s:option(DynamicList, "subscribe_url", translate("Subscribe URL"))

@@ -611,15 +611,18 @@ gen_config_file() { #server1 type2 code3 local_port4 socks_port5 chain6 threads5
 }
 
 start_udp() {
-	local type=$(uci_get_by_name $UDP_RELAY_SERVER type)
-	local has_ss_type=$(uci_get_by_type server_subscribe ss_type)
+	local udp_relay_server_type=$(uci_get_by_name $UDP_RELAY_SERVER type)
+	local type=$udp_relay_server_type
+	if [ "$udp_relay_server_type" = "ss-rust" ] || [ "$udp_relay_server_type" = "ss-libev" ]; then
+		type="ss"
+	fi
 	redir_udp=1
 	case "$type" in
 	ss | ssr)
 		gen_config_file $UDP_RELAY_SERVER $type 2 $tmp_udp_port
-		if [ "$has_ss_type" = "ss-libev" -o "$type" = "ssr" ]; then
+		if [ "$udp_relay_server_type" = "ss-libev" ] || [ "$udp_relay_server_type" = "ssr" ]; then
 			ss_program="$(first_type ${type}-redir)"
-		elif [ "$has_ss_type" = "ss-rust" ]; then
+		elif [ "$udp_relay_server_type" = "ss-rust" ]; then
 			ss_program="$(first_type ${type}local)"
 		fi
 		echolog "$(get_name $type) program is: $ss_program"
@@ -858,14 +861,17 @@ shunt_dns_config_file_port() {
 }
 
 start_shunt() {
-	local type=$(uci_get_by_name $SHUNT_SERVER type)
-	local has_ss_type=$(uci_get_by_type server_subscribe ss_type)
+	local shunt_server_type=$(uci_get_by_name $SHUNT_SERVER type)
+	local type=$shunt_server_type
+	if [ "$shunt_server_type" = "ss-rust" ] || [ "$shunt_server_type" = "ss-libev" ]; then
+		type="ss"
+	fi
 	case "$type" in
 	ss | ssr)
 		gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port
-		if [ "$has_ss_type" = "ss-libev" -o "$type" = "ssr" ]; then
+		if [ "$shunt_server_type" = "ss-libev" ] || [ "$shunt_server_type" = "ssr" ]; then
 			ss_program="$(first_type ${type}-redir)"
-		elif [ "$has_ss_type" = "ss-rust" ]; then
+		elif [ "$shunt_server_type" = "ss-rust" ]; then
 			ss_program="$(first_type ${type}local)"
 		fi
 		echolog "$(get_name $type) program is: $ss_program"
@@ -880,9 +886,9 @@ start_shunt() {
 			local tmp_port=$tmp_local_port
 		else
 			local tmp_port=$tmp_shunt_local_port
-			if [ "$has_ss_type" = "ss-libev" -o "$type" = "ssr" ]; then
+			if [ "$shunt_server_type" = "ss-libev" ] || [ "$shunt_server_type" = "ssr" ]; then
 				dns_ss_program="$(first_type ${type}-local)"
-			elif [ "$has_ss_type" = "ss-rust" ]; then
+			elif [ "$shunt_server_type" = "ss-rust" ]; then
 				dns_ss_program="$(first_type ${type}local)"
 			fi
 			# 获取当前软链接指向的执行文件路径
@@ -1009,14 +1015,17 @@ start_local() {
 	[ "$LOCAL_SERVER" = "nil" ] && return 1
 	local local_port=$(uci_get_by_type socks5_proxy local_port)
 	[ "$LOCAL_SERVER" == "$SHUNT_SERVER" ] && tmp_local_port=$local_port
-	local type=$(uci_get_by_name $LOCAL_SERVER type)
-	local has_ss_type=$(uci_get_by_type server_subscribe ss_type)
+	local local_server_type=$(uci_get_by_name $LOCAL_SERVER type)
+	local type=$local_server_type
+	if [ "$local_server_type" = "ss-rust" ] || [ "$local_server_type" = "ss-libev" ]; then
+		type="ss"
+	fi
 	case "$type" in
 	ss | ssr)
 		gen_config_file $LOCAL_SERVER $type 4 $local_port
-		if [ "$has_ss_type" = "ss-libev" -o "$type" = "ssr" ]; then
+		if [ "$local_server_type" = "ss-libev" ] || [ "$local_server_type" = "ssr" ]; then
 			ss_program="$(first_type ${type}-local)"
-		elif [ "$has_ss_type" = "ss-rust" ]; then
+		elif [ "$local_server_type" = "ss-rust" ]; then
 			ss_program="$(first_type ${type}local)"
 		fi
 		echolog "$(get_name $type) program is: $ss_program"
@@ -1124,14 +1133,17 @@ Start_Run() {
 		#}
 	fi
 	local tcp_port=$(uci_get_by_name $GLOBAL_SERVER local_port)
-	local type=$(uci_get_by_name $GLOBAL_SERVER type)
-	local has_ss_type=$(uci_get_by_type server_subscribe ss_type)
+	local global_server_type=$(uci_get_by_name $GLOBAL_SERVER type)
+	local type=$global_server_type
+	if [ "$global_server_type" = "ss-rust" ] || [ "$global_server_type" = "ss-libev" ]; then
+		type="ss"
+	fi
 	case "$type" in
 	ss | ssr)
 		gen_config_file $GLOBAL_SERVER $type 1 $tcp_port
-		if [ "$has_ss_type" = "ss-libev" -o "$type" = "ssr" ]; then
+		if [ "$global_server_type" = "ss-libev" ] || [ "$global_server_type" = "ssr" ]; then
 			ss_program="$(first_type ${type}-redir)"
-		elif [ "$has_ss_type" = "ss-rust" ]; then
+		elif [ "$global_server_type" = "ss-rust" ]; then
 			ss_program="$(first_type ${type}local)"
 		fi
 		echolog "$(get_name $type) program is: $ss_program"
@@ -1367,14 +1379,17 @@ start_server() {
 				fi
 			fi
 		fi
-		local type=$(uci_get_by_name $1 type)
-		local has_ss_type=$(uci_get_by_type server_subscribe ss_type)
+		local node_type=$(uci_get_by_name $1 type)
+		local type=$node_type
+		if [ "$node_type" = "ss-rust" ] || [ "$node_type" = "ss-libev" ]; then
+			type="ss"
+		fi
 		case "$type" in
 		ss | ssr)
 			gen_service_file ${type} $1 $TMP_PATH/ssr-server$server_count.json
-			if [ "$has_ss_type" = "ss-libev" -o "$type" = "ssr" ]; then
+			if [ "$node_type" = "ss-libev" ] || [ "$node_type" = "ssr" ]; then
 				ss_program="$(first_type ${type}-server)"
-			elif [ "$has_ss_type" = "ss-rust" ]; then
+			elif [ "$node_type" = "ss-rust" ]; then
 				ss_program="$(first_type ${type}server)"
 			fi
 			# 获取当前软链接指向的执行文件路径
@@ -1506,7 +1521,7 @@ start_xhttp_addr() {
 	# MD5 不同更新 download_address 地址文件
 	if [ "$md5_new" != "$md5_old" ]; then
 		mv -f "$tmp_file" "$xhttp_addr_file"
-		logger -t ssrplus-xhttp "xhttp_address.txt updated"
+		logger -t ssrplus-xhttp "download_address.txt updated"
 	else
 		rm -f "$tmp_file"
 	fi
