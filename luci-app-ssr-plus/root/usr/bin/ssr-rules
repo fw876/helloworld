@@ -1241,7 +1241,6 @@ compare_rules() {
 	fi
 
 	# Generate temporary file for current rules
-	local temp_file=$(mktemp)
 	local rules_file=$(mktemp)
 	loger 7 "DEBUG: Temporary file path: $rules_file"
 
@@ -1255,18 +1254,18 @@ compare_rules() {
 	# Check if current rules were exported successfully
 	if [ ! -s "$rules_file" ] || ! grep -q "table" "$rules_file" 2>/dev/null; then
 		loger 4 "Failed to export current rules"
-		rm -f "$temp_file" "$rules_file"
+		rm -f "$rules_file"
 		return 1  # Export failed, need update
 	fi
 
 	# Compare current rules with rules in persistence file
 	if ! cmp -s "$rules_file" "$NFTABLES_RULES_FILE"; then
 		loger 6 "Rules differ, update needed"
-		rm -f "$temp_file" "$rules_file"
+		rm -f "$rules_file"
 		return 1  # Need update
 	fi
 
-	rm -f "$temp_file" "$rules_file"
+	rm -f "$rules_file"
 	loger 6 "Rules unchanged, no update needed"
 	return 0  # No update needed
 }
@@ -1277,21 +1276,17 @@ persist_nftables_rules() {
 		return 0
 	fi
 
-	# If mode unchanged and persistence file exists, skip update
-	if [ "$MODE_CHANGED" = "0" ] && [ -f "$NFTABLES_RULES_FILE" ]; then
-		loger 6 "Mode unchanged and persistence file exists, skipping update"
-		return 0
-	fi
-
 	# Force update: skip comparison check and delete old file
 	if [ "$FORCE_UPDATE" = "1" ]; then
 		loger 6 "Force update requested, removing old persistence file"
 		rm -f "$NFTABLES_RULES_FILE" 2>/dev/null
-	# Non-force update: compare rules
+	# Otherwise, if persistence file exists, compare rules
 	elif [ -f "$NFTABLES_RULES_FILE" ]; then
 		if compare_rules; then
 			loger 6 "Rules unchanged, skipping persistence update"
 			return 0
+		else
+			loger 6 "Rules changed, updating persistence"
 		fi
 	fi
 
@@ -1299,7 +1294,7 @@ persist_nftables_rules() {
 	mkdir -p "$NFTABLES_RULES_DIR" 2>/dev/null
 
 	# Generate nftables rule file
-	cat <<-'EOF' >>$NFTABLES_RULES_FILE
+	cat <<-'EOF' > "$NFTABLES_RULES_FILE"
 		#!/usr/sbin/nft -f
 
 		# ShadowsocksR nftables rules
@@ -1374,17 +1369,18 @@ start_auto_update_daemon() {
 		echo $$ > "/var/run/ssr-rules-daemon.pid"
 
 		while true; do
-			sleep 300
+			sleep "$AUTO_UPDATE_INTERVAL"
 			if [ -x "/usr/bin/ssr-rules" ]; then
+				# -C returns 0 if rules are OK, non-zero if need update
 				if /usr/bin/ssr-rules -C >/dev/null 2>&1; then
+					logger -t ssr-rules[daemon] "Rules status OK, no update needed"
+				else
 					logger -t ssr-rules[daemon] "Rules changed or missing, updating persistence"
 					if /usr/bin/ssr-rules -P >/dev/null 2>&1; then
 						logger -t ssr-rules[daemon] "Persistence rules updated successfully"
 					else
 						logger -t ssr-rules[daemon] "Failed to update persistence"
 					fi
-				else
-					logger -t ssr-rules[daemon] "Rules status OK, no update needed"
 				fi
 			else
 				logger -t ssr-rules[daemon] "Script not found, exiting daemon"
