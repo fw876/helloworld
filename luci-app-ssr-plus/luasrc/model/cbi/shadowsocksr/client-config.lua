@@ -609,7 +609,7 @@ o = s:option(Value, "port_range", translate("Port hopping range"))
 o.description = translate("Format as 10000:20000 or 10000-20000 Multiple groups are separated by commas (,).")
 o:depends({type = "hysteria2", flag_port_hopping = true})
 o:depends({type = "v2ray", v2ray_protocol = "hysteria2", flag_port_hopping = true})
---o.datatype = "portrange"
+o.datatype = "or(uinteger,portrange)"
 o.rmempty = true
 
 o = s:option(Flag, "flag_transport", translate("Enable Transport Protocol Settings"))
@@ -624,9 +624,10 @@ o.default = "udp"
 o.rmempty = true
 
 o = s:option(Value, "hopinterval", translate("Port Hopping Interval(Unit:Second)"))
+o.description = translate("Supports a fixed value or a random range (e.g., 30, 5-30), minimum 5.")
 o:depends({type = "hysteria2", flag_transport = true, flag_port_hopping = true})
 o:depends({type = "v2ray", v2ray_protocol = "hysteria2", flag_port_hopping = true})
-o.datatype = "uinteger"
+o.datatype = "or(uinteger,portrange)"
 o.rmempty = true
 o.default = "30"
 
