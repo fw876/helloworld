@@ -25,6 +25,10 @@ local remarks = server.alias or ""
 local b64decode = nixio.bin.b64decode
 local b64encode = nixio.bin.b64encode
 
+if server.type == "ss-rust" or server.type == "ss-libev" then
+    server.type = "ss"
+end
+
 -- base64 解码
 local function base64Decode(text)
 	local raw = text
