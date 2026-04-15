@@ -23,20 +23,24 @@ local nodeResult = setmetatable({}, {__index = cache}) -- update result
 local name = 'shadowsocksr'
 local uciType = 'servers'
 local ucic = require "luci.model.uci".cursor()
-local proxy = ucic:get_first(name, 'server_subscribe', 'proxy', '0')
-local switch = ucic:get_first(name, 'server_subscribe', 'switch', '1')
-local allow_insecure = ucic:get_first(name, 'server_subscribe', 'allow_insecure', '0')
-local subscribe_url = ucic:get_first(name, 'server_subscribe', 'subscribe_url', {})
-local filter_words = ucic:get_first(name, 'server_subscribe', 'filter_words', '过期时间/剩余流量')
-local save_words = ucic:get_first(name, 'server_subscribe', 'save_words', '')
-local user_agent = ucic:get_first(name, 'server_subscribe', 'user_agent', 'v2rayN/9.99')
+local proxy = ucic:get_first(name, 'server_subscribe', 'proxy') or '0'
+local switch = ucic:get_first(name, 'server_subscribe', 'switch') or '1'
+local allow_insecure = ucic:get_first(name, 'server_subscribe', 'allow_insecure') or '0'
+local subscribe_url = ucic:get_first(name, 'server_subscribe', 'subscribe_url') or {}
+local filter_words = ucic:get_first(name, 'server_subscribe', 'filter_words') or '过期时间/剩余流量'
+local save_words = ucic:get_first(name, 'server_subscribe', 'save_words') or ''
+local user_agent = ucic:get_first(name, 'server_subscribe', 'user_agent') or 'v2rayN/9.99'
+local domain_resolver = ucic:get_first(name, 'server_subscribe', 'domain_resolver') or ''
+local domain_resolver_dns = ucic:get_first(name, 'server_subscribe', 'domain_resolver_dns') or ''
+local domain_resolver_dns_https = ucic:get_first(name, 'server_subscribe', 'domain_resolver_dns_https') or ''
+local domain_strategy = ucic:get_first(name, 'server_subscribe', 'domain_strategy') or ''
 
 -- 读取 ss_type 设置
-local ss_type = ucic:get_first(name, 'server_subscribe', 'ss_type')
+local ss_type = ucic:get_first(name, 'server_subscribe', 'ss_type') or ''
 -- 读取 xray_hy2_type 设置
-local xray_hy2_type = ucic:get_first(name, 'server_subscribe', 'xray_hy2_type')
+local xray_hy2_type = ucic:get_first(name, 'server_subscribe', 'xray_hy2_type') or ''
 -- 读取 xray_tj_type 设置
-local xray_tj_type = ucic:get_first(name, 'server_subscribe', 'xray_tj_type')
+local xray_tj_type = ucic:get_first(name, 'server_subscribe', 'xray_tj_type') or ''
 
 local has_ss_rust = luci.sys.exec('type -t -p sslocal 2>/dev/null || type -t -p ssserver 2>/dev/null') ~= ""
 local has_ss_libev = luci.sys.exec('type -t -p ss-redir 2>/dev/null || type -t -p ss-local 2>/dev/null') ~= ""
@@ -1755,6 +1759,24 @@ local execute = function()
 					if section then
 						ucic:tset(name, section, vv)
 						ucic:set(name, section, "switch_enable", switch)
+						-- 为 Xray 节点添加域名解析配置
+						if vv.type == "v2ray" then
+							if domain_resolver and domain_resolver ~= "" then
+								ucic:set(name, section, "domain_resolver", domain_resolver)
+								if domain_resolver == "https" then
+									if domain_resolver_dns_https and domain_resolver_dns_https ~= "" then
+										ucic:set(name, section, "domain_resolver_dns_https", domain_resolver_dns_https)
+									end
+								else
+									if domain_resolver_dns and domain_resolver_dns ~= "" then
+										ucic:set(name, section, "domain_resolver_dns", domain_resolver_dns)
+									end
+								end
+							end
+							if domain_strategy and domain_strategy ~= "" then
+								ucic:set(name, section, "domain_strategy", domain_strategy)
+							end
+						end
 						add = add + 1
 					end
 				end
