@@ -235,6 +235,48 @@ end
 o = s:option(DynamicList, "subscribe_url", translate("Subscribe URL"))
 o.rmempty = true
 
+o = s:option(ListValue, "domain_resolver", translate("Domain DNS Resolve"))
+o.description = translate(
+	"<ul>" ..
+	"<li>" .. translate("If the node address is a domain name, this DNS will be used for resolution.") .. "</li>" .. 
+	"<li>" .. string.format('<font style=\'color:red;\'>%s</font>', translate("Supports only Xray node types.")) .. "</li>" ..
+	"<li>" .. string.format('<font style=\'color:red;\'>%s</font>', translate("Note: For node-specific DNS only. Keep Auto to avoid extra overhead.")) .. "</li>" ..
+	"</ul>"
+)
+o:value("", translate("Auto"))
+o:value("tcp", translate("TCP"))
+o:value("udp", translate("UDP"))
+o:value("https", translate("DoH"))
+
+o = s:option(Value, "domain_resolver_dns", translate("DNS"))
+o.datatype = "or(ipaddr,ipaddrport)"
+o:value("114.114.114.114")
+o:value("223.5.5.5:53")
+o.default = "114.114.114.114"
+o:depends("domain_resolver", "tcp")
+o:depends("domain_resolver", "udp") 
+
+o = s:option(Value, "domain_resolver_dns_https", translate("DNS"))
+o:value("https://120.53.53.53/dns-query", "DNSPod")
+o:value("https://223.5.5.5/dns-query", "AliDNS")
+o.default = o.keylist[1]
+o:depends("domain_resolver", "https")
+
+o = s:option(ListValue, "domain_strategy", translate("Domain Strategy"))
+o.description = translate(
+	"<ul>" ..
+	"<li>" .. translate("If is domain name, The requested domain name will be resolved to IP before connect.") .. "</li>" .. 
+	"<li>" .. string.format('<font style=\'color:red;\'>%s</font>', translate("Supports only Xray node types.")) .. "</li>" ..
+	"<li>" .. string.format('<font style=\'color:red;\'>%s</font>', translate("Note: For node-specific DNS only. Keep Auto to avoid extra overhead.")) .. "</li>" ..
+	"</ul>"
+)
+o.default = ""
+o:value("", translate("Auto"))
+o:value("UseIPv4v6", translate("Prefer IPv4"))
+o:value("UseIPv6v4", translate("Prefer IPv6"))
+o:value("UseIPv4", translate("IPv4 Only"))
+o:value("UseIPv6", translate("IPv6 Only"))
+
 o = s:option(Value, "filter_words", translate("Subscribe Filter Words"))
 o.rmempty = true
 o.description = translate("Filter Words splited by /")
