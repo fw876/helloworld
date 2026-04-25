@@ -467,12 +467,7 @@ local function processData(szType, content, cfgid)
 			if info.type and info.type == "dns" then
 				result.kcp_guise = info.host or ""
 			end
-			result.mtu = 1350
-			result.tti = 50
-			result.uplink_capacity = 5
-			result.downlink_capacity = 20
-			result.read_buffer_size = 2
-			result.write_buffer_size = 2
+			result.seed = params.seed
 		end
 		if info.net == 'grpc' then
 			if info.path then
@@ -730,12 +725,6 @@ local function processData(szType, content, cfgid)
 					result.kcp_domain = params.host or ""
 				end
 				result.seed = params.seed
-				result.mtu = 1350
-				result.tti = 50
-				result.uplink_capacity = 5
-				result.downlink_capacity = 20
-				result.read_buffer_size = 2
-				result.write_buffer_size = 2
 			elseif result.transport == "quic" then
 				result.quic_guise = params.headerType or "none"
 				result.quic_security = params.quicSecurity or "none"
@@ -1122,12 +1111,6 @@ local function processData(szType, content, cfgid)
 					result.kcp_domain = params.host or ""
 				end
 				result.seed = params.seed
-				result.mtu = 1350
-				result.tti = 50
-				result.uplink_capacity = 5
-				result.downlink_capacity = 20
-				result.read_buffer_size = 2
-				result.write_buffer_size = 2
 			elseif result.transport == "quic" then
 				result.quic_guise = params.headerType or "none"
 				result.quic_security = params.quicSecurity or "none"
@@ -1260,33 +1243,22 @@ local function processData(szType, content, cfgid)
 			else
 				result.download_address = nil
 			end
-
 		elseif result.transport == "h2" then
 			result.h2_host = params.host and UrlDecode(params.host) or nil
 			result.h2_path = params.path and UrlDecode(params.path) or nil
-
 		elseif result.transport == "kcp" then
 			result.kcp_guise = params.headerType or "none"
 			if params.headerType and params.headerType == "dns" then
 				result.kcp_domain = params.host or ""
 			end
 			result.seed = params.seed
-			result.mtu = 1350
-			result.tti = 50
-			result.uplink_capacity = 5
-			result.downlink_capacity = 20
-			result.read_buffer_size = 2
-			result.write_buffer_size = 2
-
 		elseif result.transport == "quic" then
 			result.quic_guise = params.headerType or "none"
 			result.quic_security = params.quicSecurity or "none"
 			result.quic_key = params.key
-
 		elseif result.transport == "grpc" then
 			result.serviceName = params.serviceName
 			result.grpc_mode = params.mode or "gun"
-
 		elseif result.transport == "raw" then
 			result.tcp_guise = params.headerType or "none"
 			if result.tcp_guise == "http" then
