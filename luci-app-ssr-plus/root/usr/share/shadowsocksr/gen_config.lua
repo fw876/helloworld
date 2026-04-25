@@ -449,13 +449,12 @@ Xray.outbounds = {
 			} or nil,
 			kcpSettings = (server.transport == "kcp") and {
 				-- kcp
-				mtu = tonumber(server.mtu),
-				tti = tonumber(server.tti),
-				uplinkCapacity = tonumber(server.uplink_capacity),
-				downlinkCapacity = tonumber(server.downlink_capacity),
-				congestion = (server.congestion == "1") and true or false,
-				readBufferSize = tonumber(server.read_buffer_size),
-				writeBufferSize = tonumber(server.write_buffer_size)
+				mtu =  (server.mtu and server.mtu ~= "") and tonumber(server.mtu) or 1350,
+				tti = 50,
+				uplinkCapacity = 12,
+				downlinkCapacity = 100,
+				CwndMultiplier = 1,
+				MaxSendingWindow = 2 * 1024 * 1024
 			} or nil,
 			wsSettings = (server.transport == "ws") and (server.ws_path or server.ws_host or server.tls_host) and {
 				-- ws

@@ -1179,15 +1179,8 @@ o:depends({type = "v2ray", v2ray_protocol = "wireguard"})
 o.default = 1350
 o.rmempty = true
 
-o = s:option(Value, "tti", translate("TTI"))
-o.datatype = "uinteger"
-o:depends("transport", "kcp")
-o.default = 50
-o.rmempty = true
-
 o = s:option(Value, "uplink_capacity", translate("Uplink Capacity(Default:Mbps)"))
 o.datatype = "uinteger"
-o:depends("transport", "kcp")
 o:depends("type", "hysteria2")
 o:depends({type = "v2ray", v2ray_protocol = "hysteria2"})
 o.placeholder = 5
@@ -1195,29 +1188,12 @@ o.rmempty = true
 
 o = s:option(Value, "downlink_capacity", translate("Downlink Capacity(Default:Mbps)"))
 o.datatype = "uinteger"
-o:depends("transport", "kcp")
 o:depends("type", "hysteria2")
 o:depends({type = "v2ray", v2ray_protocol = "hysteria2"})
 o.placeholder = 20
 o.rmempty = true
 
-o = s:option(Value, "read_buffer_size", translate("Read Buffer Size"))
-o.datatype = "uinteger"
-o:depends("transport", "kcp")
-o.default = 2
-o.rmempty = true
-
-o = s:option(Value, "write_buffer_size", translate("Write Buffer Size"))
-o.datatype = "uinteger"
-o:depends("transport", "kcp")
-o.default = 2
-o.rmempty = true
-
 o = s:option(Value, "seed", translate("Obfuscate password (optional)"))
-o:depends("transport", "kcp")
-o.rmempty = true
-
-o = s:option(Flag, "congestion", translate("Congestion"))
 o:depends("transport", "kcp")
 o.rmempty = true
 
