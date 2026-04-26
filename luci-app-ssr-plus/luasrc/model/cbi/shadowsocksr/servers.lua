@@ -15,61 +15,6 @@ local function is_finded(e)
 	return luci.sys.exec(string.format('type -t -p "%s" 2>/dev/null', e)) ~= ""
 end
 
-local function is_js_luci()
-	return luci.sys.call('[ -f "/www/luci-static/resources/uci.js" ]') == 0
-end
-
-local function url(...)
-	local url = string.format("admin/services/%s", "shadowsocksr")
-	local args = { ... }
-	for i, v in ipairs(args) do
-		if v and v ~= "" then
-			url = url .. "/" .. v
-		end
-	end
-	return require "luci.dispatcher".build_url(url)
-end
-
--- 默认的保存并应用行为
-local function apply_redirect(m)
-	local tmp_uci_file = "/etc/config/" .. "shadowsocksr" .. "_redirect"
-	if m.redirect and m.redirect ~= "" then
-		if nixio.fs.access(tmp_uci_file) then
-			local redirect
-			for line in io.lines(tmp_uci_file) do
-				redirect = line:match("option%s+url%s+['\"]([^'\"]+)['\"]")
-				if redirect and redirect ~= "" then break end
-			end
-			if redirect and redirect ~= "" then
-				luci.sys.call("/bin/rm -f " .. tmp_uci_file)
-				luci.http.redirect(redirect)
-			end
-		else
-			nixio.fs.writefile(tmp_uci_file, "config redirect\n")
-		end
-		m.on_after_save = function(self)
-			local redirect = self.redirect
-			if redirect and redirect ~= "" then
-				m.uci:set("shadowsocksr" .. "_redirect", "@redirect[0]", "url", redirect)
-			end
-		end
-	else
-		luci.sys.call("/bin/rm -f " .. tmp_uci_file)
-	end
-end
-
-local function set_apply_on_parse(map)
-	if not map then return end
-	if is_js_luci() then
-		apply_redirect(map)
-		local old = map.on_after_save
-		map.on_after_save = function(self)
-			if old then old(self) end
-			map:set("@global[0]", "timestamp", os.time())
-		end
-	end
-end
-
 local has_ss_rust = is_finded("sslocal") or is_finded("ssserver")
 local has_ss_libev = is_finded("ss-redir") or is_finded("ss-local")
 local has_trojan = is_finded("trojan")
@@ -274,7 +219,20 @@ o = s:option(Button, "delete", translate("Delete All Subscribe Servers"))
 o.inputstyle = "reset"
 o.description = string.format(translate("Server Count") .. ": %d", server_count)
 o.write = function()
-	luci.http.redirect(url("delete"))
+	uci:delete_all("shadowsocksr", "servers", function(s)
+		if s.hashkey or s.isSubscribe then
+			return true
+		else
+			return false
+		end
+	end)
+	uci:save("shadowsocksr")
+	uci:commit("shadowsocksr")
+	for file in nixio.fs.glob("/tmp/sub_md5_*") do
+		nixio.fs.remove(file)
+	end
+	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr", "delete"))
+	return
 end
 
 o = s:option(Value, "url_test_url", translate("URL Test Address"))
@@ -299,23 +257,16 @@ s = m:section(TypedSection, "servers")
 s.anonymous = true
 s.addremove = true
 s.template = "cbi/tblsection"
-set_apply_on_parse(m)
+s:append(cbi.Template("shadowsocksr/optimize_cbi_ui"))
 s.sortable = true
---[[
-s.extedit = url("servers", "%s")
-function s.create(self, ...)
-    local sid = TypedSection.create(self, ...)
-    if sid then
-        local newsid = "cfg" .. sid:sub(-6)
-		-- 删除匿名
-		self.map.uci:delete(self.config, sid)
-        -- 重命名 section
-        self.map.uci:section(self.config, self.sectiontype, newsid)
-        luci.http.redirect(self.extedit % newsid)
-        return
-    end
+s.extedit = luci.dispatcher.build_url("admin", "services", "shadowsocksr", "servers", "%s")
+function s.create(...)
+	local sid = TypedSection.create(...)
+	if sid then
+		luci.http.redirect(s.extedit % sid)
+		return
+	end
 end
-]]--
 
 o = s:option(DummyValue, "type", translate("Type"))
 function o.cfgvalue(self, section)
@@ -336,14 +287,10 @@ o = s:option(DummyValue, "server_port", translate("Socket Connected"))
 o.template = "shadowsocksr/socket"
 o.width = "10%"
 o.render = function(self, section, scope)
-	local cfg = s:cfgvalue(section) or {}
-	self.transport = cfg.transport
-	self.type = cfg.type
-	self.v2ray_protocol = cfg.v2ray_protocol
+	self.transport = s:cfgvalue(section).transport
 	if self.transport == 'ws' then
-		self.ws_path = cfg.ws_path
-		self.tls = cfg.tls
-		self.tls_host = cfg.tls_host
+		self.ws_path = s:cfgvalue(section).ws_path
+		self.tls = s:cfgvalue(section).tls
 	end
 	DummyValue.render(self, section, scope)
 end
@@ -368,8 +315,7 @@ node.write = function(self, section)
 	uci:set("shadowsocksr", '@global[0]', 'global_server', section)
 	uci:save("shadowsocksr")
 	uci:commit("shadowsocksr")
-	luci.sys.call("/etc/init.d/shadowsocksr restart >/dev/null 2>&1 &")
-	luci.http.redirect(url("restart"))
+	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr", "restart"))
 end
 
 o = s:option(Flag, "switch_enable", translate("Auto Switch"))

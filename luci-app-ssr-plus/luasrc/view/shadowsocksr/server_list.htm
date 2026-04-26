@@ -5,293 +5,53 @@
 <%
 require "luci.sys"
 function is_js_luci()
-	return luci.sys.call('[ -f "/www/luci-static/resources/uci.js" ]') == 0
+    return luci.sys.call('[ -f "/www/luci-static/resources/uci.js" ]') == 0
 end
 -%>
-
-<script src="<%=resource%>/view/shadowsocksr/Sortable.min.js"></script>
-
-<style>
-table th, .table .th {
-	text-align: center;
-	background-color: #eeeeee !important;
-	color: #333333 !important;
-	/*line-height: 3 !important;*/
-	padding: 8px 4px !important;
-	border: 1px solid #ddd !important;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	vertical-align: middle !important;
-}
-
-/*.cbi-section-table th:last-child {
-	display: none;
-}*/
-
-table td, .table .td {
-	text-align: center;
-	vertical-align: middle !important;
-	position: relative;
-	border: 1px solid #ddd !important;
-}
-
-.cbi-section-table td:nth-child(2),
-.cbi-section-table th:nth-child(2) {
-	width: 180px;
-	max-width: 180px;
-	cursor: help;
-}
-
-.cbi-section-table td:nth-child(2) div {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.node-wrapper {
-	display: flex !important;
-	flex-direction: row !important;
-	flex-wrap: nowrap !important;
-	align-items: center !important;
-	justify-content: center;
-	gap: 2px;
-	width: 100% !important;
-	box-sizing: border-box;
-}
-
-.node-wrapper .cbi-button,
-.node-wrapper input[type="button"],
-.node-wrapper input[type="submit"] {
-	margin: 0 !important;
-	padding: 0 4px !important;
-	height: 32px !important;
-	display: inline-flex !important;
-	align-items: center !important;
-	justify-content: center !important;
-	line-height: 1 !important;
-	font-size: 17px !important;
-	cursor: pointer;
-	border-radius: 4px;
-	white-space: nowrap !important;
-	border: 1px solid #ccc !important;
-	flex: 1 1 auto;
-	min-width: 0;
-}
-
-.node-wrapper .drag-handle {
-	flex: 0 0 32px !important; 
-	height: 32px !important;
-	cursor: grab !important;
-	display: inline-flex !important;
-	align-items: center !important;
-	justify-content: center !important;
-	user-select: none;
-	order: 100;
-	background: #eee;
-	border-radius: 4px;
-	border: 1px solid #ccc;
-	box-sizing: border-box;
-}
-
-.node-wrapper .drag-handle:active {
-	cursor: grabbing !important;
-	background: #ddd;
-}
-
-.node-wrapper .drag-handle svg {
-	width: 16px;
-	height: 16px;
-	fill: #777;
-	transition: fill 0.2s;
-}
-
-.node-wrapper .drag-handle:hover svg {
-	fill: #333;
-}
-
-/* 测试按钮样式 */
-/*.socket-connected {
-	display: flex;
-	flex-direction: column;  /* 垂直排列 */
-	align-items: center;      /* 水平居中 */
-	gap: 4px;                 /* 按钮与文本间距 */
-}*/
-
-.socket-connected {
-	flex: 0 0 40px;
-	white-space: nowrap;
-	min-width: 0;
-}
-
-@media screen and (max-width: 1152px) {
-	td[data-title]::after {
-		content: none !important;
-		display: none !important;
-		background: none !important;
-	}
-}
-
-@media screen and (max-width: 600px) {
-    .cbi-section-table thead {
-        display: none;
-    }
-
-    .cbi-section-table tbody tr {
-        display: block;
-        margin-bottom: 12px;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        padding: 8px;
-        background: #fff;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-
-    .cbi-section-table tbody tr td {
-        display: inline-block;
-        width: auto !important;
-        border: none !important;
-        padding: 4px 6px !important;
-        font-size: 14px;
-        vertical-align: middle;
-        white-space: nowrap;
-    }
-
-    .cbi-section-table td[data-title]::before {
-        content: attr(data-title) ": ";
-        font-weight: bold;
-        margin-right: 4px;
-        color: #555;
-    }
-
-    /* 手机端完整显示节点名称 */
-    .cbi-section-table td:nth-child(2) div {
-        overflow: visible;
-        white-space: normal;
-        text-overflow: clip;
-        word-break: break-word;
-    }
-
-    .cbi-section-table td.cbi-section-actions {
-        display: block !important;
-        width: 100% !important;
-        margin-top: 8px;
-        border-top: 1px solid #eee !important;
-        padding-top: 8px !important;
-        text-align: left;
-    }
-
-    .node-wrapper {
-        flex-wrap: wrap;
-        justify-content: flex-start;
-        gap: 6px;
-    }
-
-    .node-wrapper .cbi-button {
-        flex: 0 1 auto;
-        min-width: 60px;
-        font-size: 14px;
-        padding: 4px 8px;
-    }
-
-    /* 拖拽手柄在小屏上可隐藏（节省空间） */
-    /*.node-wrapper .drag-handle {
-        display: none !important;
-    }*/
-}
-
-.dragging-row {
-	background-color: rgba(131, 191, 255, 0.4) !important;
-	box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-}
-
-#save_order_tip {
-	display: none;
-	position: fixed;
-	top: 30%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	background: #fff;
-	padding: 15px 30px;
-	border-radius: 4px;
-	z-index: 9999;
-	box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-	border: 1px solid #ccc;
-}
-
-._now_use_bg {
-	background: #5e72e445 !important;
-}
-
-@media (prefers-color-scheme: dark) {
-	._now_use_bg {
-        background: #4a90e2 !important;
-	}
-	.node-wrapper .drag-handle {
-        background: #333;
-        border-color: #555;
-	}
-	.node-wrapper .drag-handle svg {
-        fill: #aaa;
-	}
-}
-
-/* 隐藏 CBI 自带的添加按钮 */
-.cbi-section-actions .cbi-button-add,
-.cbi-section-create .cbi-button-add {
-    display: none !important;
-}
-
-/* 自定义添加按钮样式（与原按钮一致） */
-.cbi-section-create .cbi-button-add-custom {
-    display: inline-block;
-    margin-right: 8px;
-</style>
-
 <% if is_js_luci() then -%>
 <script type="text/javascript">
 	var cbi_t = [];
 	function cbi_t_add(section, tab) {
 		var t = document.getElementById('tab.' + section + '.' + tab);
 		var c = document.getElementById('container.' + section + '.' + tab);
-		if (t && c) {
-			cbi_t[section] = (cbi_t[section] || []);
-			cbi_t[section][tab] = { tab: t, container: c, cid: c.id };
+
+		if( t && c ) {
+			cbi_t[section] = (cbi_t[section] || [ ]);
+			cbi_t[section][tab] = { 'tab': t, 'container': c, 'cid': c.id };
 		}
 	}
+
 	function cbi_t_switch(section, tab) {
-		if (cbi_t[section] && cbi_t[section][tab]) {
-			if (typeof dechecked_all_node === "function") {
-				dechecked_all_node();
-			}
+		if( cbi_t[section] && cbi_t[section][tab] ) {
+			//在切换选项卡之前，先取消当前激活选项卡的全选状态
+			dechecked_all_node();
 			var o = cbi_t[section][tab];
 			var h = document.getElementById('tab.' + section);
-			for (var tid in cbi_t[section]) {
+			for( var tid in cbi_t[section] ) {
 				var o2 = cbi_t[section][tid];
-				if (o.tab.id != o2.tab.id) {
-					o2.tab.className = o2.tab.className.replace(/cbi-tab/g, "cbi-tab-disabled");
+				if( o.tab.id != o2.tab.id ) {
+					o2.tab.className = o2.tab.className.replace(/(^| )cbi-tab( |$)/, " cbi-tab-disabled ");
 					o2.container.style.display = 'none';
-				} else {
-					if (h) h.value = tab;
-					o2.tab.className = o2.tab.className.replace(/cbi-tab-disabled/g, "cbi-tab");
+				}
+				else {
+					if(h) h.value = tab;
+					o2.tab.className = o2.tab.className.replace(/(^| )cbi-tab-disabled( |$)/, " cbi-tab ");
 					o2.container.style.display = 'block';
 				}
 			}
 		}
-		return false;
+		return false
 	}
 </script>
 <%- else %>
 <script type="text/javascript">
-	(function(){
-		if (typeof(cbi_t_switch)==="function") {
-			var old_switch=cbi_t_switch;
-			cbi_t_switch=function(section,tab){
-				if (typeof dechecked_all_node === "function") {
-					dechecked_all_node();
-				}
-				return old_switch(section,tab);
-			}
+	(function() {
+		if (typeof(cbi_t_switch) === "function") {
+			var old_switch = cbi_t_switch;
+			cbi_t_switch = function(section, tab) {
+				dechecked_all_node();
+				return old_switch(section, tab);
+			};
 		}
 	})();
 </script>
@@ -299,453 +59,250 @@ table td, .table .td {
 
 <script type="text/javascript">
 	//<![CDATA[
-	var ajaxList = [];
-	// 存储原始节点顺序
-	var originNodeOrder = [];
-
-	function ajaxAbortAll() {
-		if (!window.ajaxList) return;
-		window.ajaxList.forEach(function(xhr) {
-			try { xhr.abort(); } catch(e) {}
-		});
-		window.ajaxList = [];
-	}
-	
-	// 获取当前节点顺序
-	function get_node_order() {
-		var ids = [];
-		var rows = document.querySelectorAll("#cbi-shadowsocksr-servers table tbody tr[id^='cbi-shadowsocksr-']");
-		rows.forEach(function(row) {
-			var sectionName = row.id.replace("cbi-shadowsocksr-", "");
-			if (sectionName) ids.push(sectionName);
-		});
-		return ids;
-	}
-
-	// 检查顺序是否变化
-	function check_order_change() {
-		var new_order = get_node_order();
-		var btn = document.getElementById("save_order_btn");
-		if (btn) {
-			var is_same = (originNodeOrder.length === new_order.length &&
-						originNodeOrder.every((v, i) => v === new_order[i]));
-			btn.style.display = is_same ? "none" : "inline-block";
-		}
-	}
-
-	// 移动函数：向上
-	function moveUp(btn) {
-		var row = btn.closest("tr");
-		var prev = row.previousElementSibling;
-		if (prev && prev.matches("tr[id]")) {
-			row.parentNode.insertBefore(row, prev);
-			check_order_change();
-		}
-	}
-
-	// 移动函数：向下
-	function moveDown(btn) {
-		var row = btn.closest("tr");
-		var next = row.nextElementSibling;
-		if (next && next.matches("tr[id]")) {
-			row.parentNode.insertBefore(row, next.nextSibling);
-			check_order_change();
-		}
-	}
-
-	// 移动函数：置顶
-	function moveTop(btn) {
-		var row = btn.closest("tr");
-		var first = row.parentNode.querySelector("tr[id]");
-		if (first && first !== row) {
-			row.parentNode.insertBefore(row, first);
-			check_order_change();
-		}
-	}
-
-	// 移动函数：置底
-	function moveBottom(btn) {
-		var row = btn.closest("tr");
-		var last = row.parentNode.querySelector("tr[id]:last-child");
-		if (last && last !== row) {
-			row.parentNode.insertBefore(row, last.nextSibling);
-			check_order_change();
-		}
-	}
-
-	// 添加节点
-	function to_add_node(protocol) {
-		ajaxAbortAll();
-		window.location.href = '<%=luci.dispatcher.build_url("admin/services/shadowsocksr/add_node")%>?redirect=1';
-	}
-
-	// 编辑节点
-	function to_edit_node(node_id) {
-		ajaxAbortAll();
-		window.location.href = '<%=luci.dispatcher.build_url("admin/services/shadowsocksr/servers")%>/' + node_id;
-	}
-
-	// 删除节点
-	function del_node(node_id) {
-		ajaxAbortAll();
-		if (confirm('<%:Are you sure to delete this node?%>')) {
-			window.location.href = '<%=luci.dispatcher.build_url("admin/services/shadowsocksr/remove_node")%>?id=' + encodeURIComponent(node_id);
-		}
-	}
-
-	// 获取当前使用的节点（后端API）
-	function get_now_use_node() {
-		var xhr = new XMLHttpRequest();
-		ajaxList.push(xhr);
-		xhr.open("GET", '<%=luci.dispatcher.build_url("admin/services/shadowsocksr/get_now_use_node")%>', true);
-		xhr.timeout = 3000;
-		xhr.onreadystatechange = function() {
-			if (xhr.readyState == 4) {
-				var index = ajaxList.indexOf(xhr);
-				if (index !== -1) ajaxList.splice(index, 1);
-				if (xhr.status == 200) {
-					try {
-						var result = JSON.parse(xhr.responseText);
-						if (result) {
-							apply_node_highlight(result);
-						}
-					} catch(e) {}
-				}
-			}
-		};
-		xhr.ontimeout = function() {
-			// 超时也需移除
-			var index = ajaxList.indexOf(xhr);
-			if (index !== -1) ajaxList.splice(index, 1);
-		};
-		xhr.send();
-	}
-	
-	// 应用节点高亮
-	function apply_node_highlight(result) {
-		if (!result) return;
-	    
-		// 1. 清除旧痕迹
-		var allRows = document.querySelectorAll('tr[id^="cbi-shadowsocksr-"]');
-		allRows.forEach(function(row) {
-			row.classList.remove('_now_use_bg');
-			row.style.removeProperty('background-color');
-	        
-			var td = row.querySelector("td:first-child");
-			if (td) {
-				td.style.removeProperty('color');
-				td.style.removeProperty('font-weight');
-			}
-		});
-
-		// 2. 精准点亮
-		var types = ["TCP", "UDP", "netflix", "socks5"];
-		types.forEach(function(type) {
-			var node_id = result[type]; 
-			if (node_id) {
-				var target = document.getElementById("cbi-shadowsocksr-" + node_id);
-				if (target) {
-					target.classList.add('_now_use_bg');
-					target.style.setProperty('background-color', '#5e72e430', 'important');
-	                
-					var td = target.querySelector("td:first-child");
-					if (td) {
-						td.style.setProperty('color', 'red', 'important');
-						td.style.setProperty('font-weight', 'bold', 'important');
-					}
-				}
-			}
-		});
-	}
-
-	// 保存节点顺序
-	function save_node_order() {
-		var ids = get_node_order();
-		var btn = document.getElementById("save_order_btn");
-		if(btn) btn.disabled = true;
-		document.getElementById("save_order_tip").style.display = "block";
-		
-		var xhr = new XMLHttpRequest();
-		ajaxList.push(xhr);
-		xhr.open("POST", '<%=luci.dispatcher.build_url("admin/services/shadowsocksr/save_node_order")%>', true);
-		xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-		xhr.onreadystatechange = function() {
-			if (xhr.readyState == 4) {
-				var index = ajaxList.indexOf(xhr);
-				if (index !== -1) ajaxList.splice(index, 1);
-				document.getElementById("save_order_tip").style.display = "none";
-				if(btn) btn.disabled = false;
-				if (xhr.status == 200) {
-					originNodeOrder = get_node_order();
-					if(btn) btn.style.display = "none";
-					get_now_use_node();
-					alert("<%:Saved current page order successfully.%>");
-				} else {
-					alert("<%:Save failed!%>");
-				}
-			}
-		};
-		xhr.send("ids=" + encodeURIComponent(ids.join(",")));
-	}
-
-	// 初始化拖拽排序
-	function initSortable() {
-		var tableBody = document.querySelector("#cbi-shadowsocksr-servers table tbody");
-		if (!tableBody) return;
-
-		// 保存原始顺序
-		originNodeOrder = get_node_order();
-
-		// 获取按钮模板
-		var templateHtml = document.getElementById('node-actions-template').innerHTML;
-
-		var rows = tableBody.querySelectorAll("tr[id]");
-		rows.forEach(function(row) {
-			var actionsCell = row.querySelector(".cbi-section-actions");
-			if (!actionsCell || actionsCell.querySelector(".node-wrapper")) return;
-
-			// 从行 ID 提取节点 ID
-			var node_id = row.id.replace("cbi-shadowsocksr-", "");
-
-			// 替换模板中的占位符 {{id}}
-			var wrapperHtml = templateHtml.replace(/{{id}}/g, node_id);
-
-			// 清空原内容并插入新按钮组
-			actionsCell.innerHTML = wrapperHtml;
-		});
-
-		tableBody.querySelectorAll("tr[id]").forEach(function(row) {
-			var node_id = row.id.replace("cbi-shadowsocksr-", "");
-			
-			// 初始化 Hysteria2 节点操作列按钮
-			var actionsCell = row.querySelector(".cbi-section-actions");
-			if (actionsCell && !actionsCell.querySelector(".node-wrapper")) {
-				actionsCell.innerHTML = templateHtml.replace(/{{id}}/g, node_id);
-			}
-
-			// 对 Hysteria2 节点在“连接测试”列插入 Test 按钮
-			var typeEl = row.querySelector('.hy2type');
-			var protoEl = row.querySelector('.hy2proto');
-			var isHy2 = (typeEl && typeEl.getAttribute("hint") === "hysteria2") || 
-						(protoEl && protoEl.getAttribute("hint") === "hysteria2");
-
-			if (isHy2) {
-				var socketCell = row.querySelector('.socket-connected');
-				// 检查是否已经添加过，避免重复添加
-				if (socketCell && !row.querySelector('.socket-manual')) {
-					// 将 <%=section%> 替换为 JS 变量 node_id
-					var testHtml = '<span class="socket-manual" data-section="' + node_id + '">' +
-						'    <input class="btn cbi-button cbi-button-apply manual-test-btn" type="button" ' +
-						'           value="<%:Test%>" title="<%:TLS handshake test, latency for reference only%>" ' +
-						'           onclick="manualTest(this, \'' + node_id + '\')">' +
-						'</span>'; 
-
-					// 插入到连接测试列
-					// socketCell.insertAdjacentHTML('afterbegin', testHtml);
-					// 替换 wait
-					socketCell.innerHTML = testHtml; 
-				}
-			}
-		});
-
-		// 初始化 Sortable 拖拽
-		if (typeof Sortable !== 'undefined') {
-			Sortable.create(tableBody, { 
-				handle: ".drag-handle", 
-				draggable: "tr[id]", 
-				animation: 150,
-				ghostClass: "dragging-row",
-				onEnd: function(evt) { 
-					check_order_change();
-				}
-			});
-		}
-
-		// 获取当前使用的节点高亮
-		get_now_use_node();
-	}
-
-	// 获取 ping 对应的颜色
-	function getPingColor(ping) {
-		if (!ping || ping <= 0) return "#ff0000";
-		if (ping < 100) return "#249400";
-		if (ping < 200) return "#ff7700";
-		if (ping < 300) return "#ff3300";
-		return "#ff0000";
-	}
-
-	function manualTest(btn, section) {
-		// console.log('manualTest called with section:', section);
-		// 禁用按钮
-		btn.disabled = true;
-		btn.value = '<%:Testing...%>';
-
-		var row = btn.closest('tr');
-		if (!row) return;
-
-		var domain = row.querySelector('.pingtime');
-		var port = row.querySelector('.socket-connected');
-		var type = row.querySelector('.hy2type');
-		var proto = row.querySelector('.hy2proto');
-
-		var params = {
-			index: section,
-			domain: domain ? domain.getAttribute('hint') : '',
-			port: port ? port.getAttribute('hint') : '',
-			type: (type ? type.getAttribute("hint") : "") || (proto ? proto.getAttribute("hint") : "")
-		};
-
-		// 调试：在浏览器 F12 控制台查看发送的数据
-		// console.log("正在测试节点", section, params);
-
-		var xhr = XHR.get('<%=luci.dispatcher.build_url("admin/services/shadowsocksr/ping")%>', params,
-			function(x, result) {
-				// btn.disabled = false;
-				// btn.value = '<%:Test%>';
-				var idx = ajaxList.indexOf(x);
-				if (idx !== -1) ajaxList.splice(idx, 1);
-				if (x && x.status === 200 && result) {
-					if (port) {
-						port.style.display = 'inline';
-						if (result.socket) {
-							port.innerHTML = '<font style="color:#249400">ok</font>';
-						} else {
-							port.innerHTML = '<font style="color:#ff0000">fail</font>';
-						}
-					}
-					// 更新延迟
-					if (domain && result.ping) {
-						var ping = parseInt(result.ping);
-						var col = getPingColor(ping);
-						domain.innerHTML =
-							'<font style="color:' + col + '">' + (ping > 0 ? ping : "--") + ' ms</font>';
-					}
-					// 隐藏按钮
-					btn.style.display = 'none';
-				} else {
-					// 请求失败允许重试
-					btn.disabled = false;
-					btn.value = '<%:Test%>';
-					if (port) {
-						port.style.display = 'inline';
-						port.innerHTML = '<font style="color:#ff0000">fail</font>';
-					}
-				}
-			}
-		);
-		if (xhr) ajaxList.push(xhr);
-	}
-
-	// 页面加载完成初始化
-	window.addEventListener("load", function () {
-		// 批量 Ping 初始化
-		const doms = document.getElementsByClassName("pingtime");
+	window.addEventListener('load', function () {
+		const doms = document.getElementsByClassName('pingtime');
 		const ports = document.getElementsByClassName("socket-connected");
-
-		function xhr(index) {
-			return new Promise(resolve => {
-				// 跳过 hysteria2 节点的自动测试
-				const type = document.getElementsByClassName("hy2type")[index];
-				const proto = document.getElementsByClassName("hy2proto")[index];
-				if (type && type.getAttribute("hint") === "hysteria2" || proto && proto.getAttribute("hint") === "hysteria2") {
-					resolve();
-					return;
-				}
-
-				const dom = doms[index]; 
-				if (!dom) return resolve();
+		const transports = document.getElementsByClassName("transport");
+		const wsPaths = document.getElementsByClassName("wsPath");
+		const tlss = document.getElementsByClassName("tls");
+		const xhr = (index) => {
+			return new Promise((res) => {
+				const dom = doms[index];
 				const port = ports[index];
-        
-				// 获取各项属性，增加空值保护
-				const transport = document.getElementsByClassName("transport")[index];
-				const wsPath = document.getElementsByClassName("wsPath")[index];
-				const tls = document.getElementsByClassName("tls")[index];
-				const host = document.getElementsByClassName("tlshost")[index];
-
-				const params = {
-					index: index, 
-					domain: dom.getAttribute("hint"), 
-					port: port ? port.getAttribute("hint") : "",
-					transport: transport ? transport.getAttribute("hint") : "",
-					wsPath: wsPath ? wsPath.getAttribute("hint") : "", 
-					tls: tls ? tls.getAttribute("hint") : "",
-					host: host ? host.getAttribute("hint") : "",
-				};
-
-				// 调试：在浏览器 F12 控制台查看发送的数据
-				// console.log("正在测试节点 " + index, params);
-
-				port.innerHTML = '<font style=\"color:#0072c3\"><%:connect%></font>';
-				var xhr = XHR.get('<%=luci.dispatcher.build_url("admin/services/shadowsocksr/ping")%>', params, 
-				function (x, result) {
-					var idx = ajaxList.indexOf(x);
-					if (idx !== -1) ajaxList.splice(idx, 1);
-					if (x && x.status === 200 && result) {
-						let ping = result.ping ? parseInt(result.ping) : 0;
-						let col = getPingColor(ping);
-						if (dom) {
-							dom.innerHTML = '<font style="color:' + col + '">' + (ping > 0 ? ping : "--") + ' ms</font>';
-						}
-						if (port) {
-							port.innerHTML = result.socket ? 
-									'<font style="color:#249400">ok</font>' : 
-									'<font style="color:#ff0000">fail</font>';
-						}
+				const transport = transports[index];
+				const wsPath = wsPaths[index];
+				const tls = tlss[index];
+				if (!dom) res();
+				port.innerHTML = '<font style=\"color:#0072c3\">connect</font>';
+				XHR.get('<%=luci.dispatcher.build_url("admin/services/shadowsocksr/ping")%>', {
+					index,
+					domain: dom.getAttribute("hint"),
+					port: port.getAttribute("hint"),
+					transport: transport.getAttribute("hint"),
+					wsPath: wsPath.getAttribute("hint"),
+					tls: tls.getAttribute("hint")
+				},
+				(x, result) => {
+					let col = '#ff0000';
+					if (result.ping) {
+						if (result.ping < 300) col = '#ff3300';
+						if (result.ping < 200) col = '#ff7700';
+						if (result.ping < 100) col = '#249400';
 					}
-					resolve();
+					dom.innerHTML = `<font style=\"color:${col}\">${(result.ping ? result.ping : "--") + " ms"}</font>`;
+					if (result.socket) {
+						port.innerHTML = '<font style=\"color:#249400\">ok</font>';
+					} else {
+						port.innerHTML = '<font style=\"color:#ff0000\">fail</font>';
+					}
+					res();
 				});
-				if (xhr) ajaxList.push(xhr);
 			});
-		}
-		
-		// 顺序执行 Ping 测试
+		};
 		let task = -1;
-		function worker() { 
-			task++; 
-			if (doms[task]) xhr(task).then(worker); 
-		}
-		for (let i = 0; i < 20; i++) worker();
-
-		// 初始化排序功能
-		initSortable();
-
-		// 为节点名称列添加 title 属性
-		document.querySelectorAll("#cbi-shadowsocksr-servers table tbody tr").forEach(function(row) {
-			var nameCell = row.querySelector("td:nth-child(2)");
-			if (nameCell) {
-				var fullName = nameCell.innerText.trim();
-				if (fullName) nameCell.setAttribute("title", fullName);
+		const thread = () => {
+			task = task + 1;
+			if (doms[task]) {
+				xhr(task).then(thread);
 			}
-		});
-
-		// 绑定保存按钮点击事件
-		var saveBtn = document.getElementById("save_order_btn");
-		if (saveBtn) {
-			saveBtn.onclick = save_node_order;
+		};
+		for (let i = 0; i < 20; i++) {
+			thread();
 		}
 	});
+
+	function cbi_row_drop(fromId, toId, store, isToBottom) {
+		var fromNode = document.getElementById(fromId);
+		var toNode = document.getElementById(toId);
+		if (!fromNode || !toNode) return false;
+
+		var table = fromNode.parentNode;
+		while (table && table.nodeName.toLowerCase() != "table")
+			table = table.parentNode;
+		if (!table) return false;
+
+		var ids = [];
+		if (isToBottom) {
+			toNode.parentNode.appendChild(fromNode);
+		} else {
+			fromNode.parentNode.insertBefore(fromNode, toNode);
+		}
+		for (var idx = 1; idx < table.rows.length; idx++) {
+			table.rows[idx].className = table.rows[idx].className.replace(
+				/cbi-rowstyle-[12]/,
+				"cbi-rowstyle-" + (1 + (idx % 2))
+			);
+
+			if (table.rows[idx].id && table.rows[idx].id.match(/-([^\-]+)$/))
+				ids.push(RegExp.$1);
+		}
+		var input = document.getElementById(store);
+		if (input) input.value = ids.join(" ");
+		return false;
+	}
+
+	// set tr draggable
+	function enableDragForTable(table_selector, store) {
+		// 添加 CSS 样式
+		const style = document.createElement("style");
+		style.textContent = `
+			tr[draggable="true"] {
+				cursor: move;
+				user-select: none;
+			}
+			/* 添加置顶和置底按钮的间距 */
+			.cbi-button-top,
+			.cbi-button-bottom {
+				margin-right: 4px;
+				display: inline-block;
+			}
+			`;
+		document.head.appendChild(style);
+
+		var trs = document.querySelectorAll(table_selector + " tr");
+		if (!trs || trs.length < 2) {
+			return;
+		}
+		function ondragstart(ev) {
+			ev.dataTransfer.setData("Text", ev.target.id);
+		}
+		function ondrop(ev) {
+			var from = ev.dataTransfer.getData("Text");
+			cbi_row_drop(from, this.id, store);
+		}
+		function ondragover(ev) {
+			ev.preventDefault();
+			ev.dataTransfer.dropEffect = "move";
+		}
+
+		// 上移一行
+		function moveUp(id) {
+			// 查找当前行的索引
+			var trList = document.querySelectorAll(table_selector + " tr");
+			var currentIndex = -1;
+			for (var i = 0; i < trList.length; i++) {
+				if (trList[i].id === id) {
+					currentIndex = i;
+					break;
+				}
+			}
+
+			// 如果不是第一行数据行，则上移一行
+			if (currentIndex > 1) {
+				var prevRow = trList[currentIndex - 1];
+				cbi_row_drop(id, prevRow.id, store);
+			}
+		}
+
+		// 下移一行
+		function moveDown(id) {
+			// 查找当前行的索引
+			var trList = document.querySelectorAll(table_selector + " tr");
+			var currentIndex = -1;
+			for (var i = 0; i < trList.length; i++) {
+				if (trList[i].id === id) {
+					currentIndex = i;
+					break;
+				}
+			}
+
+			// 如果不是最后一行，则下移一行
+			if (currentIndex < trList.length - 1) {
+				var nextRow = trList[currentIndex + 1];
+				// 对于下移，我们需要将当前行插入到下一行的后面
+				var nextNextRow = trList[currentIndex + 2];
+				if (nextNextRow) {
+					cbi_row_drop(id, nextNextRow.id, store, false);
+				} else {
+					// 如果是倒数第二行，移动到最后一行的后面
+					cbi_row_drop(id, nextRow.id, store, true);
+				}
+			}
+		}
+
+		// 置顶
+		function moveToTop(id) {
+			var top = document.querySelectorAll(table_selector + " tr")[1];
+			cbi_row_drop(id, top.id, store);
+		}
+
+		// 置底
+		function moveToBottom(id) {
+			//console.log('moveToBottom:', id);
+			var trList = document.querySelectorAll(table_selector + " tr");
+			var bottom = trList[trList.length - 1];
+			cbi_row_drop(id, bottom.id, store, true);
+		}
+
+		for (let index = 1; index < trs.length; index++) {
+			const el = trs[index];
+			el.setAttribute("draggable", true);
+			el.ondragstart = ondragstart;
+			el.ondrop = ondrop;
+			el.ondragover = ondragover;
+
+			// 上移和下移按钮
+			var upBtns = el.querySelectorAll(".cbi-button.cbi-button-up");
+			if (upBtns && upBtns.length > 0) {
+				upBtns.forEach(function (_el) {
+					_el.onclick = function () {
+						moveUp(el.id);
+					};
+				});
+			}
+
+			var downBtns = el.querySelectorAll(".cbi-button.cbi-button-down");
+			if (downBtns && downBtns.length > 0) {
+				downBtns.forEach(function (_el) {
+					_el.onclick = function () {
+						moveDown(el.id);
+					};
+				});
+			}
+
+			// 添加置顶和置底按钮
+			var actionsCell = el.querySelector(".cbi-section-actions");
+			if (actionsCell) {
+				// 获取现有的按钮容器内的div
+				var buttonDiv = actionsCell.querySelector("div");
+
+				// 如果按钮容器内没有div，则创建一个
+				if (!buttonDiv) {
+					buttonDiv = document.createElement("div");
+					actionsCell.appendChild(buttonDiv);
+				}
+
+				// 置顶按钮
+				var toTopBtn = document.createElement("input");
+				toTopBtn.className = "btn cbi-button cbi-button-top";
+				toTopBtn.type = "button";
+				toTopBtn.value = "<%:To Top%>";
+				toTopBtn.title = "<%:To Top%>";
+				toTopBtn.onclick = function () {
+					moveToTop(el.id);
+				};
+
+				// 置底按钮
+				var toBottomBtn = document.createElement("input");
+				toBottomBtn.className = "btn cbi-button cbi-button-bottom";
+				toBottomBtn.type = "button";
+				toBottomBtn.value = "<%:To Bottom%>";
+				toBottomBtn.title = "<%:To Bottom%>";
+				toBottomBtn.onclick = function () {
+					moveToBottom(el.id);
+				};
+
+				// 将置顶和置底按钮插入到单元格的开头
+				buttonDiv.insertBefore(toBottomBtn, buttonDiv.firstChild);
+				buttonDiv.insertBefore(toTopBtn, buttonDiv.firstChild);
+			}
+		}
+	}
+
+	// enable
+	enableDragForTable(
+		"#cbi-shadowsocksr-servers table",
+		"cbi.sts.shadowsocksr.servers"
+	);
 	//]]>
 </script>
-
-<!-- 按钮模板：包含置顶、上移、下移、置底、编辑、删除、拖拽手柄 -->
-<script type="text/template" id="node-actions-template">
-	<div class="node-wrapper">
-		<input class="btn cbi-button cbi-button-edit" type="button" value="<%:To Top%>" onclick="moveTop(this)" title="<%:To Top%>"/>
-		<input class="btn cbi-button cbi-button-up" type="button" value="<%:Move up%>" onclick="moveUp(this)" title="<%:Move up%>"/>
-		<input class="btn cbi-button cbi-button-down" type="button" value="<%:Move down%>" onclick="moveDown(this)" title="<%:Move down%>"/>
-		<input class="btn cbi-button cbi-button-edit" type="button" value="<%:To Bottom%>" onclick="moveBottom(this)" title="<%:To Bottom%>"/>
-		<input class="btn cbi-button cbi-button-edit" type="button" value="<%:Edit%>" onclick="to_edit_node('{{id}}')"/>
-		<input class="btn cbi-button cbi-button-remove" type="button" value="<%:Delete%>" onclick="del_node('{{id}}')"/>
-		<span class="drag-handle" title="<%:Drag to reorder%>">
-			<svg viewBox="0 0 320 512" xmlns="http://www.w3.org/2000/svg">
-				<path d="M96 112c0-26.5-21.5-48-48-48S0 85.5 0 112s21.5 48 48 48s48-21.5 48-48zm0 144c0-26.5-21.5-48-48-48S0 229.5 0 256s21.5 48 48 48s48-21.5 48-48zm0 144c0-26.5-21.5-48-48-48S0 373.5 0 400s21.5 48 48 48s48-21.5 48-48zM320 112c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 144c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 144c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48z"/>
-			</svg>
-		</span>
-	</div>
-</script>
-
-<div id="save_order_tip"><%:Saving the new order...%></div>
-<div class="cbi-section-create" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
-	<input class="btn cbi-button cbi-button-add-custom" type="button" value="<%:Add%>" onclick="to_add_node()">
-	<input class="btn cbi-button cbi-button-apply cbi-button-positive" style="display:none" type="button" id="save_order_btn" value="<%:Save Order%>">
-</div>

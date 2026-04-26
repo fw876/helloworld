@@ -3,47 +3,6 @@
 module("luci.controller.shadowsocksr", package.seeall)
 require "nixio"
 require "nixio.fs"
-local uci = require("luci.model.uci").cursor()
-
-local function sh_uci_commit(config)
-	luci.sys.call(string.format("uci -q commit %s", config))
-end
-
-local function is_old_uci()
-	return luci.sys.call("grep -E 'require[ \t]*\"uci\"' /usr/lib/lua/luci/model/uci.lua >/dev/null 2>&1") == 0
-end
-
-local function uci_save(cursor, config, commit, apply)
-	if is_old_uci() then
-		cursor:save(config)
-		if commit then
-			cursor:commit(config)
-			if apply then
-				luci.sys.call("/etc/init.d/" .. config .. " reload > /dev/null 2>&1 &")
-			end
-		end
-	else
-		commit = true
-		if commit then
-			if apply then
-				cursor:commit(config)
-			else
-				sh_uci_commit(config)
-			end
-		end
-	end
-end
-
-local function url(...)
-	local url = string.format("admin/services/%s", "shadowsocksr")
-	local args = { ... }
-	for i, v in ipairs(args) do
-		if v and v ~= "" then
-			url = url .. "/" .. v
-		end
-	end
-	return require "luci.dispatcher".build_url(url)
-end
 
 function index()
 	if not nixio.fs.access("/etc/config/shadowsocksr") then
@@ -71,11 +30,6 @@ function index()
 	entry({"admin", "services", "shadowsocksr", "reset"}, call("act_reset"))
 	entry({"admin", "services", "shadowsocksr", "restart"}, call("act_restart"))
 	entry({"admin", "services", "shadowsocksr", "delete"}, call("act_delete"))
-	--[[ API ]]
-	entry({"admin", "services", "shadowsocksr", "add_node"}, call("act_add_node")).leaf = true
-	entry({"admin", "services", "shadowsocksr", "remove_node"}, call("act_remove"))
-	entry({"admin", "services", "shadowsocksr", "save_node_order"}, call("act_save_order")).leaf = true
-	entry({"admin", "services", "shadowsocksr", "get_now_use_node"}, call("act_get_now_use_node")).leaf = true
 	--[[Backup]]
 	entry({"admin", "services", "shadowsocksr", "backup"}, call("create_backup")).leaf = true
 end
@@ -295,103 +249,8 @@ function act_restart()
 end
 
 function act_delete()
-	uci:delete_all("shadowsocksr", "servers", function(s)
-		if s.hashkey or s.isSubscribe then
-			return true
-		else
-			return false
-		end
-	end)
-	uci:commit("shadowsocksr")
-	for file in nixio.fs.glob("/tmp/sub_md5_*") do
-		nixio.fs.remove(file)
-	end
-	luci.sys.call("/etc/init.d/shadowsocksr restart >/dev/null 2>&1 &")
+	luci.sys.call("/etc/init.d/shadowsocksr restart &")
 	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr", "servers"))
-end
-
-function act_add_node()
-	local redirect = luci.http.formvalue("redirect")
-	local used_sid = {}
-	local next_sid = 1
-
-	uci:foreach("shadowsocksr", "servers", function(s)
-		local num = s[".name"]:match("^cfg(%x%x)")
-		if num then
-			local n = tonumber(num, 16)
-			used_sid[n] = true
-		end
-	end)
-
-	local function get_next_sid()
-		while used_sid[next_sid] do
-			next_sid = next_sid + 1
-		end
-		used_sid[next_sid] = true
-		return next_sid
-	end
-
-	local sid = uci:section("shadowsocksr", "servers", nil)
-	local suffix = sid:sub(-4)
-	uci:delete("shadowsocksr", sid)
-
-	local id = get_next_sid()
-	local cfgid = string.format("cfg%02x%s", id, suffix)
-	uci:section("shadowsocksr", "servers", cfgid)
-	uci_save(uci, "shadowsocksr")
-
-	if redirect == "1" then
-		luci.http.redirect(url("servers", cfgid))
-	else
-		luci.http.write_json({ result = cfgid })
-	end
-end
-
-function act_remove()
-	local id = luci.http.formvalue("id")
-	if id then
-		uci:delete("shadowsocksr", id)
-		uci:commit("shadowsocksr")
-	end
-	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr", "servers"))
-end
-
-function act_save_order()
-	local ids = luci.http.formvalue("ids") or ""
-	local new_order = {}
-	for id in ids:gmatch("([^,]+)") do
-		new_order[#new_order + 1] = id
-	end
-
-	for idx, name in ipairs(new_order) do
-		luci.sys.call(string.format("uci -q reorder %s.%s=%d", "shadowsocksr", name, idx - 1))
-	end
-
-	sh_uci_commit("shadowsocksr")
-	luci.http.write_json({ status = "ok" })
-end
-
-function act_get_now_use_node()
-	local result = {}
-	local tcp_node = uci:get_first("shadowsocksr", "global", "global_server")
-	if tcp_node then
-		result["TCP"] = tcp_node
-	end
-	local udp_node = uci:get_first("shadowsocksr", "global", "udp_relay_server")
-	if udp_node then
-		result["UDP"] = udp_node
-	end
-	local netflix_node = uci:get_first("shadowsocksr", "global", "netflix_server")
-	if netflix_node then
-		result["netflix"] = netflix_node
-	end
-	local socks5_node = uci:get_first("shadowsocksr", "socks5_proxy", "server")
-	if socks5_node then
-		result["socks5"] = socks5_node
-	end
-
-	luci.http.prepare_content("application/json")
-	luci.http.write_json(result)
 end
 
 function get_log()
