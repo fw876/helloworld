@@ -2,7 +2,6 @@
 
 require "luci.sys"
 local ucursor = require "luci.model.uci".cursor()
-local datatypes = require "luci.cbi.datatypes"
 local json = require "luci.jsonc"
 
 local server_section = arg[1]
@@ -11,12 +10,6 @@ local local_port     = arg[3] or "0"
 local socks_port     = arg[4] or "0"
 
 local chain          = arg[5] or "0"
-
-local GLOBAL = {
-	DNS_SERVER = {},
-	DNS_HOSTNAME = {},
-	VPS_EXCLUDE = {}
-}
 
 -- 辅助函数：拆分字符串（若 luci.util 未加载则定义）
 local function split(str, pat)
@@ -46,16 +39,6 @@ local node_id = server_section
 local remarks = server.alias or ""
 local b64decode = nixio.bin.b64decode
 local b64encode = nixio.bin.b64encode
-
--- 解析 URL（简单实现，仅用于 DoH）
-local function parseURL(url)
-	if not url then return nil end
-	local schema, rest = url:match("^(https?)://(.*)$")
-	if not schema then return nil end
-	local host, port_str = rest:match("^([^:]+):?(%d*)/?.*$")
-	local port = tonumber(port_str) or (schema == "https" and 443 or 80)
-	return { host = host, port = port, schema = schema }
-end
 
 if server.type == "ss-rust" or server.type == "ss-libev" then
     server.type = "ss"
@@ -645,7 +628,6 @@ Xray.outbounds = {
 			end)(),
 			sockopt = {
 				mark = 255,
-				domainStrategy = server.domain_strategy or "UseIP",
 				tcpFastOpen = (function()
 					if server.transport == "xhttp" then
 						return (server.fast_open == "1") and true or false
@@ -672,19 +654,6 @@ Xray.outbounds = {
 		} or nil
 	}
 }
-
-table.insert(Xray.outbounds, {
-	protocol = "freedom",
-	tag = "direct",
-	settings = {
-		domainStrategy = server.domain_strategy or "UseIP"   -- 可根据需要改为 direct_dns_query_strategy
-	},
-    streamSettings = {
-		sockopt = {
-			mark = 255
-		}
-	}
-})
 
 -- 添加带有 fragment 设置的 dialerproxy 配置
 if xray_fragment.fragment ~= "0" or (xray_fragment.noise ~= "0" and xray_noise.enabled ~= "0") then
@@ -714,121 +683,6 @@ if xray_fragment.fragment ~= "0" or (xray_fragment.noise ~= "0" and xray_noise.e
 		}
 	})
 end
-
--- Xray DNS 解析配置
-if datatypes.hostname(server.server) and server.domain_resolver and (server.domain_resolver_dns or server.domain_resolver_dns_https) then
-	-- 解析 DNS 服务器配置
-	local dns_proto = server.domain_resolver
-	local config_address
-	local config_port
-	if dns_proto == "https" then
-		local _a = parseURL(server.domain_resolver_dns_https)
-		if _a then
-			config_address = server.domain_resolver_dns_https
-			config_port = _a.port or 443
-			if _a.hostname and datatypes.hostname(_a.hostname) then
-				GLOBAL.DNS_HOSTNAME[_a.hostname] = true
-			end
-		end
-	else
-		local server_address = server.domain_resolver_dns
-		config_port = 53
-		local parts = split(server_address, ":")
-		if #parts > 1 then
-			server_address = parts[1]
-			config_port = tonumber(parts[#parts])
-		end
-		config_address = server_address
-		if dns_proto == "tcp" then
-			config_address = dns_proto .. "://" .. server_address .. ":" .. config_port
-		end
-	end
-
-	-- 存入 GLOBAL.DNS_SERVER（去重）
-	local dns_key = dns_proto .. "|" .. config_address .. "|" .. tostring(config_port)
-	if not GLOBAL.DNS_SERVER[dns_key] then
-		GLOBAL.DNS_SERVER[dns_key] = {
-			tag = "dns-node-" .. node_id,
-			address = config_address,
-			port = config_port,
-			finalQuery = true,
-			disableCache = false,
-			serveStale = true,
-			serveExpiredTTL = 30,
-			domains = {}
-		}
-	end
-
-	-- 添加当前节点域名到该 DNS 服务器的 domains 列表
-	local domain = "full:" .. server.server
-	local exists
-	for _, d in ipairs(GLOBAL.DNS_SERVER[dns_key].domains) do
-		if d == domain then exists = true; break end
-	end
-	if not exists then
-		table.insert(GLOBAL.DNS_SERVER[dns_key].domains, domain)
-	end
-	GLOBAL.VPS_EXCLUDE[server.server] = true
-
-	-- 构建 Xray.dns
-	local dns_servers = { "localhost" }
-	for key, dns_server in pairs(GLOBAL.DNS_SERVER) do
-		table.insert(dns_servers, {
-			tag = dns_server.tag,
-			address = dns_server.address,
-			port = dns_server.port,
-			domains = dns_server.domains,
-			finalQuery = dns_server.finalQuery,
-			serveStale = dns_server.serveStale,
-			serveExpiredTTL = dns_server.serveExpiredTTL,
-			disableCache = dns_server.disableCache
-		})
-	end
-	Xray.dns = {
-		servers = dns_servers,
-		disableFallback = true,
-		disableFallbackIfMatch = true,
-		useSystemHosts = true,
-		queryStrategy = "UseIP",
-		disableCache = false,
-		tag = "dns-global"   -- 用于 routing
-	}
-end
-
--- 代理出站的 tag（与 outbound 中的 tag 保持一致）
-local proxy_tag = (remarks ~= nil and remarks ~= "") and (node_id .. ":" .. remarks) or node_id
--- 构建 routing 规则表
-local routing_rules = {}
--- 1. 为每个自定义 DNS 服务器添加直连规则（inboundTag 匹配 dns-node-xxx）
-if GLOBAL.DNS_SERVER and next(GLOBAL.DNS_SERVER) then
-	for _, dns_server in pairs(GLOBAL.DNS_SERVER) do
-		table.insert(routing_rules, {
-			inboundTag = { dns_server.tag },
-			outboundTag = "direct"
-		})
-	end
-end
-
--- 2. 添加全局 DNS 直连规则（需要 Xray.dns 中已设置 tag = "dns-global"）
-if Xray.dns and Xray.dns.tag then
-	table.insert(routing_rules, {
-		inboundTag = { "dns-global" },
-		outboundTag = "direct"
-	})
-end
-
--- 3. 添加默认规则：所有 TCP/UDP 流量走代理
-table.insert(routing_rules, {
-	network = "tcp,udp",
-	ruleTag = "default",
-	outboundTag = proxy_tag
-})
-
--- 构建 routing 对象
-Xray.routing = {
-	rules = routing_rules,
-	domainStrategy = "AsIs"
-}
 
 local cipher = "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA:AES128-SHA:AES256-SHA:DES-CBC3-SHA"
 local cipher13 = "TLS_AES_128_GCM_SHA256:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_256_GCM_SHA384"

@@ -134,10 +134,6 @@ msgstr "高级设置"
 msgid "Advertising Data"
 msgstr "【广告屏蔽】数据库"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1676
-msgid "AliDNS"
-msgstr ""
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client.lua:268
 msgid "AliYun Public DNS (223.5.5.5)"
 msgstr ""
@@ -521,10 +517,6 @@ msgstr "DNS 防污染服务"
 msgid "DNS Query Mode For Shunt Mode"
 msgstr "分流模式下的 DNS 查询模式"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1675
-msgid "DNSPod"
-msgstr ""
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client.lua:267
 msgid "DNSPod Public DNS (119.29.29.29)"
 msgstr ""
@@ -646,20 +638,10 @@ msgstr "执行重置"
 msgid "Do you want to restore the client to default settings?"
 msgstr "是否要恢复客户端默认配置？"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1663
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:249
-msgid "DoH"
-msgstr ""
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:230
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client.lua:259
 msgid "DoT upstream (Need use wolfssl version)"
 msgstr "DoT 上游（需使用 wolfssl 版本）"
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1653
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:238
-msgid "Domain DNS Resolve"
-msgstr "域名 DNS 解析"
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:419
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1680
@@ -1075,38 +1057,15 @@ msgstr "绕过中国大陆 IP 模式"
 msgid "IP Stack Preference"
 msgstr "IP 栈优先级"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1691
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:277
-msgid "IPv4 Only"
-msgstr "仅 IPv4"
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1692
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:278
-msgid "IPv6 Only"
-msgstr "仅 IPv6"
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:243
 msgid "If empty, Not change Apple domains parsing DNS (Default is empty)"
 msgstr "如果为空，则不更改 Apple 域名解析 DNS（默认为空）"
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1683
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:268
-msgid ""
-"If is domain name, The requested domain name will be resolved to IP before "
-"connect."
-msgstr "如果是域名，域名将在请求发出之前解析为 IP。"
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1369
 msgid ""
 "If it is not empty, it indicates that the Client has enabled Encrypted "
 "Client, see:"
 msgstr "如果不为空，表示客户端已启用加密客户端，具体请参见："
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1656
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:241
-msgid ""
-"If the node address is a domain name, this DNS will be used for resolution."
-msgstr "如果节点地址是域名，则将使用此 DNS 进行解析。"
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:865
 msgid "If this option is not set, the socket behavior is platform dependent."
@@ -1472,13 +1431,6 @@ msgstr "未运行"
 msgid "Not exist"
 msgstr "未安装可执行文件"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1657
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1684
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:243
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:270
-msgid "Note: For node-specific DNS only. Keep Auto to avoid extra overhead."
-msgstr "注意：仅用于节点专用 DNS，通常请保持自动，以免增加开销。"
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/log.lua:27
 msgid ""
 "Note: Restoring configurations across different versions may cause "
@@ -1621,16 +1573,6 @@ msgstr "预连接"
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1231
 msgid "Pre-shared key"
 msgstr "预共享密钥"
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1689
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:275
-msgid "Prefer IPv4"
-msgstr "IPv4 优先"
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1690
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:276
-msgid "Prefer IPv6"
-msgstr "IPv6 优先"
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client.lua:93
 msgid "Prefer firewall tools"

@@ -130,10 +130,6 @@ msgstr ""
 msgid "Advertising Data"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1676
-msgid "AliDNS"
-msgstr ""
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client.lua:268
 msgid "AliYun Public DNS (223.5.5.5)"
 msgstr ""
@@ -512,10 +508,6 @@ msgstr ""
 msgid "DNS Query Mode For Shunt Mode"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1675
-msgid "DNSPod"
-msgstr ""
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client.lua:267
 msgid "DNSPod Public DNS (119.29.29.29)"
 msgstr ""
@@ -633,19 +625,9 @@ msgstr ""
 msgid "Do you want to restore the client to default settings?"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1663
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:249
-msgid "DoH"
-msgstr ""
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:230
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client.lua:259
 msgid "DoT upstream (Need use wolfssl version)"
-msgstr ""
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1653
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:238
-msgid "Domain DNS Resolve"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:419
@@ -1062,37 +1044,14 @@ msgstr ""
 msgid "IP Stack Preference"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1691
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:277
-msgid "IPv4 Only"
-msgstr ""
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1692
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:278
-msgid "IPv6 Only"
-msgstr ""
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:243
 msgid "If empty, Not change Apple domains parsing DNS (Default is empty)"
-msgstr ""
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1683
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:268
-msgid ""
-"If is domain name, The requested domain name will be resolved to IP before "
-"connect."
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1369
 msgid ""
 "If it is not empty, it indicates that the Client has enabled Encrypted "
 "Client, see:"
-msgstr ""
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1656
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:241
-msgid ""
-"If the node address is a domain name, this DNS will be used for resolution."
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:865
@@ -1456,13 +1415,6 @@ msgstr ""
 msgid "Not exist"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1657
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1684
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:243
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:270
-msgid "Note: For node-specific DNS only. Keep Auto to avoid extra overhead."
-msgstr ""
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/log.lua:27
 msgid ""
 "Note: Restoring configurations across different versions may cause "
@@ -1604,16 +1556,6 @@ msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1231
 msgid "Pre-shared key"
-msgstr ""
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1689
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:275
-msgid "Prefer IPv4"
-msgstr ""
-
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1690
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:276
-msgid "Prefer IPv6"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client.lua:93
