@@ -151,7 +151,6 @@ local has_ss_rust = is_finded("sslocal") or is_finded("ssserver")
 local has_ss_libev = is_finded("ss-redir") or is_finded("ss-local")
 local has_trojan = is_finded("trojan")
 local has_xray = is_finded("xray")
-local has_hysteria2 = is_finded("hysteria")
 
 local server_table = {}
 local encrypt_methods = {
@@ -256,6 +255,30 @@ local tls_flows = {
 	"none"
 }
 
+local function migrate_hysteria2_nodes()
+	local changed = false
+
+	uci:foreach("shadowsocksr", "servers", function(section)
+		if section.type == "hysteria2" then
+			uci:set("shadowsocksr", section[".name"], "type", "v2ray")
+			uci:set("shadowsocksr", section[".name"], "v2ray_protocol", "hysteria2")
+			changed = true
+		end
+	end)
+
+	local subscribe_sid = uci:get_first("shadowsocksr", "server_subscribe")
+	if subscribe_sid and uci:get("shadowsocksr", subscribe_sid, "xray_hy2_type") then
+		uci:delete("shadowsocksr", subscribe_sid, "xray_hy2_type")
+		changed = true
+	end
+
+	if changed then
+		uci:commit("shadowsocksr")
+	end
+end
+
+migrate_hysteria2_nodes()
+
 m = Map("shadowsocksr", translate("Edit ShadowSocksR Server"))
 m.redirect = url("servers")
 if not sid or m.uci:get("shadowsocksr", sid) ~= "servers" then
@@ -275,43 +298,12 @@ o.rawhtml = true
 o.template = "shadowsocksr/ssrurl"
 o.value = sid
 
--- 新增一个选择框，用于选择 Xray 或 Hysteria2 核心
-o = s:option(ListValue, "_xray_hy2_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Type", "Hysteria2")))
-o.description = translate("The configured type also applies to the core specified when manually importing nodes.")
--- 注意：Auto 选项使用特殊字符串 "__auto__" 而不是空字符串
-o:value("__auto__", translate("Auto"))
-if has_hysteria2 then
-    o:value("hysteria2", translate("Hysteria2"))
-end
-if has_xray then
-    o:value("v2ray", translate("Xray (Hysteria2)"))
-end
--- 读取全局 xray_hy2_type
-o.cfgvalue = function(self, section)
-    local val = uci:get("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type")
-    if val == nil or val == "" then
-		return "__auto__"   -- 对应 Auto 选项
-    end
-    return val
-end
-o.rmempty = true
--- 保存时更新全局配置
-o.write = function(self, section, value)
-    if value == "__auto__" then
-		-- 删除全局配置
-		uci:delete("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type")
-    else
-		-- 设置具体值
-		uci:set("shadowsocksr", "@server_subscribe[0]", "xray_hy2_type", value)
-    end
-end
-
 -- 新增一个选择框，用于选择 Xray 或 Trojan 核心
 o = s:option(ListValue, "_xray_tj_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Type", "Trojan")))
 o.description = translate("The configured type also applies to the core specified when manually importing nodes.")
 -- 注意：Auto 选项使用特殊字符串 "__auto__" 而不是空字符串
 o:value("__auto__", translate("Auto"))
-if has_hysteria2 then
+if has_trojan then
     o:value("trojan", translate("Trojan"))
 end
 if has_xray then
@@ -352,9 +344,6 @@ if is_finded("trojan") then
 end
 if is_finded("naive") then
 	o:value("naiveproxy", translate("NaiveProxy"))
-end
-if is_finded("hysteria") then
-	o:value("hysteria2", translate("Hysteria2"))
 end
 if is_finded("tuic-client") then
 	o:value("tuic", translate("TUIC"))

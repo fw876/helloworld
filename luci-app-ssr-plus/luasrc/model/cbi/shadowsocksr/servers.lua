@@ -19,18 +19,9 @@ local has_ss_rust = is_finded("sslocal") or is_finded("ssserver")
 local has_ss_libev = is_finded("ss-redir") or is_finded("ss-local")
 local has_trojan = is_finded("trojan")
 local has_xray = is_finded("xray")
-local has_hysteria2 = is_finded("hysteria")
 
 local ss_type_list = {}
 local tj_type_list = {}
-local hy2_type_list = {}
-
-if has_hysteria2 then
-	table.insert(hy2_type_list, { id = "hysteria2", name = translate("Hysteria2") })
-end
-if has_xray then
-	table.insert(hy2_type_list, { id = "v2ray", name = translate("Xray (Hysteria2)") })
-end
 
 if has_trojan then
 	table.insert(tj_type_list, { id = "trojan", name = translate("Trojan") })
@@ -48,6 +39,30 @@ end
 if has_xray then
 	table.insert(ss_type_list, { id = "v2ray", name = translate("Xray (ShadowSocks)") })
 end
+
+local function migrate_hysteria2_nodes()
+	local changed = false
+
+	uci:foreach("shadowsocksr", "servers", function(section)
+		if section.type == "hysteria2" then
+			uci:set("shadowsocksr", section[".name"], "type", "v2ray")
+			uci:set("shadowsocksr", section[".name"], "v2ray_protocol", "hysteria2")
+			changed = true
+		end
+	end)
+
+	local sid = uci:get_first("shadowsocksr", "server_subscribe")
+	if sid and uci:get("shadowsocksr", sid, "xray_hy2_type") then
+		uci:delete("shadowsocksr", sid, "xray_hy2_type")
+		changed = true
+	end
+
+	if changed then
+		uci:commit("shadowsocksr")
+	end
+end
+
+migrate_hysteria2_nodes()
 
 uci:foreach("shadowsocksr", "servers", function(s)
 	server_count = server_count + 1
@@ -91,34 +106,6 @@ end
 o.default = 30
 o.rmempty = true
 o:depends("auto_update", "1")
-
--- 确保 hy2_type_list 不为空
-if #hy2_type_list > 0 then
-	local sid = uci:get_first("shadowsocksr", "server_subscribe")
-	if not sid then
-		uci:foreach("shadowsocksr", "server_subscribe", function(section)
-			sid = section[".name"]
-			return false
-		end)
-	end
-	if sid then
-		local old_val = uci:get("shadowsocksr", sid, "xray_hy2_type")
-		if old_val and old_val ~= "" then
-			if (old_val == "hysteria2" and not has_hysteria2) or
-			   (old_val == "v2ray" and not has_xray) then
-				-- 核心不可用，设置为空（删除配置）
-				uci:set("shadowsocksr", sid, "xray_hy2_type", "")
-				uci:commit("shadowsocksr")
-			end
-		end
-	end
-	o = s:option(ListValue, "xray_hy2_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Type", "Hysteria2")))
-	o.description = translate("The configured type also applies to the core specified when manually importing nodes.")
-	o:value("", translate("Auto"))
-	for _, v in ipairs(hy2_type_list) do
-		o:value(v.id, v.name) -- 存储 "Xray" / "Hysteria2"，但 UI 显示完整名称
-	end
-end
 
 -- 确保 tj_type_list 不为空
 if #tj_type_list > 0 then

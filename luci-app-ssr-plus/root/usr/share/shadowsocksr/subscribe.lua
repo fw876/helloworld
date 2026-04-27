@@ -33,14 +33,11 @@ local user_agent = ucic:get_first(name, 'server_subscribe', 'user_agent', 'v2ray
 
 -- 读取 ss_type 设置
 local ss_type = ucic:get_first(name, 'server_subscribe', 'ss_type')
--- 读取 xray_hy2_type 设置
-local xray_hy2_type = ucic:get_first(name, 'server_subscribe', 'xray_hy2_type')
 -- 读取 xray_tj_type 设置
 local xray_tj_type = ucic:get_first(name, 'server_subscribe', 'xray_tj_type')
 
 local has_ss_rust = luci.sys.exec('type -t -p sslocal 2>/dev/null || type -t -p ssserver 2>/dev/null') ~= ""
 local has_ss_libev = luci.sys.exec('type -t -p ss-redir 2>/dev/null || type -t -p ss-local 2>/dev/null') ~= ""
-local has_hysteria = luci.sys.exec('type -t -p hysteria 2>/dev/null') ~= ""
 local has_trojan = luci.sys.exec('type -t -p trojan 2>/dev/null') ~= ""
 local has_xray = luci.sys.exec('type -t -p xray 2>/dev/null') ~= ""
 
@@ -206,108 +203,38 @@ local function processData(szType, content, cfgid)
 		local url = URL.parse("http://" .. content)
 		local params = url.query
 
-		-- 调试输出所有参数
-		-- log("Hysteria2 原始参数:")
-		-- for k,v in pairs(params) do
-		--	log(k.."="..v)
-		-- end
-
-		-- 自动决定模式（true=Xray, false=普通）
-		local xray_hy2_mode = false  -- 默认普通模式
-		if xray_hy2_type == "v2ray" then
-			-- Xray 模式
-			if has_xray then
-				xray_hy2_mode = true
-			elseif has_hysteria then
-				xray_hy2_mode = false   -- 回退到普通 Hysteria2
-			else
-				xray_hy2_mode = nil
-			end
-		elseif xray_hy2_type == "hysteria2" then
-			-- 普通 Hysteria2 模式
-			if has_hysteria then
-				xray_hy2_mode = false
-			elseif has_xray then
-				xray_hy2_mode = true   -- 回退到 Xray
-			else
-				xray_hy2_mode = nil
-			end
-		else
-			-- auto 或空：优先普通 Hysteria2，若不存在则使用 Xray
-			if has_hysteria then
-				xray_hy2_mode = false
-			elseif has_xray then
-				xray_hy2_mode = true   -- 回退到 Xray
-			else
-				xray_hy2_mode = nil
-			end
-		end
-	
-		-- 如果无法确定模式，跳过该订阅
-		if xray_hy2_mode == nil then
+		if not has_xray then
 			return nil
 		end
-	
-		if xray_hy2_mode then
-			result.type = "v2ray"
-			result.v2ray_protocol = "hysteria2"
-			if params.fm and params.fm ~= "" then
-				result.enable_finalmask = "1"
-				result.finalmask = base64Encode(params.fm)
+
+		result.type = "v2ray"
+		result.v2ray_protocol = "hysteria2"
+		if params.fm and params.fm ~= "" then
+			result.enable_finalmask = "1"
+			result.finalmask = base64Encode(params.fm)
+		end
+		if (params.security and params.security:lower() == "tls")
+				or (params.sni and params.sni ~= "")
+				or (params.alpn and params.alpn ~= "")
+				or (params.pcs or params.vcn) then
+			result.tls = "1"
+			if params.sni then
+				result.tls_host = params.sni
 			end
-			if (params.security and params.security:lower() == "tls")
-					or (params.sni and params.sni ~= "")
-					or (params.alpn and params.alpn ~= "")
-					or (params.pcs or params.vcn) then
-				result.tls = "1"
-				if params.sni then
-					result.tls_host = params.sni
+			if params.alpn and params.alpn ~= "" then
+				local alpn = {}
+				for v in params.alpn:gmatch("[^,;|%s]+") do
+					table.insert(alpn, v)
 				end
-				if params.alpn and params.alpn ~= "" then
-					local alpn = {}
-					for v in params.alpn:gmatch("[^,;|%s]+") do
-						table.insert(alpn, v)
-					end
-					if #alpn > 0 then
-						result.tls_alpn = table.concat(alpn, ",")  -- 确保为字符串
-					end
-				end
-				if params.pcs then
-					result.tls_CertSha = params.pcs
-				end
-				if params.vcn then
-					result.tls_CertByName = params.vcn
+				if #alpn > 0 then
+					result.tls_alpn = table.concat(alpn, ",")
 				end
 			end
-		else
-			result.type = "hysteria2"
-			if params.protocol and params.protocol ~= "" then
-				result.flag_transport = "1"
-				result.transport_protocol = params.protocol
-			else
-				result.flag_transport = "1"
-				result.transport_protocol = "udp"
+			if params.pcs then
+				result.tls_CertSha = params.pcs
 			end
-			if params.lazy and params.lazy ~= "" then
-				result.lazy_mode = "1"
-			end
-			if (params.sni and params.sni ~= "") or (params.alpn and params.alpn ~= "") then
-				result.tls = "1"
-				if params.sni then
-					result.tls_host = params.sni
-				end
-				if params.alpn and params.alpn ~= "" then
-					local alpn = {}
-					for v in params.alpn:gmatch("[^,;|%s]+") do
-						table.insert(alpn, v)
-					end
-					if #alpn > 0 then
-						result.tls_alpn = table.concat(alpn, ",")  -- 确保为字符串
-					end
-				end
-			end
-			if params.pinSHA256 and params.pinSHA256 ~= "" then
-				result.pinsha256 = params.pinSHA256
+			if params.vcn then
+				result.tls_CertByName = params.vcn
 			end
 		end
 
