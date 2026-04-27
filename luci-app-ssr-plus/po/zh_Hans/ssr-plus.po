@@ -1574,10 +1574,6 @@ msgstr "预连接"
 msgid "Pre-shared key"
 msgstr "预共享密钥"
 
-#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client.lua:93
-msgid "Prefer firewall tools"
-msgstr "首选防火墙工具"
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1222
 msgid "Private key"
 msgstr "私钥"

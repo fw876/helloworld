@@ -66,6 +66,7 @@ USE_TABLES=""
 HAS_NFT=0
 HAS_IPSET=0
 HAS_IPT=0
+HAS_FW3=0
 HAS_FW4=0
 DNSMASQ_IPSET=0
 DNSMASQ_NFTSET=0
@@ -204,7 +205,6 @@ ln_start_bin() {
 }
 
 check_run_environment() {
-	local prefer_nft="$(uci_get_by_type global prefer_nft 1)"
 	local dnsmasq_info=$(dnsmasq -v 2>/dev/null)
 	local dnsmasq_ver=$(echo "$dnsmasq_info" | sed -n '1s/.*version \([0-9.]*\).*/\1/p')
 
@@ -212,27 +212,26 @@ check_run_environment() {
 	DNSMASQ_NFTSET=0; [[ "$dnsmasq_info" == *" nftset"* ]] && DNSMASQ_NFTSET=1
 	HAS_IPT=0; { command -v iptables-legacy || command -v iptables; } >/dev/null && HAS_IPT=1
 	HAS_IPSET=$(command -v ipset >/dev/null && echo 1 || echo 0)
+	HAS_FW3=$(command -v fw3 >/dev/null && echo 1 || echo 0)
 	HAS_FW4=$(command -v fw4 >/dev/null && echo 1 || echo 0)
 	HAS_NFT=$(command -v nft >/dev/null && echo 1 || echo 0)
 
 	# 重置 USE_TABLES
 	USE_TABLES=""
 
-	if [ "$prefer_nft" = "1" ]; then
-		echolog "提示：优先使用 nftables..."
-		if [ "$DNSMASQ_NFTSET" -eq 1 ] && [ "$HAS_NFT" -eq 1 ] && [ "$HAS_FW4" -eq 1 ]; then
-			USE_TABLES="nftables"
-		elif [ "$HAS_IPSET" -eq 1 ] && [ "$HAS_IPT" -eq 1 ] && [ "$DNSMASQ_IPSET" -eq 1 ]; then
-			echolog "警告：nftables (fw4) 应用环境不完整，切换至 iptables。(has_fw4:$HAS_FW4/dnsmasq_nftset:$DNSMASQ_NFTSET)"
+	if [ "$HAS_FW3" -eq 1 ] && [ "$HAS_IPSET" -eq 1 ]; then
+		echolog "提示：检测到 fw3 和 ipset，使用 iptables..."
+		if [ "$HAS_IPT" -eq 1 ] && [ "$DNSMASQ_IPSET" -eq 1 ]; then
 			USE_TABLES="iptables"
+		else
+			echolog "警告：fw3/ipset 已检测到，但 iptables 环境不完整。(has_ipt:$HAS_IPT/dnsmasq_ipset:$DNSMASQ_IPSET)"
 		fi
 	else
-		echolog "提示：优先使用 iptables..."
-		if [ "$HAS_IPSET" -eq 1 ] && [ "$HAS_IPT" -eq 1 ] && [ "$DNSMASQ_IPSET" -eq 1 ]; then
-			USE_TABLES="iptables"
-		elif [ "$DNSMASQ_NFTSET" -eq 1 ] && [ "$HAS_FW4" -eq 1 ]; then
-			echolog "警告：iptables (fw3) 应用环境不完整，切换至 nftables。(has_ipt:$HAS_IPT/has_ipset:$HAS_IPSET/dnsmasq_ipset:$DNSMASQ_IPSET)"
+		echolog "提示：未同时检测到 fw3 和 ipset，使用 nftables..."
+		if [ "$DNSMASQ_NFTSET" -eq 1 ] && [ "$HAS_NFT" -eq 1 ] && [ "$HAS_FW4" -eq 1 ]; then
 			USE_TABLES="nftables"
+		else
+			echolog "警告：nftables (fw4) 应用环境不完整。(has_fw4:$HAS_FW4/has_nft:$HAS_NFT/dnsmasq_nftset:$DNSMASQ_NFTSET)"
 		fi
 	fi
 
