@@ -1426,26 +1426,48 @@ end
 
 -- curl
 local function curl(url, user_agent)
-	-- 清理 URL 中的隐藏字符和前后空白
+	if not url or url == "" then
+		return "", nil
+	end
+
+	-- 清理 URL
 	url = url:gsub("%s+$", ""):gsub("^%s+", ""):gsub("%z", ""):gsub("[\r\n]", "")
+
 	-- 处理 user_agent 参数
 	local ua_opt = ""
 	if user_agent and user_agent ~= "" then
-		-- 转义双引号，防止破坏 -A 参数
-		local safe_ua = user_agent:gsub("[\r\n]", ""):gsub('[\\"`$]', '\\%0')  -- 安全转义
-		ua_opt = '-A "' .. safe_ua .. '"'
+		-- 安全 shell quoting
+		local safe_ua = string.format("%q", user_agent)
+		ua_opt = "-A " .. safe_ua
+	else
+		-- 默认 UA（避免被拦）
+		ua_opt = '-A "Mozilla/5.0"'
 	end
-	-- 安全转义 URL：用单引号包裹，并转义内部的单引号
-	local safe_url = "'" .. url:gsub("'", "'\\''") .. "'"
+
 	local cmd = string.format(
-		'curl -sSL --connect-timeout 20 --max-time 30 --retry 3 -H "Accept-Encoding: identity" %s --insecure --location %s',
+		'curl -fskL --retry 3 --connect-timeout 3 --max-time 30 ' ..
+		'-H "Accept-Encoding: identity" %s ' ..
+		'-w "%%{http_code}" "%s"',
 		ua_opt,
-		safe_url
+		url
 	)
-	-- 执行命令并获取输出
-	local stdout = luci.sys.exec(cmd)
-	stdout = trim(stdout)  -- 确保 trim 函数存在
-	local md5 = md5_string(stdout)  -- 确保 md5_string 函数存在
+
+	local result = luci.sys.exec(cmd) or ""
+	result = trim(result)
+
+	if result == "" then
+		return "", nil
+	end
+
+	-- 解析 HTTP code（最后3位）
+	local stdout = result:sub(1, -4)
+	local code = tonumber(result:sub(-3))
+
+	if code ~= 200 then
+		return "", code
+	end
+
+	local md5 = md5_string(stdout)
 	return stdout, md5
 end
 
