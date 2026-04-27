@@ -23,8 +23,6 @@ touch /etc/ssrplus/china_ssr.txt
 touch /etc/ssrplus/deny.list
 touch /etc/ssrplus/white.list
 touch /etc/ssrplus/black.list
-touch /etc/ssrplus/netflix.list
-touch /etc/ssrplus/netflixip.list
 touch /etc/ssrplus/gfw_base.conf
 touch /etc/ssrplus/gfw_list.conf
 touch /etc/ssrplus/ad.conf

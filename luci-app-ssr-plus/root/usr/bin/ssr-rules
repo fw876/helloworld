@@ -273,7 +273,7 @@ flush_nftables() {
 
 	# Optional: force delete all ss_spec related sets (even if table was accidentally deleted)
 	for setname in ss_spec_lan_ac ss_spec_wan_ac ssr_gen_router \
-			china fplan bplan gmlan whitelist blacklist netflix gfwlist music; do
+			china fplan bplan gmlan whitelist blacklist gfwlist music; do
 		$NFT delete set inet ss_spec $setname 2>/dev/null
 		$NFT delete set ip ss_spec_mangle $setname 2>/dev/null
 	done
@@ -309,7 +309,7 @@ flush_iptables_legacy() {
 		ip route del local 0.0.0.0/0 dev lo table 999 2>/dev/null
 	fi
 	for setname in ss_spec_lan_ac ss_spec_wan_ac ssr_gen_router \
-			china fplan bplan gmlan whitelist blacklist netflix gfwlist music; do
+			china fplan bplan gmlan whitelist blacklist gfwlist music; do
 		ipset -X $setname 2>/dev/null
 	done
 	[ -n "$FWI" ] && echo '#!/bin/sh' >$FWI
@@ -332,7 +332,7 @@ ipset_nft() {
 	fi
 
 	# Create necessary collections
-	for setname in china gmlan fplan bplan whitelist blacklist netflix music; do
+	for setname in china gmlan fplan bplan whitelist blacklist music; do
 		if ! $NFT list set inet ss_spec $setname >/dev/null 2>&1; then
 			$NFT add set inet ss_spec $setname '{ type ipv4_addr; flags interval; auto-merge; }' 2>/dev/null
 		else
@@ -389,13 +389,6 @@ ipset_nft() {
 	# Music unlocking support
 	if $NFT list set inet ss_spec music >/dev/null 2>&1; then
 		$NFT add rule inet ss_spec ss_spec_wan_ac meta l4proto tcp ip daddr @music return
-	fi
-
-	# Shunt/Netflix rules
-	if [ -f "$SHUNT_LIST" ]; then
-		for ip in $(cat "$SHUNT_LIST" 2>/dev/null); do 
-			[ -n "$ip" ] && $NFT add element inet ss_spec netflix "{ $ip }" 2>/dev/null
-		done
 	fi
 
 	# Set up mode-specific rules
@@ -495,25 +488,6 @@ ipset_iptables() {
 
 	for ip in $WAN_BP_IP; do ipset -! add whitelist "$ip"; done
 	for ip in $WAN_FW_IP; do ipset -! add blacklist "$ip"; done
-
-	if [ "$SHUNT_PORT" != "0" ]; then
-		ipset -N netflix hash:net 2>/dev/null
-		for ip in $(cat "${SHUNT_LIST:=/dev/null}" 2>/dev/null); do ipset -! add netflix "$ip"; done
-		case "$SHUNT_PORT" in
-		0) ;;
-		1)
-			$IPT -I SS_SPEC_WAN_AC -p tcp -m set --match-set netflix dst -j REDIRECT --to-ports "$local_port"
-			;;
-		*)
-			$IPT -I SS_SPEC_WAN_AC -p tcp -m set --match-set netflix dst -j REDIRECT --to-ports "$SHUNT_PORT"
-			if [ "$SHUNT_PROXY" = "1" ]; then
-				$IPT -I SS_SPEC_WAN_AC -p tcp -d "$SHUNT_IP" -j REDIRECT --to-ports "$local_port"
-			else
-				ipset -! add whitelist "$SHUNT_IP"
-			fi
-			;;
-		esac
-	fi
 	return $?
 }
 
@@ -545,22 +519,6 @@ fw_rule_nft() {
 			loger 3 "Can't redirect TCP, please check nftables."
 			return 1
 		fi
-	fi
-
-	if [ "$SHUNT_PORT" != "0" ] && [ -f "$SHUNT_LIST" ]; then
-		case "$SHUNT_PORT" in
-		1)
-			$NFT add rule inet ss_spec ss_spec_wan_ac $TCP_EXT_ARGS ip daddr @netflix counter redirect to :$local_port
-			;;
-		*)
-			$NFT add rule inet ss_spec ss_spec_wan_ac $TCP_EXT_ARGS ip daddr @netflix counter redirect to :$SHUNT_PORT
-			if [ "$SHUNT_PROXY" = "1" ]; then
-				$NFT add rule inet ss_spec ss_spec_wan_ac $TCP_EXT_ARGS ip daddr $SHUNT_IP counter redirect to :$local_port
-			else
-                [ -n "$SHUNT_IP" ] && $NFT add element inet ss_spec whitelist "{ $SHUNT_IP }" 2>/dev/null
-			fi
-            ;;
-		esac
 	fi
 
 	return $?

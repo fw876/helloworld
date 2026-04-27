@@ -129,22 +129,6 @@ o.remove = function(self, section, value)
 	nixio.fs.writefile(denydomainconf, "")
 end
 
-s:tab("netflix", translate("Netflix Domain List"))
-local netflixconf = "/etc/ssrplus/netflix.list"
-o = s:taboption("netflix", TextValue, "netflixconf")
-o.rows = 13
-o.wrap = "off"
-o.rmempty = true
-o.cfgvalue = function(self, section)
-	return nixio.fs.readfile(netflixconf) or " "
-end
-o.write = function(self, section, value)
-	nixio.fs.writefile(netflixconf, value:gsub("\r\n", "\n"))
-end
-o.remove = function(self, section, value)
-	nixio.fs.writefile(netflixconf, "")
-end
-
 if is_finded("dnsproxy") then
 	s:tab("dnsproxy", translate("Dnsproxy Parse List"))
 	local dnsproxyconf = "/etc/ssrplus/dnsproxy_dns.list"

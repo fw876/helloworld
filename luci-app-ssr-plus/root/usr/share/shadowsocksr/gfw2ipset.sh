@@ -40,7 +40,6 @@ for conf_file in gfw_base.conf gfw_list.conf; do
 		sed -i '/^[[:space:]]*ipset=/d' "$conf"
 	fi
 done
-rm -f $TMP_DNSMASQ_PATH/netflix_forward.conf
 
 # 此处使用 for 方式读取 防止 /etc/ssrplus/ 目录下的 black.list white.list deny.list 等2个或多个文件一行中存在空格 比如:# abc.com 而丢失：server
 # Optimize: Batch filter using grep
