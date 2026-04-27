@@ -273,10 +273,10 @@ normalize_run_mode() {
 	echo "${run_mode:-router}"
 }
 
-normalize_hysteria2_nodes() {
+normalize_xray_protocol_nodes() {
 	local changed=0
 
-	_migrate_hysteria2_node() {
+	_migrate_xray_protocol_node() {
 		local section="$1"
 		local type="$(uci_get_by_name "$section" type)"
 
@@ -285,15 +285,24 @@ normalize_hysteria2_nodes() {
 			uci -q set "$NAME.$section.type=v2ray"
 			uci -q set "$NAME.$section.v2ray_protocol=hysteria2"
 			changed=1
+		elif [ "$type" = "trojan" ]; then
+			echolog "提示：检测到原生 Trojan 节点，自动迁移为 Xray(Trojan)。"
+			uci -q set "$NAME.$section.type=v2ray"
+			uci -q set "$NAME.$section.v2ray_protocol=trojan"
+			changed=1
 		fi
 	}
 
 	config_load "$NAME"
-	config_foreach _migrate_hysteria2_node servers
+	config_foreach _migrate_xray_protocol_node servers
 
 	local subscribe_sid="$(uci_get_by_cfgid server_subscribe)"
 	if [ -n "$subscribe_sid" ] && uci -q get "$NAME.$subscribe_sid.xray_hy2_type" >/dev/null; then
 		uci -q delete "$NAME.$subscribe_sid.xray_hy2_type"
+		changed=1
+	fi
+	if [ -n "$subscribe_sid" ] && uci -q get "$NAME.$subscribe_sid.xray_tj_type" >/dev/null; then
+		uci -q delete "$NAME.$subscribe_sid.xray_tj_type"
 		changed=1
 	fi
 
@@ -1297,7 +1306,7 @@ start() {
 	echo "conf-dir=${TMP_DNSMASQ_PATH}" >"$DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf"
 	check_run_environment
 	normalize_run_mode >/dev/null
-	normalize_hysteria2_nodes
+	normalize_xray_protocol_nodes
 	if load_config; then
 		Start_Run
 		start_xhttp_addr

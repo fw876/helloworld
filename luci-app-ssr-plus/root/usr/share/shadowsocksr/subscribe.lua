@@ -33,12 +33,9 @@ local user_agent = ucic:get_first(name, 'server_subscribe', 'user_agent', 'v2ray
 
 -- 读取 ss_type 设置
 local ss_type = ucic:get_first(name, 'server_subscribe', 'ss_type')
--- 读取 xray_tj_type 设置
-local xray_tj_type = ucic:get_first(name, 'server_subscribe', 'xray_tj_type')
 
 local has_ss_rust = luci.sys.exec('type -t -p sslocal 2>/dev/null || type -t -p ssserver 2>/dev/null') ~= ""
 local has_ss_libev = luci.sys.exec('type -t -p ss-redir 2>/dev/null || type -t -p ss-local 2>/dev/null') ~= ""
-local has_trojan = luci.sys.exec('type -t -p trojan 2>/dev/null') ~= ""
 local has_xray = luci.sys.exec('type -t -p xray 2>/dev/null') ~= ""
 
 local tuic_type = luci.sys.exec('type -t -p tuic-client') ~= "" and "tuic"
@@ -920,136 +917,88 @@ local function processData(szType, content, cfgid)
 		end
 
 		-- 自动决定模式（true=Xray, false=普通 Trojan）
-		local xray_tj_mode = false
-		if xray_tj_type == "v2ray" then
-			-- Xray 模式
-			if has_xray then
-				xray_tj_mode = true
-			elseif has_trojan then
-				xray_tj_mode = false   -- 回退到普通 Trojan
-			else
-				xray_tj_mode = nil  -- 两类核心均不存在，停止订阅
-			end
-		elseif xray_tj_type == "trojan" then
-			-- 普通 Trojan 模式
-			if has_trojan then
-				xray_tj_mode = false
-			elseif has_xray then
-				xray_tj_mode = true    -- 回退到 Xray
-			else
-				xray_tj_mode = nil  -- 两类核心均不存在，停止订阅
-			end
-		else
-			-- 全局配置为空或 auto，根据链接中是否有 type 参数决定
-			local has_type = params.type and params.type ~= ""
-			-- 有 type 参数，优先 Xray
-			if has_type then
-				if has_xray then
-					xray_tj_mode = true   -- 有 type 参数使用 Xray
-				elseif has_trojan then
-					xray_tj_mode = false  -- 否则普通 Trojan
-				else
-					xray_tj_mode = nil -- 两类核心均不存在，停止订阅
-				end
-			else
-				-- 无 type 参数，优先普通 Trojan
-				if has_trojan then
-					xray_tj_mode = false  -- 普通 Trojan
-				elseif has_xray then
-					xray_tj_mode = true   -- 否则使用 Xray
-				else
-					xray_tj_mode = nil -- 两类核心均不存在，停止订阅
-				end
-			end
-		end
-
-		-- 如果最终无可用核心，跳过该订阅
-		if xray_tj_mode == nil then
+		if not has_xray then
 			return nil
 		end
 
-		if xray_tj_mode then
-			result.type = "v2ray"
-			result.v2ray_protocol = "trojan"
-			if params.fp then
-				-- 处理 fingerprint 参数
-				result.fingerprint = params.fp
+		result.type = "v2ray"
+		result.v2ray_protocol = "trojan"
+		if params.fp then
+			-- 处理 fingerprint 参数
+			result.fingerprint = params.fp
+		end
+		-- 处理 ech 参数
+		if params.ech and params.ech ~= "" then
+			result.enable_ech = "1"
+			result.ech_config = params.ech
+		end
+		-- 检查 finalmaskg 参数是否存在且非空
+		if params.fm and params.fm ~= "" then
+			result.enable_finalmask = "1"
+			result.finalmaskg = base64Encode(params.fm)
+		end
+		-- 处理传输协议
+		result.transport = params.type or "raw" -- 默认传输协议为 raw
+		if result.transport == "tcp" then
+			result.transport = "raw"
+		end
+		if result.transport == "splithttp" then
+			result.transport = "xhttp"
+		end
+		if params.pcs and params.pcs ~= "" then
+			result.tls_CertSha = params.pcs
+		end
+		if params.vcn and params.vcn ~= "" then
+			result.tls_CertByName = params.vcn
+		end
+		if result.transport == "ws" then
+			result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+			result.ws_path = params.path and UrlDecode(params.path) or "/"
+		elseif result.transport == "httpupgrade" then
+			result.httpupgrade_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
+			result.httpupgrade_path = params.path and UrlDecode(params.path) or "/"
+		elseif result.transport == "xhttp" or result.transport == "splithttp" then
+			result.xhttp_mode = params.mode or "auto"
+			result.xhttp_host = params.host and UrlDecode(params.host) or nil
+			result.xhttp_path = params.path and UrlDecode(params.path) or "/"
+			-- 检查 extra 参数是否存在且非空
+			if params.extra and params.extra ~= "" then
+				result.enable_xhttp_extra = "1"
+				result.xhttp_extra = base64Encode(params.extra)
 			end
-			-- 处理 ech 参数
-			if params.ech and params.ech ~= "" then
-				result.enable_ech = "1"
-				result.ech_config = params.ech
+			-- 尝试解析 JSON 数据
+			local success, Data = pcall(jsonParse, params.extra or "")
+			if success and type(Data) == "table" then
+				local address = (Data.extra and Data.extra.downloadSettings and Data.extra.downloadSettings.address)
+					or (Data.downloadSettings and Data.downloadSettings.address)
+				result.download_address = (address and address ~= "") and address:gsub("^%[", ""):gsub("%]$", "")
+			else
+				-- 如果解析失败，清空下载地址
+				result.download_address = nil
 			end
-			-- 检查 finalmaskg 参数是否存在且非空
-			if params.fm and params.fm ~= "" then
-				result.enable_finalmask = "1"
-				result.finalmaskg = base64Encode(params.fm)
+		elseif result.transport == "http" or result.transport == "h2" then
+			result.transport = "h2"
+			result.h2_host = params.host and UrlDecode(params.host) or nil
+			result.h2_path = params.path and UrlDecode(params.path) or nil
+		elseif result.transport == "kcp" then
+			result.kcp_guise = params.headerType or "none"
+			if params.headerType and params.headerType == "dns" then
+				result.kcp_domain = params.host or ""
 			end
-			-- 处理传输协议
-			result.transport = params.type or "raw" -- 默认传输协议为 raw
-			if result.transport == "tcp" then
-				result.transport = "raw"
+			result.seed = params.seed
+		elseif result.transport == "quic" then
+			result.quic_guise = params.headerType or "none"
+			result.quic_security = params.quicSecurity or "none"
+			result.quic_key = params.key
+		elseif result.transport == "grpc" then
+			result.serviceName = params.serviceName
+			result.grpc_mode = params.mode or "gun"
+		elseif result.transport == "tcp" or result.transport == "raw" then
+			result.tcp_guise = params.headerType and params.headerType ~= "" and params.headerType or "none"
+			if result.tcp_guise == "http" then
+				result.tcp_host = params.host and UrlDecode(params.host) or nil
+				result.tcp_path = params.path and UrlDecode(params.path) or nil
 			end
-			if result.transport == "splithttp" then
-				result.transport = "xhttp"
-			end
-			if params.pcs and params.pcs ~= "" then
-				result.tls_CertSha = params.pcs
-			end
-			if params.vcn and params.vcn ~= "" then
-				result.tls_CertByName = params.vcn
-			end
-			if result.transport == "ws" then
-				result.ws_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
-				result.ws_path = params.path and UrlDecode(params.path) or "/"
-			elseif result.transport == "httpupgrade" then
-				result.httpupgrade_host = (result.tls ~= "1") and (params.host and UrlDecode(params.host)) or nil
-				result.httpupgrade_path = params.path and UrlDecode(params.path) or "/"
-			elseif result.transport == "xhttp" or result.transport == "splithttp" then
-				result.xhttp_mode = params.mode or "auto"
-				result.xhttp_host = params.host and UrlDecode(params.host) or nil
-				result.xhttp_path = params.path and UrlDecode(params.path) or "/"
-				-- 检查 extra 参数是否存在且非空
-				if params.extra and params.extra ~= "" then
-					result.enable_xhttp_extra = "1"
-					result.xhttp_extra = base64Encode(params.extra)
-				end
-				-- 尝试解析 JSON 数据
-				local success, Data = pcall(jsonParse, params.extra or "")
-				if success and type(Data) == "table" then
-					local address = (Data.extra and Data.extra.downloadSettings and Data.extra.downloadSettings.address)
-						or (Data.downloadSettings and Data.downloadSettings.address)
-					result.download_address = (address and address ~= "") and address:gsub("^%[", ""):gsub("%]$", "")
-				else
-					-- 如果解析失败，清空下载地址
-					result.download_address = nil
-				end
-			elseif result.transport == "http" or result.transport == "h2" then
-				result.transport = "h2"
-				result.h2_host = params.host and UrlDecode(params.host) or nil
-				result.h2_path = params.path and UrlDecode(params.path) or nil
-			elseif result.transport == "kcp" then
-				result.kcp_guise = params.headerType or "none"
-				if params.headerType and params.headerType == "dns" then
-					result.kcp_domain = params.host or ""
-				end
-				result.seed = params.seed
-			elseif result.transport == "quic" then
-				result.quic_guise = params.headerType or "none"
-				result.quic_security = params.quicSecurity or "none"
-				result.quic_key = params.key
-			elseif result.transport == "grpc" then
-				result.serviceName = params.serviceName
-				result.grpc_mode = params.mode or "gun"
-			elseif result.transport == "tcp" or result.transport == "raw" then
-				result.tcp_guise = params.headerType and params.headerType ~= "" and params.headerType or "none"
-				if result.tcp_guise == "http" then
-					result.tcp_host = params.host and UrlDecode(params.host) or nil
-					result.tcp_path = params.path and UrlDecode(params.path) or nil
-				end
-			end
-		else
-			result.type = "trojan"
 		end
 	elseif szType == "vless" then
 		local url = URL.parse("http://" .. content)

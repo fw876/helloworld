@@ -149,7 +149,6 @@ end
 
 local has_ss_rust = is_finded("sslocal") or is_finded("ssserver")
 local has_ss_libev = is_finded("ss-redir") or is_finded("ss-local")
-local has_trojan = is_finded("trojan")
 local has_xray = is_finded("xray")
 
 local server_table = {}
@@ -255,13 +254,17 @@ local tls_flows = {
 	"none"
 }
 
-local function migrate_hysteria2_nodes()
+local function migrate_xray_protocol_nodes()
 	local changed = false
 
 	uci:foreach("shadowsocksr", "servers", function(section)
 		if section.type == "hysteria2" then
 			uci:set("shadowsocksr", section[".name"], "type", "v2ray")
 			uci:set("shadowsocksr", section[".name"], "v2ray_protocol", "hysteria2")
+			changed = true
+		elseif section.type == "trojan" then
+			uci:set("shadowsocksr", section[".name"], "type", "v2ray")
+			uci:set("shadowsocksr", section[".name"], "v2ray_protocol", "trojan")
 			changed = true
 		end
 	end)
@@ -271,13 +274,17 @@ local function migrate_hysteria2_nodes()
 		uci:delete("shadowsocksr", subscribe_sid, "xray_hy2_type")
 		changed = true
 	end
+	if subscribe_sid and uci:get("shadowsocksr", subscribe_sid, "xray_tj_type") then
+		uci:delete("shadowsocksr", subscribe_sid, "xray_tj_type")
+		changed = true
+	end
 
 	if changed then
 		uci:commit("shadowsocksr")
 	end
 end
 
-migrate_hysteria2_nodes()
+migrate_xray_protocol_nodes()
 
 m = Map("shadowsocksr", translate("Edit ShadowSocksR Server"))
 m.redirect = url("servers")
@@ -299,36 +306,6 @@ o.template = "shadowsocksr/ssrurl"
 o.value = sid
 
 -- 新增一个选择框，用于选择 Xray 或 Trojan 核心
-o = s:option(ListValue, "_xray_tj_type", string.format("<b><span style='color:red;'>%s</span></b>", translatef("%s Node Use Type", "Trojan")))
-o.description = translate("The configured type also applies to the core specified when manually importing nodes.")
--- 注意：Auto 选项使用特殊字符串 "__auto__" 而不是空字符串
-o:value("__auto__", translate("Auto"))
-if has_trojan then
-    o:value("trojan", translate("Trojan"))
-end
-if has_xray then
-    o:value("v2ray", translate("Xray (Trojan)"))
-end
--- 读取全局 xray_tj_type
-o.cfgvalue = function(self, section)
-    local val = uci:get("shadowsocksr", "@server_subscribe[0]", "xray_tj_type")
-    if val == nil or val == "" then
-		return "__auto__"   -- 对应 Auto 选项
-    end
-    return val
-end
-o.rmempty = true
--- 保存时更新全局配置
-o.write = function(self, section, value)
-    if value == "__auto__" then
-		-- 删除全局配置
-		uci:delete("shadowsocksr", "@server_subscribe[0]", "xray_tj_type")
-    else
-		-- 设置具体值
-		uci:set("shadowsocksr", "@server_subscribe[0]", "xray_tj_type", value)
-    end
-end
-
 o = s:option(ListValue, "type", translate("Server Node Type"))
 if is_finded("xray") or is_finded("v2ray") then
 	o:value("v2ray", translate("V2Ray/XRay"))
@@ -338,9 +315,6 @@ if is_finded("ssr-redir") then
 end
 if has_ss_rust or has_ss_libev then
     o:value("ss", translate("ShadowSocks"))
-end
-if is_finded("trojan") then
-	o:value("trojan", translate("Trojan"))
 end
 if is_finded("naive") then
 	o:value("naiveproxy", translate("NaiveProxy"))

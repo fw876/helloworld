@@ -3,23 +3,19 @@
 local map = self.map
 local ss_type = map:get("@server_subscribe[0]", "ss_type")
 local xray_hy2_type = map:get("@server_subscribe[0]", "xray_hy2_type")
-local xray_tj_type = map:get("@server_subscribe[0]", "xray_tj_type")
 
 local has_ss_rust = luci.sys.exec('type -t -p sslocal 2>/dev/null || type -t -p ssserver 2>/dev/null') ~= ""
 local has_ss_libev = luci.sys.exec('type -t -p ss-redir 2>/dev/null || type -t -p ss-local 2>/dev/null') ~= ""
 local has_hysteria = luci.sys.exec('type -t -p hysteria 2>/dev/null') ~= ""
-local has_trojan = luci.sys.exec('type -t -p trojan 2>/dev/null') ~= ""
 local has_xray = luci.sys.exec('type -t -p xray 2>/dev/null') ~= ""
 -%>
 <script type="text/javascript">
 //<![CDATA[
 let ss_type = "<%=ss_type%>"
 let xray_hy2_type = "<%=xray_hy2_type%>"
-let xray_tj_type = "<%=xray_tj_type%>"
 let has_ss_rust = "<%=has_ss_rust%>"
 let has_ss_libev = "<%=has_ss_libev%>"
 let has_hysteria = "<%=has_hysteria%>"
-let has_trojan = "<%=has_trojan%>"
 let has_xray = "<%=has_xray%>"
 
 function padright(str, cnt, pad) {
@@ -814,36 +810,13 @@ function import_ssr_url(btn, urlname, sid) {
 				return true;
 			}
 
-			// 主逻辑：智能核心选择（支持回退）
-			function hasTrojanCore() { return has_trojan === "true"; }
+			// 主逻辑：Trojan 统一使用 Xray
 			function hasXrayCore() { return has_xray === "true"; }
-			let finalTrojanMode = null;
-			if (xray_tj_type === "v2ray") {
-				if (hasXrayCore()) finalTrojanMode = true;
-				else if (hasTrojanCore()) finalTrojanMode = false;
-				else finalTrojanMode = null;
-			} else if (xray_tj_type === "trojan") {
-				if (hasTrojanCore()) finalTrojanMode = false;
-				else if (hasXrayCore()) finalTrojanMode = true;
-				else finalTrojanMode = null;
-			} else {
-				let hasType = params.get("type") && params.get("type") !== "";
-				if (hasType) {
-					if (hasXrayCore()) finalTrojanMode = true;
-					else if (hasTrojanCore()) finalTrojanMode = false;
-					else finalTrojanMode = null;
-				} else {
-					if (hasTrojanCore()) finalTrojanMode = false;
-					else if (hasXrayCore()) finalTrojanMode = true;
-					else finalTrojanMode = null;
-				}
-			}
-			if (finalTrojanMode === null) {
-				s.innerHTML = "<font style=\'color:red\'><%:No available core (Trojan or Xray) to import this node.%></font>";
+			if (!hasXrayCore()) {
+				s.innerHTML = "<font style=\'color:red\'><%:No available core (Xray) to import this node.%></font>";
 				return false;
 			}
-			if (finalTrojanMode === true) importAsXrayTrojan();
-			else importAsNormalTrojan();
+			importAsXrayTrojan();
 			return false;
 		case "vmess":
 			var sstr = b64DecodeUnicode((ssu[1] || "").replace(/#.*/, "").trim());
