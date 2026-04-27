@@ -27,7 +27,6 @@ touch /etc/ssrplus/netflix.list
 touch /etc/ssrplus/netflixip.list
 touch /etc/ssrplus/gfw_base.conf
 touch /etc/ssrplus/gfw_list.conf
-touch /etc/ssrplus/oversea_list.conf
 touch /etc/ssrplus/ad.conf
 touch /etc/config/shadowsocksr
 

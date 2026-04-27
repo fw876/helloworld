@@ -20,14 +20,10 @@ case "$USE_TABLES" in
 esac
 mkdir -p $TMP_DNSMASQ_PATH
 
-run_mode=$(uci_get_by_type global run_mode router)
+run_mode=$(normalize_run_mode)
 
-if [ "$run_mode" = "oversea" ]; then
-	cp -rf /etc/ssrplus/oversea_list.conf $TMP_DNSMASQ_PATH/
-else
-	cp -rf /etc/ssrplus/gfw_list.conf $TMP_DNSMASQ_PATH/
-	cp -rf /etc/ssrplus/gfw_base.conf $TMP_DNSMASQ_PATH/
-fi
+cp -rf /etc/ssrplus/gfw_list.conf $TMP_DNSMASQ_PATH/
+cp -rf /etc/ssrplus/gfw_base.conf $TMP_DNSMASQ_PATH/
 
 for conf_file in gfw_base.conf gfw_list.conf; do
 	conf="$TMP_DNSMASQ_PATH/$conf_file"

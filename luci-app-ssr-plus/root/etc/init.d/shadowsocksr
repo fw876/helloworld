@@ -261,10 +261,21 @@ check_run_environment() {
 	fi
 }
 
+normalize_run_mode() {
+	local run_mode="$(uci_get_by_type global run_mode router)"
+
+	if [ "$run_mode" = "oversea" ]; then
+		echolog "提示：Oversea Mode 已移除，自动切换到 IP Route Mode。"
+		uci_set_by_type global run_mode router
+		run_mode="router"
+	fi
+
+	echo "${run_mode:-router}"
+}
+
 add_dns_into_ipset() {
 	case "$1" in
 	gfw) ipset add gfwlist ${2%:*} 2>/dev/null ;;
-	oversea) ipset add oversea ${2%:*} 2>/dev/null ;;
 	*) ipset add ss_spec_wan_ac ${2%:*} nomatch 2>/dev/null ;;
 	esac
 }
@@ -279,7 +290,7 @@ start_dns() {
 	else
 		dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
 	fi
-	local run_mode="$(uci_get_by_type global run_mode)"
+	local run_mode="$(normalize_run_mode)"
 
 	if [ "$ssrplus_dns" != "0" ]; then
 		if [ "$HAS_IPSET" -eq 1 ]; then
@@ -1196,10 +1207,9 @@ start_rules() {
 		esac
 	fi
 	gfwmode() {
-		case "$(uci_get_by_type global run_mode)" in
+		case "$(normalize_run_mode)" in
 		gfw) echo "-g" ;;
 		router) echo "-r" ;;
-		oversea) echo "-c" ;;
 		all) echo "-z" ;;
 		esac
 	}
@@ -1257,6 +1267,7 @@ start() {
 	mkdir -p /var/run /var/lock /var/log $DNSMASQ_CONF_DIR $TMP_BIN_PATH $TMP_DNSMASQ_PATH
 	echo "conf-dir=${TMP_DNSMASQ_PATH}" >"$DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf"
 	check_run_environment
+	normalize_run_mode >/dev/null
 	if load_config; then
 		Start_Run
 		start_xhttp_addr

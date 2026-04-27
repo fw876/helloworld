@@ -91,7 +91,6 @@ usage() {
 		    -f                      flush the rules
 		    -g                      gfwlist mode
 		    -r                      router mode
-		    -c                      oversea mode
 		    -z                      all mode
 		    
 		    # New persistence management options (use different letters to avoid conflicts)
@@ -274,7 +273,7 @@ flush_nftables() {
 
 	# Optional: force delete all ss_spec related sets (even if table was accidentally deleted)
 	for setname in ss_spec_lan_ac ss_spec_wan_ac ssr_gen_router \
-			china fplan bplan gmlan oversea whitelist blacklist netflix gfwlist music; do
+			china fplan bplan gmlan whitelist blacklist netflix gfwlist music; do
 		$NFT delete set inet ss_spec $setname 2>/dev/null
 		$NFT delete set ip ss_spec_mangle $setname 2>/dev/null
 	done
@@ -310,7 +309,7 @@ flush_iptables_legacy() {
 		ip route del local 0.0.0.0/0 dev lo table 999 2>/dev/null
 	fi
 	for setname in ss_spec_lan_ac ss_spec_wan_ac ssr_gen_router \
-			china fplan bplan gmlan oversea whitelist blacklist netflix gfwlist music; do
+			china fplan bplan gmlan whitelist blacklist netflix gfwlist music; do
 		ipset -X $setname 2>/dev/null
 	done
 	[ -n "$FWI" ] && echo '#!/bin/sh' >$FWI
@@ -427,14 +426,6 @@ ipset_nft() {
 		$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @gfwlist jump ss_spec_wan_fw
 		$NFT add rule inet ss_spec ss_spec_wan_ac ip saddr @gmlan ip daddr != @china jump ss_spec_wan_fw
 		;;
-	oversea)
-		if ! $NFT list set inet ss_spec oversea >/dev/null 2>&1; then
-			$NFT add set inet ss_spec oversea '{ type ipv4_addr; flags interval; auto-merge; }' 2>/dev/null
-		fi
-		$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @oversea jump ss_spec_wan_fw
-		$NFT add rule inet ss_spec ss_spec_wan_ac ip saddr @gmlan jump ss_spec_wan_fw
-		$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @china jump ss_spec_wan_fw
-		;;
 	all)
 		if $NFT list chain inet ss_spec ss_spec_wan_fw >/dev/null 2>&1; then
 			$NFT add rule inet ss_spec ss_spec_wan_ac jump ss_spec_wan_fw
@@ -473,12 +464,6 @@ ipset_iptables() {
 		$IPT -A SS_SPEC_WAN_AC -m set --match-set china dst -j RETURN
 		$IPT -A SS_SPEC_WAN_AC -m set --match-set gfwlist dst -j SS_SPEC_WAN_FW
 		$IPT -A SS_SPEC_WAN_AC -m set --match-set gmlan src -m set ! --match-set china dst -j SS_SPEC_WAN_FW
-		;;
-	oversea)
-		ipset -N oversea hash:net 2>/dev/null
-		$IPT -I SS_SPEC_WAN_AC -m set --match-set oversea dst -j SS_SPEC_WAN_FW
-		$IPT -A SS_SPEC_WAN_AC -m set --match-set gmlan src -j SS_SPEC_WAN_FW
-		$IPT -A SS_SPEC_WAN_AC -m set --match-set china dst -j SS_SPEC_WAN_FW
 		;;
 	all)
 		$IPT -A SS_SPEC_WAN_AC -j SS_SPEC_WAN_FW
@@ -1006,14 +991,6 @@ tp_rule_nft() {
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip daddr @gfwlist counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip saddr @gmlan ip daddr != @china counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
 		;;
-	oversea)
-		if ! $NFT list set ip ss_spec_mangle oversea >/dev/null 2>&1; then
-			$NFT add set ip ss_spec_mangle oversea '{ type ipv4_addr; flags interval; auto-merge; }' 2>/dev/null
-		fi
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip saddr @oversea counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip daddr @china counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip saddr @gmlan counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
-		;;
 	all)
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
 		;;
@@ -1118,11 +1095,6 @@ tp_rule_iptables() {
 		$ipt -A SS_SPEC_TPROXY -p udp --dport 443 -j DROP 
 		$ipt -A SS_SPEC_TPROXY -p udp $PROXY_PORTS -m set --match-set gfwlist dst -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
 		$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set gmlan src -m set ! --match-set china dst -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
-		;;
-	oversea)
-		$ipt -A SS_SPEC_TPROXY -p udp $PROXY_PORTS -m set --match-set oversea src -m dst -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
-		$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set gmlan src -m set -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
-		$ipt -A SS_SPEC_TPROXY -p udp $PROXY_PORTS -m set --match-set china dst -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
 		;;
 	all)
 		$ipt -A SS_SPEC_TPROXY -p udp $PROXY_PORTS -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
@@ -1495,7 +1467,7 @@ restore_from_persistence() {
 	fi
 }
 
-while getopts ":m:s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUfgrczAKPCRXh" arg; do
+while getopts ":m:s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUfgrzAKPCRXh" arg; do
 	case "$arg" in
 	m)
 		Interface=$OPTARG
@@ -1568,9 +1540,6 @@ while getopts ":m:s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUfgrczAKPCRXh" arg; do
 		;;
 	r)
 		RUNMODE=router
-		;;
-	c)
-		RUNMODE=oversea
 		;;
 	z)
 		RUNMODE=all
