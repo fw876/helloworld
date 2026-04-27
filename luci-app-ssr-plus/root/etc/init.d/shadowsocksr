@@ -699,321 +699,9 @@ start_udp() {
 	esac
 }
 
-shunt_dns_command() {
-	local shunt_dns_mode="$(uci_get_by_type global shunt_dns_mode)"
-	local shunt_dnsproxy_dnsserver="$(uci_get_by_type global shunt_parse_method)"
-	if [ -n "$shunt_dnsproxy_dnsserver" ] && [ "$shunt_dnsproxy_dnsserver" != "parse_file" ]; then
-		shunt_dnsserver="$(uci_get_by_type global dnsproxy_shunt_forward 8.8.4.4:53)"
-	elif [ -n "shunt_dns_mode" ] && [ "$shunt_dns_mode" = "5" ]; then
-		shunt_dnsserver="$(uci_get_by_type global chinadns_ng_shunt_dnsserver 8.8.4.4:53)"
-	else
-		shunt_dnsserver="$(uci_get_by_type global shunt_dnsserver 8.8.4.4:53)"
-	fi
-	local tmp_port=$1
-	case "$shunt_dns_mode" in
-	1)
-		ln_start_bin $(first_type dns2socks) dns2socks 127.0.0.1:$tmp_port $shunt_dnsserver 127.0.0.1:$tmp_shunt_dns_port -q
-		;;
-	2)
-		ln_start_bin $(first_type dns2socks-rust) dns2socks-rust -s socks5://127.0.0.1:$tmp_port -d $shunt_dnsserver -l 127.0.0.1:$tmp_shunt_dns_port -f -c
-		echolog "DNS2SOCKS Rust Shunt query Started!"
-		;;
-	3)
-		local shunt_mosdns_ipv6="$(uci_get_by_type global shunt_mosdns_ipv6)"
-		local shunt_mosdns_dnsserver="$(uci_get_by_type global shunt_mosdns_dnsserver)"
-		output=$(for i in $(echo $shunt_mosdns_dnsserver | sed "s/,/ /g"); do
-			echo "            - addr: $i"
-			echo "              socks5: \"127.0.0.1:$tmp_port\""
-			echo "              enable_pipeline: true"
-		done)
-		awk -v line=14 -v text="$output" 'NR == line+1 {print text} 1' /etc/ssrplus/mosdns-config.yaml | sed "s/DNS_PORT/$tmp_shunt_dns_port/g" | sed "s/\(concurrent:\).*/\1 $(echo "$mosdns_dnsserver" | sed 's/,/ /g' | wc -w)/g" > $TMP_PATH/mosdns-config-shunt.yaml
-
-		if [ "$shunt_mosdns_ipv6" == "0" ]; then
-			sed -i "s/DNS_MODE/main_sequence_with_IPv6/g" $TMP_PATH/mosdns-config-shunt.yaml
-		else
-			sed -i "s/DNS_MODE/main_sequence_disable_IPv6/g" $TMP_PATH/mosdns-config-shunt.yaml
-		fi
-		ln_start_bin $(first_type mosdns) mosdns start -c $TMP_PATH/mosdns-config-shunt.yaml
-		;;
-	4)
-		shunt_dnsproxy_ipv6="$(uci_get_by_type global shunt_dnsproxy_ipv6)"
-		if [ "$shunt_dnsproxy_ipv6" -eq "1" ]; then
-			shunt_disabled_ipv6="--ipv6-disabled"
-		fi
-		if [ "$shunt_dnsproxy_dnsserver" != "parse_file" ]; then
-			ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_port -p $tmp_shunt_dns_port -u $shunt_dnsserver $shunt_disabled_ipv6 --cache --cache-min-ttl=3600
-		else
-			shunt_dnsproxy_dnsserver_file="$TMP_PATH/dnsproxy_dns.list"
-			cleaned_file="$TMP_PATH/cleaned_dns_servers.list"
-			temp_file="$TMP_PATH/temp_dns_servers.list"
-			> "$cleaned_file"
-			# 清理输入文件并去重
-			while IFS= read -r line || [ -n "$line" ]; do
-			    line=$(echo "$line" | sed -E 's/^[ \t\r]+//; s/[ \t\r]+$//')
-				[ -z "$line" ] && continue
-				echo "$line" | grep -qE '^#' && continue
-				echo "$line" >> "$cleaned_file"
-			done < "/etc/ssrplus/dnsproxy_dns.list"
-			# 获取清理后文件的MD5
-			cleaned_md5=$(md5sum "$cleaned_file" | awk '{print $1}')
-			if [ ! -f "$shunt_dnsproxy_dnsserver_file" ]; then
-			    cp "$cleaned_file" "$shunt_dnsproxy_dnsserver_file"
-			else
-			    target_md5=$(md5sum "$shunt_dnsproxy_dnsserver_file" | awk '{print $1}')
-				if [ "$cleaned_md5" != "$target_md5" ]; then
-				    > "$temp_file"
-					# 保留目标文件中也存在于清理文件的记录（去重）
-					while IFS= read -r line; do
-					    line=$(echo "$line" | sed -E 's/^[ \t\r]+//; s/[ \t\r]+$//')
-						if grep -qixF "$line" "$cleaned_file" && ! grep -qixF "$line" "$temp_file"; then
-						    echo "$line" >> "$temp_file"
-						fi
-					done < "$shunt_dnsproxy_dnsserver_file"
-					# 添加清理文件中有但目标文件没有的记录（去重）
-					while IFS= read -r line; do
-					    line=$(echo "$line" | sed -E 's/^[ \t\r]+//; s/[ \t\r]+$//')
-						if ! grep -qixF "$line" "$temp_file"; then
-						    echo "$line" >> "$temp_file"
-						fi
-					done < "$cleaned_file"
-					temp_md5=$(md5sum "$temp_file" | awk '{print $1}')
-					if [ "$temp_md5" != "$target_md5" ]; then
-					    mv "$temp_file" "$shunt_dnsproxy_dnsserver_file"
-					else
-						rm -f "$temp_file"
-					fi
-				fi
-			fi
-			rm -f "$cleaned_file"
-			
-			if [ -n "$shunt_dnsproxy_dnsserver_file" ] && [ -s "$shunt_dnsproxy_dnsserver_file" ]; then
-				local shunt_upstreams_logic_mode="$(uci_get_by_type global shunt_upstreams_logic_mode)"
-				ln_start_bin $(first_type dnsproxy) dnsproxy -l 127.0.0.1 -p $tmp_port -p $tmp_shunt_dns_port -u $shunt_dnsproxy_dnsserver_file $shunt_disabled_ipv6 --cache --cache-min-ttl=3600 --upstream-mode=$shunt_upstreams_logic_mode
-			fi
-		fi
-		echolog "DNSPROXY shunt query and cache Started!"
-		;;
-	5)
-		local chinadns_ng_shunt_proto="$(uci_get_by_type global chinadns_ng_shunt_proto)"
-		local chinadns_ng_shunt_dns=""
-		# 遍历每个 DNS 服务器
-		IFS=','  # 设置分隔符为逗号
-		for chinadns_ng_shunt_server in $shunt_dnsserver; do
-			# 处理单个服务器地址
-			local chinadns_ng_shunt_ip="${chinadns_ng_shunt_server%%:*}"
-			local chinadns_ng_shunt_port="${chinadns_ng_shunt_server##*:}"
-			[ "$chinadns_ng_shunt_ip" = "$chinadns_ng_shunt_port" ] && chinadns_ng_shunt_port="53"
-			chinadns_ng_shunt_tls_port="853"
-			# 根据协议类型格式化服务器地址
-			case "$chinadns_ng_shunt_proto" in
-				"none")
-            				chinadns_ng_shunt_server="${chinadns_ng_shunt_ip}#${chinadns_ng_shunt_port}"
-            				;;
-				"tls")
-            				chinadns_ng_shunt_server="${chinadns_ng_shunt_proto}://${chinadns_ng_shunt_ip}#${chinadns_ng_shunt_tls_port}"
-            				;;
-				*)
-            				chinadns_ng_shunt_server="${chinadns_ng_shunt_proto}://${chinadns_ng_shunt_ip}#${chinadns_ng_shunt_port}"
-            				;;
-			esac
-			# 添加到参数列表
-			chinadns_ng_shunt_dns="${chinadns_ng_shunt_dns} -t ${chinadns_ng_shunt_server}"
-		done
-		unset IFS  # 恢复默认分隔符
-		shunt_dnsserver="$chinadns_ng_shunt_dns"
-		# 启动 chinadns-ng
-		ln_start_bin $(first_type chinadns-ng) chinadns-ng -b 127.0.0.1 -l $tmp_port -l $tmp_shunt_dns_port -p 3 -d gfw $shunt_dnsserver -N --filter-qtype 64,65 -f -r --cache 4096 --cache-stale 86400 --cache-refresh 20
-		echolog "ChinaDNS-NG shunt query and cache Started!"
-		;;
-	esac
-}
-
-shunt_dns_config_file_port() {
-    if [ "$LOCAL_SERVER" == "$SHUNT_SERVER" ]; then
-        # NetFlix 和 全局socks 节点相同
-        if [ "$(uci_get_by_type socks5_proxy socks5_auth nil)" != "noauth" ]; then
-            # 全局socks 有密码，NetFlix 不能使用 auth 验证，需更换为新端口并使用无密码的 socks 配置用于分流
-            # 新增NetFlix dns 使用端口
-            local port=$tmp_shunt_local_port
-            jq --arg port "$port" '.inbounds |= .[0:1] + [{"protocol":"socks","port":($port | tonumber),"settings":{"udp":true,"auth":"noauth"}}] + .[1:]' "$shunt_config_file" > "$shunt_config_file.tmp" && mv "$shunt_config_file.tmp" $shunt_config_file
-            echo $port  # 返回端口号
-            return 0  # 成功返回
-        else
-            sed -i -e '/"mixed"/d' $shunt_config_file
-        fi
-    else
-        # NetFlix 和 全局 socks 节点不相同
-        if [ "$(uci_get_by_type socks5_proxy socks5_auth nil)" != "noauth" ]; then
-            # 全局socks 有密码，NetFlix不能使用auth验证，需设置为无密码的socks配置用于分流
-            # 删除 NetFlix dns 端口密码验证
-            sed -i \
-                   -e '/"mixed"/d' \
-                   -e 's/"auth"\s*:\s*"password"/\"auth\": \"noauth\"/g' \
-                   -e '/"accounts": \[/,/\]/d' $shunt_config_file
-        else
-            sed -i -e '/"mixed"/d' $shunt_config_file
-        fi
-    fi
-    # 使用传入的端口
-    echo $1  # 返回传入的端口号
-    return 0  # 成功返回
-}
-
-start_shunt() {
-	local shunt_server_type=$(uci_get_by_name $SHUNT_SERVER type)
-	local type=$shunt_server_type
-	if [ "$shunt_server_type" = "ss-rust" ] || [ "$shunt_server_type" = "ss-libev" ]; then
-		type="ss"
-	fi
-	case "$type" in
-	ss | ssr)
-		gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port
-		if [ "$shunt_server_type" = "ss-libev" ] || [ "$shunt_server_type" = "ssr" ]; then
-			ss_program="$(first_type ${type}-redir)"
-		elif [ "$shunt_server_type" = "ss-rust" ]; then
-			ss_program="$(first_type ${type}local)"
-		fi
-		echolog "$(get_name $type) program is: $ss_program"
-		# 获取当前软链接指向的执行文件路径
-		old_ss_program=$(readlink -f "$TMP_PATH/bin/${type}-redir" 2>/dev/null)
-		# **当新旧执行文件路径不同时，删除旧链接**
-		if [ "$old_ss_program" != "$ss_program" ]; then
-			rm -rf "$TMP_PATH/bin/${type}-redir"
-		fi
-		ln_start_bin $ss_program ${type}-redir -c $shunt_config_file
-		if [ -n "$tmp_local_port" ]; then
-			local tmp_port=$tmp_local_port
-		else
-			local tmp_port=$tmp_shunt_local_port
-			if [ "$shunt_server_type" = "ss-libev" ] || [ "$shunt_server_type" = "ssr" ]; then
-				dns_ss_program="$(first_type ${type}-local)"
-			elif [ "$shunt_server_type" = "ss-rust" ]; then
-				dns_ss_program="$(first_type ${type}local)"
-			fi
-			# 获取当前软链接指向的执行文件路径
-			old_dns_ss_program=$(readlink -f "$TMP_PATH/bin/${type}-local" 2>/dev/null)
-			if [ "$old_dns_ss_program" != "$dns_ss_program" ]; then
-				rm -rf "$TMP_PATH/bin/${type}-local"
-			fi
-			ln_start_bin $dns_ss_program ${type}-local -c $shunt_dns_config_file
-		fi
-		shunt_dns_command $tmp_port
-		echolog "shunt:$(get_name $type) Started!"
-		;;
-	v2ray)
-		local tmp_port=${tmp_local_port:-$tmp_shunt_local_port}
-		gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port $tmp_port
-		# 处理配置文件中的 NetFlix 端口
-		tmp_port=$(shunt_dns_config_file_port $tmp_port)
-		ln_start_bin $(first_type xray v2ray) v2ray run -c $shunt_config_file
-		shunt_dns_command $tmp_port
-		echolog "shunt:$($(first_type xray v2ray) version | head -1) Started!"
-		;;
-	trojan)
-		gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port
-		ln_start_bin $(first_type trojan) $type --config $shunt_config_file
-		if [ -n "$tmp_local_port" ]; then
-			local tmp_port=$tmp_local_port
-		else
-			local tmp_port=$tmp_shunt_local_port
-			ln_start_bin $(first_type trojan) $type --config $shunt_dns_config_file
-		fi
-		shunt_dns_command $tmp_port
-		echolog "shunt:$($(first_type trojan) --version 2>&1 | head -1) Started!"
-		;;
-	naiveproxy)
-		gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port
-		ln_start_bin $(first_type naive) naive --config $shunt_config_file
-		if [ -n "$tmp_local_port" ]; then
-			local tmp_port=$tmp_local_port
-		else
-			local tmp_port=$tmp_shunt_local_port
-			ln_start_bin $(first_type naive) naive --config $shunt_dns_config_file
-		fi
-		shunt_dns_command $tmp_port
-		echolog "shunt:$($(first_type "naive") --version 2>&1 | head -1) Started!"
-		redir_udp=0
-		;;
-	hysteria2)
-		if [ -n "$tmp_local_port" ]; then
-			local tmp_port=$tmp_local_port
-			gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port
-		else
-			local tmp_port=$tmp_shunt_local_port
-			gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port $tmp_port
-		fi
-		ln_start_bin $(first_type hysteria) hysteria client --config $shunt_config_file
-		shunt_dns_command $tmp_port
-		echolog "shunt:$($(first_type hysteria) version | grep Version | awk '{print "Hysteria2: " $2}') Started!"
-		;;
-	tuic)
-		local chain_shunt_port="30${tmp_shunt_port}"
-		gen_config_file $SHUNT_SERVER $type 3 $chain_shunt_port 0 chain #make a tuic socks:30303, make a ipt2socks redir:303
-		ln_start_bin $(first_type tuic-client) tuic-client --config $shunt_config_file
-		ln_start_bin $(first_type ipt2socks) ipt2socks -R -b 0.0.0.0 -4 -s 127.0.0.1 -p $chain_shunt_port -l $tmp_shunt_port
-
-		[ -n "$tmp_local_port" ] && tmp_port=$tmp_local_port || tmp_port=$tmp_shunt_local_port
-		gen_config_file $SHUNT_SERVER $type 3 $tmp_port		# make a tuic socks :304
-		ln_start_bin $(first_type tuic-client) tuic-client --config $shunt_dns_config_file
-		shunt_dns_command $tmp_port
-		echolog "Netflix Separated Shunt Server:$($(first_type tuic-client) --version) Started!"
-		# FIXME: ipt2socks cannot handle udp reply from tuic
-		#redir_udp=0
-		;;
-	shadowtls)
-		[ -n "$tmp_local_port" ] && tmp_port=$tmp_local_port || tmp_port=$tmp_shunt_local_port
-		gen_config_file $SHUNT_SERVER $type 3 "10${tmp_shunt_port}" $tmp_port chain/$tmp_shunt_port #make a redir:303 and a socks:304
-		#echo "debug \$tmp_port=$tmp_port, \$tmp_shunt_port=${tmp_shunt_port},  \$tmp_shunt_local_port=$tmp_shunt_local_port"
-		ln_start_bin $(first_type shadow-tls) shadow-tls config --config $chain_config_file
-		shunt_dns_command $tmp_port
-		local chain_type=$(uci_get_by_name $SHUNT_SERVER chain_type)
-		case ${chain_type} in
-		vmess)
-			ln_start_bin $(first_type xray v2ray) v2ray run -c $shunt_config_file
-			echolog "Netflix Separated Shunt Server:shadow-tls chain-to$($(first_type xray) --version) Started!"
-			;;
-		sslocal)
-			ln_start_bin $(first_type sslocal) sslocal -c $shunt_config_file
-			echolog "Netflix Separated Shunt Server:shadow-tls chain-to$($(first_type sslocal) --version) Started!"
-			;;
-		esac
-		;;
-	# socks5)
-	# 	if [ "$(uci_get_by_name $SHUNT_SERVER auth_enable 0)" == "1" ]; then
-	# 		local auth="-a $(uci_get_by_name $SHUNT_SERVER username) -k $(uci_get_by_name $SHUNT_SERVER password)"
-	# 	fi
-	# 	ln_start_bin $(first_type ipt2socks) ipt2socks $shunt_config_file -R -4 -s $(uci_get_by_name $SHUNT_SERVER server) -p $(uci_get_by_name $SHUNT_SERVER server_port) -l $tmp_shunt_port $auth
-	# 	#gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port
-	# 	#ln_start_bin $(first_type redsocks2) redsocks2 -c $shunt_config_file
-	# 	if [ -n "$tmp_local_port" ]; then
-	# 		local tmp_port=$tmp_local_port
-	# 	else
-	# 		local tmp_port=$tmp_shunt_local_port
-	# 		ln_start_bin $(first_type microsocks) microsocks -i 127.0.0.1 -p $tmp_port shunt-dns-ssr-plus
-	# 	fi
-	# 	shunt_dns_command $tmp_port
-	# 	echolog "shunt:$type REDIRECT/TPROXY Started!"
-	# 	;;
-	*)
-		gen_config_file $SHUNT_SERVER $type 3 $tmp_shunt_port
-		ln_start_bin $(first_type redsocks2) redsocks2 -c $shunt_config_file
-		if [ -n "$tmp_local_port" ]; then
-			local tmp_port=$tmp_local_port
-		else
-			local tmp_port=$tmp_shunt_local_port
-			ln_start_bin $(first_type microsocks) microsocks -i 127.0.0.1 -p $tmp_port shunt-dns-ssr-plus
-		fi
-		shunt_dns_command $tmp_port
-		echolog "shunt:$type REDIRECT/TPROXY Started!"
-		;;
-	esac
-	return 0
-}
-
 start_local() {
 	[ "$LOCAL_SERVER" = "nil" ] && return 1
 	local local_port=$(uci_get_by_type socks5_proxy local_port)
-	[ "$LOCAL_SERVER" == "$SHUNT_SERVER" ] && tmp_local_port=$local_port
 	local local_server_type=$(uci_get_by_name $LOCAL_SERVER type)
 	local type=$local_server_type
 	if [ "$local_server_type" = "ss-rust" ] || [ "$local_server_type" = "ss-libev" ]; then
@@ -1258,13 +946,6 @@ load_config() {
 		return 1
 	fi
 	UDP_RELAY_SERVER=$(uci_get_by_type global udp_relay_server nil)
-	if [ "$(uci_get_by_type global netflix_enable 0)" == "1" ]; then
-		# 只有开启 NetFlix分流 才需要取值
-		SHUNT_SERVER=$(uci_get_by_type global netflix_server nil)
-	else
-		# 没有开启 设置为 nil
-		SHUNT_SERVER=nil
-	fi
 	#tcp_config_file=$TMP_PATH/tcp-udp-dual-ssr-retcp.json
 	tcp_config_file=$TMP_PATH/tcp-only-ssr-retcp.json
 	case "$UDP_RELAY_SERVER" in
@@ -1300,36 +981,10 @@ load_config() {
 		start_local
 		local_enable=0
 		;;
-	$SHUNT_SERVER)
-		_local="3"
-		local_config_file=$TMP_PATH/tcp-udp-ssr-local.json
-		start_local
-		;;
 	*)
 		_local="2"
 		local_config_file=$TMP_PATH/tcp-udp-ssr-local.json
 		start_local
-		;;
-	esac
-	case "$SHUNT_SERVER" in
-	nil)
-		shunt="0"
-		;;
-	$GLOBAL_SERVER | same)
-		shunt="1"
-		SHUNT_SERVER=$GLOBAL_SERVER
-		;;
-	$LOCAL_SERVER)
-		shunt="$tmp_shunt_port"
-		shunt_config_file=$TMP_PATH/tcp-udp-ssr-local.json
-		shunt_dns_config_file=$TMP_PATH/shunt-dns-ssr-plus.json
-		start_shunt
-		;;
-	*)
-		shunt="$tmp_shunt_port"
-		shunt_config_file=$TMP_PATH/shunt-ssr-retcp.json
-		shunt_dns_config_file=$TMP_PATH/shunt-dns-ssr-plus.json
-		start_shunt
 		;;
 	esac
 	return 0
@@ -1494,7 +1149,7 @@ start_xhttp_addr() {
 
 	# 收集所有节点的 download_address 值，去掉空行并去重排序
 	{
-		for sec in "$GLOBAL_SERVER" "$SHUNT_SERVER" "$UDP_RELAY_SERVER"; do
+		for sec in "$GLOBAL_SERVER" "$UDP_RELAY_SERVER"; do
 			local addr
 			addr=$(uci_get_by_name "$sec" download_address)
 			[ -n "$addr" ] && echo "$addr"
@@ -1534,9 +1189,6 @@ start_rules() {
 	if [ "$kcp_enable_flag" == "0" -a "$redir_udp" == "1" ]; then
 		local udp_server=$(get_host_ip $UDP_RELAY_SERVER)
 		local udp_local_port=$tmp_udp_port
-	fi
-	if [ "$shunt" != "0" ]; then
-		local shunt_ip=$(get_host_ip $SHUNT_SERVER)
 	fi
 	if [ -n "$lan_ac_ips" ]; then
 		case "$lan_ac_mode" in
@@ -1594,10 +1246,6 @@ start_rules() {
 		-G "$(uci_get_by_type access_control lan_gm_ips)" \
 		-m "$(uci_get_by_type access_control Interface)" \
 		-D "$proxyport" \
-		-F "$shunt" \
-		-N "$shunt_ip" \
-		-M "$(uci_get_by_type global netflix_proxy 0)" \
-		-I "/etc/ssrplus/netflixip.list" \
 		$(get_arg_out) $(gfwmode) $ARG_UDP $ARG_A
 
 	return $?
@@ -1616,7 +1264,7 @@ start() {
 		start_dns
 		# Restore ipsets after rules creation
 		if [ "$HAS_IPSET" -eq 1 ]; then
-			for setname in gfwlist china blacklist whitelist netflix; do
+			for setname in gfwlist china blacklist whitelist; do
 				[ "$setname" = "gfwlist" ] && [ "$run_mode" != "gfw" ] && continue
 				if [ -f "/tmp/ssrplus_save/${setname}.save" ]; then
 					ipset restore -! < "/tmp/ssrplus_save/${setname}.save" 2>/dev/null
@@ -1682,7 +1330,7 @@ stop() {
 		if [ "$run_mode" = "gfw" ]; then
 			ipset save gfwlist > /tmp/ssrplus_save/gfwlist.save 2>/dev/null
 		fi
-		for setname in china blacklist whitelist netflix; do
+		for setname in china blacklist whitelist; do
 			ipset save $setname > /tmp/ssrplus_save/$setname.save 2>/dev/null
 		done
 	fi

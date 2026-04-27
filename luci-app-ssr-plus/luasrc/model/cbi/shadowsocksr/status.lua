@@ -13,7 +13,6 @@ local tunnel_run = 0
 local gfw_count = 0
 local ad_count = 0
 local ip_count = 0
-local nfip_count = 0
 local Process_list = luci.sys.exec("busybox ps -w")
 local uci = require "luci.model.uci".cursor()
 -- html constants
@@ -50,10 +49,6 @@ end
 
 if nixio.fs.access("/etc/ssrplus/applechina.conf") then
 	apple_count = tonumber(luci.sys.exec("cat /etc/ssrplus/applechina.conf | wc -l"))
-end
-
-if nixio.fs.access("/etc/ssrplus/netflixip.list") then
-	nfip_count = tonumber(luci.sys.exec("cat /etc/ssrplus/netflixip.list | wc -l"))
 end
 
 if Process_list:find("udp.only.ssr.reudp") then
@@ -209,13 +204,6 @@ if uci:get_first("shadowsocksr", 'global', 'apple_optimization', '0') ~= '0' the
 	s.rawhtml = true
 	s.template = "shadowsocksr/refresh"
 	s.value = apple_count .. " " .. translate("Records")
-end
-
-if uci:get_first("shadowsocksr", 'global', 'netflix_enable', '0') ~= '0' then
-	s = m:field(DummyValue, "nfip_data", translate("Netflix IP Data"))
-	s.rawhtml = true
-	s.template = "shadowsocksr/refresh"
-	s.value = nfip_count .. " " .. translate("Records")
 end
 
 if uci:get_first("shadowsocksr", 'global', 'adblock', '0') == '1' then
