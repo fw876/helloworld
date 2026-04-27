@@ -41,10 +41,6 @@ if [ -s "/etc/config/shadowsocksr" ]; then
         uci -q set shadowsocksr.@server_subscribe[0].auto_update_min_time='0'
     fi
 
-    if ! uci -q get shadowsocksr.@server_subscribe[0].ss_type > /dev/null; then
-        uci -q set shadowsocksr.@server_subscribe[0].ss_type='ss-rust'
-    fi
-
     if ! uci -q get shadowsocksr.@server_subscribe[0].user_agent > /dev/null; then
         uci -q set shadowsocksr.@server_subscribe[0].user_agent='v2rayN/9.99'
     fi

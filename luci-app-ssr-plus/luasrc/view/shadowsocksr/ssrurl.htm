@@ -1,7 +1,6 @@
 <%+cbi/valueheader%>
 <%
 local map = self.map
-local ss_type = map:get("@server_subscribe[0]", "ss_type")
 local xray_hy2_type = map:get("@server_subscribe[0]", "xray_hy2_type")
 
 local has_ss_rust = luci.sys.exec('type -t -p sslocal 2>/dev/null || type -t -p ssserver 2>/dev/null') ~= ""
@@ -11,7 +10,6 @@ local has_xray = luci.sys.exec('type -t -p xray 2>/dev/null') ~= ""
 -%>
 <script type="text/javascript">
 //<![CDATA[
-let ss_type = "<%=ss_type%>"
 let xray_hy2_type = "<%=xray_hy2_type%>"
 let has_ss_rust = "<%=has_ss_rust%>"
 let has_ss_libev = "<%=has_ss_libev%>"
@@ -373,11 +371,7 @@ function import_ssr_url(btn, urlname, sid) {
 				}
 
 				// === 填充配置项 ===
-				//var has_ss_type = (ss_type === "ss-rust") ? "ss-rust" : "ss-libev";
-				// 设置 _ss_core 的值
-				var ssCore = (ss_type === "ss-rust" || ss_type === "ss-libev") 
-							 ? ss_type 
-							 : (has_ss_rust ? "ss-rust" : (has_ss_libev ? "ss-libev" : "ss-libev"));
+				var ssCore = has_ss_rust ? "ss-rust" : "ss-libev";
 
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].value = ssu[0];
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.type')[0].dispatchEvent(event);
@@ -385,8 +379,6 @@ function import_ssr_url(btn, urlname, sid) {
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '._ss_core')[0].value = ssCore;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '._ss_core')[0].dispatchEvent(event);
 
-				//document.getElementsByName('cbid.shadowsocksr.' + sid + '.has_ss_type')[0].value = has_ss_type;
-				//document.getElementsByName('cbid.shadowsocksr.' + sid + '.has_ss_type')[0].dispatchEvent(event);
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.server')[0].value = server;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.server_port')[0].value = port;
 				document.getElementsByName('cbid.shadowsocksr.' + sid + '.password')[0].value = password || "";
@@ -594,41 +586,18 @@ function import_ssr_url(btn, urlname, sid) {
 				return true;
 			}
 
-			// 主逻辑：智能核心选择（支持回退）
-			function hasSSCore() { return has_ss_rust === "true" || has_ss_libev === "true"; }
-			function hasXrayCore() { return has_xray === "true"; }
-			let finalSSType = null; // true=Xray, false=普通SS, null=无核心
-			if (ss_type === "v2ray") {
-				if (hasXrayCore()) finalSSType = true;
-				else if (hasSSCore()) finalSSType = false;
-				else finalSSType = null;
-			} else if (ss_type === "ss-rust" || ss_type === "ss-libev") {
-				let userSSCore = (ss_type === "ss-rust" && has_ss_rust === "true") || (ss_type === "ss-libev" && has_ss_libev === "true");
-				if (userSSCore) finalSSType = false;
-				else {
-					let otherSSCore = (ss_type === "ss-rust" && has_ss_libev === "true") || (ss_type === "ss-libev" && has_ss_rust === "true");
-					if (otherSSCore) finalSSType = false;
-					else if (hasXrayCore()) finalSSType = true;
-					else finalSSType = null;
-				}
-			} else {
-				// auto 或空：根据 type 参数决定
-				let hasType = params.type && params.type !== "";
-				if (hasType) {
-					if (hasXrayCore()) finalSSType = true;
-					else if (hasSSCore()) finalSSType = false;
-					else finalSSType = null;
-				} else {
-					if (hasSSCore()) finalSSType = false;
-					else if (hasXrayCore()) finalSSType = true;
-					else finalSSType = null;
-				}
+			function preferredSSBackend() {
+				if (has_ss_rust === "true") return "ss-rust";
+				if (has_ss_libev === "true") return "ss-libev";
+				if (has_xray === "true") return "v2ray";
+				return null;
 			}
-			if (finalSSType === null) {
+			let finalSSBackend = preferredSSBackend();
+			if (finalSSBackend === null) {
 				s.innerHTML = "<font style=\'color:red\'><%:No available core (Shadowsocks or Xray) to import this node.%></font>";
 				return false;
 			}
-			if (finalSSType === true) importAsXraySS();
+			if (finalSSBackend === "v2ray") importAsXraySS();
 			else importAsNormalSS();
 			return false;
 		case "ssr":

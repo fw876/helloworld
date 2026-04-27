@@ -278,6 +278,10 @@ local function migrate_xray_protocol_nodes()
 		uci:delete("shadowsocksr", subscribe_sid, "xray_tj_type")
 		changed = true
 	end
+	if subscribe_sid and uci:get("shadowsocksr", subscribe_sid, "ss_type") then
+		uci:delete("shadowsocksr", subscribe_sid, "ss_type")
+		changed = true
+	end
 
 	if changed then
 		uci:commit("shadowsocksr")
@@ -383,12 +387,13 @@ o.cfgvalue = function(self, section)
     if node_type == "ss-rust" or node_type == "ss-libev" then
 		return node_type
     end
-    -- 如果全局 ss_type 有值且为具体核心则返回该值
-    local ss_type = self.map.uci:get("shadowsocksr", "@server_subscribe[0]", "ss_type")
-    if ss_type == "ss-rust" or ss_type == "ss-libev" then
-		return ss_type
+    -- 节点 type 为旧的 "ss" 时，按本地可用核心自动优先选择
+    if has_ss_rust then
+		return "ss-rust"
     end
-    -- 如果节点 type 是旧的 "ss"，则返回空，手动选择
+    if has_ss_libev then
+		return "ss-libev"
+    end
     return nil
 end
 -- 显示条件：当节点类型为 "ss" 或其具体核心时显示
