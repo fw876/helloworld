@@ -4252,7 +4252,8 @@ infy_add (EV_P_ ev_stat *w)
       if ((errno == ENOENT || errno == EACCES) && strlen (w->path) < 4096)
         {
           char path [4096];
-          strcpy (path, w->path);
+          strncpy (path, w->path, sizeof (path) - 1);
+          path [sizeof (path) - 1] = 0;
 
           do
             {
