@@ -109,6 +109,8 @@ jobs:
           CONFIG_ALL=n
           CONFIG_AUTOREMOVE=n
           CONFIG_LUCI_LANG_zh_Hans=y
+          CONFIG_PACKAGE_gpio-button-hotplug=n
+          CONFIG_PACKAGE_kmod-button-hotplug=n
           CONFIG_PACKAGE_luci-app-ssr-plus=m
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_NONE_V2RAY=y
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_NONE_Client=y
@@ -141,7 +143,9 @@ jobs:
           ./scripts/feeds install -a -p helloworld
 
           make package/feeds/helloworld/luci-app-ssr-plus/clean
-          make package/feeds/helloworld/luci-app-ssr-plus/compile -j"$(nproc)"
+          if ! make package/feeds/helloworld/luci-app-ssr-plus/compile -j"$(nproc)"; then
+            make package/feeds/helloworld/luci-app-ssr-plus/compile -j1 V=s
+          fi
 
           package_dir="$(pwd)/bin/packages/${SDK_ARCH}/helloworld"
           dist_dir="$(pwd)/../dist/${{ matrix.build_arch }}"
