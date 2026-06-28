@@ -109,7 +109,7 @@ jobs:
           CONFIG_ALL=n
           CONFIG_AUTOREMOVE=n
           CONFIG_LUCI_LANG_zh_Hans=y
-          CONFIG_PACKAGE_luci-app-ssr-plus=y
+          CONFIG_PACKAGE_luci-app-ssr-plus=m
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_NONE_V2RAY=y
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_NONE_Client=y
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_NONE_Server=y
