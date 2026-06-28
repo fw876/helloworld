@@ -1,0 +1,226 @@
+name: Release Packages
+
+'on':
+  push:
+    tags:
+      - 'v*'
+
+env:
+  TZ: Asia/Shanghai
+
+jobs:
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.release_meta.outputs.tag_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release note
+        id: release_meta
+        run: |
+          tag_name="${GITHUB_REF_NAME}"
+
+          {
+            echo "# helloworld ${tag_name}"
+            echo
+            echo "Release tag: ${tag_name}"
+            echo "Commit: ${GITHUB_SHA}"
+            echo
+            echo "Package to build:"
+            echo "- luci-app-ssr-plus"
+          } > release_note.md
+
+          echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release note
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-note
+          path: release_note.md
+
+  build:
+    name: Build ${{ matrix.build_arch }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        build_arch:
+          - x64_ipk
+          - x64_apk
+
+    steps:
+      - name: Install packages
+        run: |
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install zstd build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev python3 rsync unzip zlib1g-dev file wget
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Import environment
+        id: sdk_env
+        run: |
+          cat .github/workflows/${{ matrix.build_arch }}.env >> "$GITHUB_ENV"
+          while IFS='=' read -r key value; do
+            echo "${key,,}=${value}" >> "$GITHUB_OUTPUT"
+          done < .github/workflows/${{ matrix.build_arch }}.env
+
+      - name: Initialize SDK
+        env:
+          SDK_FILE: ${{ steps.sdk_env.outputs.sdk_name }}.${{ steps.sdk_env.outputs.sdk_ext }}
+          SDK_SOURCE: ${{ steps.sdk_env.outputs.sdk_url }}${{ steps.sdk_env.outputs.sdk_name }}.${{ steps.sdk_env.outputs.sdk_ext }}
+        run: |
+          wget "$SDK_SOURCE"
+          mkdir -p sdk
+
+          if [ "${SDK_EXT}" = "tar.zst" ]; then
+            tar --zstd -xf "$SDK_FILE" -C sdk --strip-components=1
+          else
+            tar -xf "$SDK_FILE" -C sdk --strip-components=1
+          fi
+
+          cd sdk
+          cat <<'EOF' > feeds.conf
+          src-git base https://github.com/openwrt/openwrt.git;main
+          src-git packages https://github.com/openwrt/packages.git;master
+          src-git luci https://github.com/openwrt/luci.git;master
+          src-git routing https://git.openwrt.org/feed/routing.git;master
+          EOF
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          echo "src-link helloworld $(pwd)/../" >> feeds.conf
+          ./scripts/feeds update helloworld
+          ./scripts/feeds install -a -p helloworld
+          cat <<'EOF' > .config
+          CONFIG_ALL_NONSHARED=n
+          CONFIG_ALL_KMODS=n
+          CONFIG_ALL=n
+          CONFIG_AUTOREMOVE=n
+          CONFIG_LUCI_LANG_zh_Hans=y
+          CONFIG_PACKAGE_luci-app-ssr-plus=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_NONE_V2RAY=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_NONE_Client=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_NONE_Server=y
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ChinaDNS_NG=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_DNS2TCP=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_MosDNS=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Http_Proxy=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Mihomo=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_GeoData=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadow_TLS=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Kcptun=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_NaiveProxy=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_Rust_Client=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_Rust_Server=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_Simple_Obfs=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_V2ray_Plugin=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Libev_Client=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Libev_Server=n
+          EOF
+          make defconfig
+          make clean
+          make download -j"$(nproc)" || true
+
+      - name: Compile packages
+        id: compile
+        run: |
+          cd sdk
+          ./scripts/feeds update helloworld
+          ./scripts/feeds install -a -p helloworld
+
+          make package/feeds/helloworld/luci-app-ssr-plus/clean
+          make package/feeds/helloworld/luci-app-ssr-plus/compile -j"$(nproc)"
+
+          package_dir="$(pwd)/bin/packages/${SDK_ARCH}/helloworld"
+          dist_dir="$(pwd)/../dist/${{ matrix.build_arch }}"
+          mkdir -p "$dist_dir"
+
+          shopt -s nullglob
+          package_files=("$package_dir"/luci-app-ssr-plus*.${PACKAGE_EXT})
+          if [ ${#package_files[@]} -eq 0 ]; then
+            echo "No luci-app-ssr-plus .${PACKAGE_EXT} packages were produced in ${package_dir}" >&2
+            exit 1
+          fi
+
+          cp "$package_dir"/luci-app-ssr-plus*.${PACKAGE_EXT} "$dist_dir"/
+          cp "$package_dir"/Packages* "$dist_dir"/ 2>/dev/null || true
+          cp "$package_dir"/APKINDEX* "$dist_dir"/ 2>/dev/null || true
+
+          {
+            echo "Tag: ${{ needs.prepare.outputs.tag_name }}"
+            echo "Build: ${{ matrix.build_arch }}"
+            echo "SDK: ${SDK_NAME}"
+            echo "Package format: ${PACKAGE_EXT}"
+            echo "Package count: ${#package_files[@]}"
+          } > "$dist_dir/BUILD-INFO.txt"
+
+      - name: Upload artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: helloworld-${{ matrix.build_arch }}
+          path: dist/${{ matrix.build_arch }}
+          retention-days: 7
+
+  release:
+    name: Publish Release
+    needs:
+      - prepare
+      - build
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: helloworld-*
+          merge-multiple: false
+
+      - name: Download release note
+        uses: actions/download-artifact@v4
+        with:
+          name: release-note
+          path: release-note
+
+      - name: Collect release assets
+        run: |
+          mkdir -p releases
+          shopt -s nullglob
+
+          for dir in artifacts/*; do
+            [ -d "$dir" ] || continue
+
+            for package in "$dir"/*.ipk "$dir"/*.apk; do
+              [ -f "$package" ] || continue
+              cp "$package" releases/
+            done
+
+            if [ -f "$dir/BUILD-INFO.txt" ]; then
+              cp "$dir/BUILD-INFO.txt" "releases/$(basename "$dir")-BUILD-INFO.txt"
+            fi
+          done
+
+          ls -lh releases
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2.2.2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+          body_path: release-note/release_note.md
+          generate_release_notes: true
+          prerelease: ${{ contains(needs.prepare.outputs.tag_name, '-beta') || contains(needs.prepare.outputs.tag_name, '-rc') }}
+          files: releases/*
