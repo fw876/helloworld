@@ -20,6 +20,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          path: source
 
       - name: Generate release note
         id: release_meta
@@ -68,14 +69,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          path: source
 
       - name: Import environment
         id: sdk_env
         run: |
-          cat .github/workflows/${{ matrix.build_arch }}.env >> "$GITHUB_ENV"
+          cat source/.github/workflows/${{ matrix.build_arch }}.env >> "$GITHUB_ENV"
           while IFS='=' read -r key value; do
             echo "${key,,}=${value}" >> "$GITHUB_OUTPUT"
-          done < .github/workflows/${{ matrix.build_arch }}.env
+          done < source/.github/workflows/${{ matrix.build_arch }}.env
 
       - name: Initialize SDK
         env:
@@ -100,7 +102,7 @@ jobs:
           EOF
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-          echo "src-link helloworld $(pwd)/../" >> feeds.conf
+          echo "src-link helloworld $(pwd)/../source" >> feeds.conf
           ./scripts/feeds update helloworld
           ./scripts/feeds install -a -p helloworld
           cat <<'EOF' > .config
