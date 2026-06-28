@@ -741,13 +741,61 @@ has_mihomo_binary() {
 }
 
 use_mihomo_for_ss_rust_client() {
-	has_ss_rust_client_binary && return 1
+	# 检查核心是否存在 (has_ss_rust_client_binary 成功返回 0，失败返回 1)
+	local enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
+	has_ss_rust_client_binary
+	local has_ss=$?
+	
 	has_mihomo_binary
+	local has_mh=$?
+
+	# echolog "DEBUG: sslocal_path=[$has_ss], mihomo_path=[$has_mh], enable_mihomo=[$enable_mihomo]"
+
+	if [ "$enable_mihomo" = "1" ]; then
+		if [ $has_mh -eq 0 ]; then
+			return 0 # 使用 Mihomo
+		elif [ $has_ss -eq 0 ]; then
+			return 1 # Mihomo 不存在，回退到 sslocal
+		fi
+	else
+		if [ $has_ss -eq 0 ]; then
+			return 1 # 使用 sslocal
+		elif [ $has_mh -eq 0 ]; then
+			return 0 # sslocal 不存在，回退到 Mihomo
+		fi
+	fi
+
+	# 如果两个都不存在，默认走 sslocal 逻辑
+	return 1
 }
 
 use_mihomo_for_ss_rust_server() {
-	has_ss_rust_server_binary && return 1
+	# 检查核心是否存在 (has_ss_rust_client_binary 成功返回 0，失败返回 1)
+	local enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
+	has_ss_rust_server_binary
+	local has_ss=$?
+	
 	has_mihomo_binary
+	local has_mh=$?
+
+	# echolog "DEBUG: sslocal_path=[$has_ss], mihomo_path=[$has_mh], enable_mihomo=[$enable_mihomo]"
+
+	if [ "$enable_mihomo" = "1" ]; then
+		if [ $has_mh -eq 0 ]; then
+			return 0 # 使用 Mihomo
+		elif [ $has_ss -eq 0 ]; then
+			return 1 # Mihomo 不存在，回退到 ssserver
+		fi
+	else
+		if [ $has_ss -eq 0 ]; then
+			return 1 # 使用 ssserver
+		elif [ $has_mh -eq 0 ]; then
+			return 0 # ssserver 不存在，回退到 Mihomo
+		fi
+	fi
+
+	# 如果两个都不存在，默认走 ssserver 逻辑
+	return 1
 }
 
 start_v2ray_with_mihomo() {
@@ -1103,7 +1151,6 @@ start_dns() {
 }
 
 # 生成 Xray 服务端配置
-# 生成 Xray 服务端配置
 generate_xray_config() {
 	local type="$1"
 	local port="$2"
@@ -1388,7 +1435,7 @@ start_udp() {
 		elif [ "$udp_relay_server_type" = "ss-rust" ] && use_mihomo_for_ss_rust_client; then
 			redir_udp=0
 			ARG_UDP=""
-			echolog "UDP TPROXY Relay:ss-rust 主程序不存在，已回退到 Mihomo 主实例处理。"
+			echolog "UDP TPROXY Relay:$(get_name ${type})-Rust 内核不存在，已回退到 Mihomo ($(get_name ${type})) 主实例处理。"
 		else
 			gen_config_file $UDP_RELAY_SERVER $type 2 $tmp_udp_port
 			if [ "$udp_relay_server_type" = "ssr" ]; then
@@ -1402,18 +1449,37 @@ start_udp() {
 				rm -rf "$TMP_PATH/bin/${type}-redir"
 			fi
 			ln_start_bin $ss_program ${type}-redir -c $udp_config_file
-			echolog "UDP TPROXY Relay:$(get_name $type) Started!"
+			if [ "$udp_relay_server_type" = "ssr" ] || [ "$udp_relay_server_type" = "ss" ]; then
+				echolog "UDP TPROXY Relay:$(get_name $type) Started!"
+			elif [ "$udp_relay_server_type" = "ss-rust" ]; then
+				echolog "UDP TPROXY Relay:$(get_name $type)-Rust Started!"
+			fi
 		fi
 		;;
 	v2ray)
-		if has_mihomo_binary; then
+		local enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
+		if [ "$enable_mihomo" = "1" ] && has_mihomo_binary; then
 			redir_udp=0
 			ARG_UDP=""
 			echolog "UDP TPROXY Relay:V2Ray/Xray 单节点由主 Mihomo 实例处理。"
 		else
-			gen_config_file $UDP_RELAY_SERVER $type 2 $tmp_udp_port
-			ln_start_bin $(first_type xray) v2ray run -c $udp_config_file
-			echolog "UDP TPROXY Relay:$($(first_type xray) version | head -1) Started!"
+			# enable_mihomo=0 → 尝试 Xray
+			local xray_bin="$(first_type xray)"
+			if [ -n "$xray_bin" ]; then
+				gen_config_file $UDP_RELAY_SERVER $type 2 $tmp_udp_port
+				ln_start_bin $(first_type xray) v2ray run -c $udp_config_file
+				echolog "UDP TPROXY Relay:$($(first_type xray) version | head -1) Started!"
+			else
+				# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
+				if has_mihomo_binary; then
+					redir_udp=0
+					ARG_UDP=""
+					echolog "UDP TPROXY Relay:Xray 内核不存在，已回退到 Mihomo 内核启动。"
+				else
+					echolog "UDP TPROXY Relay:V2Ray/Xray 节点无法启动，Xray 和 Mihomo 内核均不存在。"
+					return 1
+				fi
+			fi
 		fi
 		;;
 	trojan) #client
@@ -1440,11 +1506,24 @@ start_udp() {
 		local chain_type=$(uci_get_by_name $UDP_RELAY_SERVER chain_type)
 		case ${chain_type} in
 		vmess)
-			if start_v2ray_with_mihomo "$UDP_RELAY_SERVER" "$tmp_udp_port" "0" "${UDP_RELAY_SERVER}-shadowtls-udp" "redir" "shadowtls-vmess-udp" "UDP TPROXY Relay:shadow-tls chain-to"; then
+			local enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
+			if [ "$enable_mihomo" = "1" ] && start_v2ray_with_mihomo "$UDP_RELAY_SERVER" "$tmp_udp_port" "0" "${UDP_RELAY_SERVER}-shadowtls-udp" "redir" "shadowtls-vmess-udp" "UDP TPROXY Relay:shadow-tls chain-to"; then
 				:
 			else
-				ln_start_bin $(first_type xray) v2ray run -c $udp_config_file
-				echolog "UDP TPROXY Relay:shadow-tls chain-to $($(first_type xray) --version) Started!"
+				# enable_mihomo=0 或 Mihomo 启动失败 → 尝试 Xray
+				local xray_bin="$(first_type xray)"
+				if [ -n "$xray_bin" ]; then
+					ln_start_bin $(first_type xray) v2ray run -c $udp_config_file
+					echolog "UDP TPROXY Relay:shadow-tls chain-to $($(first_type xray) --version) Started!"
+				else
+					# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
+					if start_v2ray_with_mihomo "$UDP_RELAY_SERVER" "$tmp_udp_port" "0" "${UDP_RELAY_SERVER}-shadowtls-udp" "redir" "shadowtls-vmess-udp" "UDP TPROXY Relay:shadow-tls chain-to"; then
+						echolog "UDP TPROXY Relay:shadow-tls chain-to Xray 内核不存在，已回退到 Mihomo 内核启动。。"
+					else
+						echolog "UDP TPROXY Relay:shadow-tls chain-to Xray 和 Mihomo 内核均不存在，无法启动。"
+						return 1
+					fi
+				fi
 			fi
 			;;
 		sslocal)
@@ -1505,9 +1584,9 @@ start_local() {
 			local ss_workdir="$(get_ss_mihomo_workdir "$instance_key")"
 			ln_start_bin "$mihomo_bin" ss-local -d "$ss_workdir" -f "$ss_workdir/config.yaml"
 			if [ "$local_server_type" = "ss-rust" ]; then
-				echolog "Global_Socks5:ss-rust 主程序不存在，已回退到 Mihomo (Shadowsocks) 启动。"
+				echolog "Global_Socks5:$(get_name $type)-Rust 内核不存在，已回退到 Mihomo ($(get_name $type)-Rust) 启动。"
 			else
-				echolog "Global_Socks5:Mihomo (Shadowsocks) Started!"
+				echolog "Global_Socks5:Mihomo ($(get_name $type)) Started!"
 			fi
 		else
 			gen_config_file $LOCAL_SERVER $type 4 $local_port
@@ -1518,21 +1597,34 @@ start_local() {
 				rm -rf "$TMP_PATH/bin/${type}-local"
 			fi
 			ln_start_bin $ss_program ${type}-local -c $local_config_file
-			echolog "Global_Socks5:Shadowsocks-rust Started!"
+			echolog "Global_Socks5:$(get_name $type)-Rust Started!"
 		fi
 		;;
 	v2ray)
+		local enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
 		local instance_key="${LOCAL_SERVER}-local"
 		[ -n "$probe_instance_key" ] && instance_key="$probe_instance_key"
-		if start_v2ray_with_mihomo "$LOCAL_SERVER" "$local_port" "$local_port" "$instance_key" "socks" "v2ray-local" "Global_Socks5"; then
+		if [ "$enable_mihomo" = "1" ] && start_v2ray_with_mihomo "$LOCAL_SERVER" "$local_port" "$local_port" "$instance_key" "socks" "v2ray-local" "Global_Socks5"; then
 			:
 		elif [ "$(uci_get_by_name "$LOCAL_SERVER" v2ray_protocol)" = "snell" ]; then
 			echolog "Global_Socks5:Snell 需要 Mihomo 内核，且当前 Mihomo 启动失败。"
 			return 1
 		elif [ "$_local" == "2" ]; then
-			gen_config_file $LOCAL_SERVER $type 4 0 $local_port
-			ln_start_bin $(first_type xray) v2ray run -c $local_config_file
-			echolog "Global_Socks5:$($(first_type xray) version | head -1) Started!"
+			# 尝试 Xray
+			local xray_bin="$(first_type xray)"
+			if [ -n "$xray_bin" ]; then
+				gen_config_file $LOCAL_SERVER $type 4 0 $local_port
+				ln_start_bin $(first_type xray) v2ray run -c $local_config_file
+				echolog "Global_Socks5:$($(first_type xray) version | head -1) Started!"
+			else
+				# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
+				if start_v2ray_with_mihomo "$LOCAL_SERVER" "$local_port" "$local_port" "$instance_key" "socks" "v2ray-local" "Global_Socks5"; then
+					echolog "Global_Socks5:Xray 内核不存在，已回退到 Mihomo 内核启动"
+				else
+					echolog "Global_Socks5:Xray 和 Mihomo 内核均不存在，无法启动。"
+					return 1
+				fi
+			fi
 		else
 			return 1
 		fi
@@ -1560,29 +1652,43 @@ start_local() {
 		ln_start_bin "$mihomo_bin" tuic-local -d "$tuic_workdir" -f "$tuic_workdir/config.yaml"
 		echolog "Global_Socks5:Mihomo (TUIC) Started!"
 		;;
-		shadowtls)
-			#respective config for global socks and main node
-			if [ "$_local" == "2" ]; then
-				gen_config_file $LOCAL_SERVER $type 4 "10${tmp_tcp_local_port}"
+	shadowtls)
+		#respective config for global socks and main node
+		if [ "$_local" == "2" ]; then
+			gen_config_file $LOCAL_SERVER $type 4 "10${tmp_tcp_local_port}"
 			gen_config_file $LOCAL_SERVER $type 4 0 $local_port chain/"10${tmp_tcp_local_port}"
 			ln_start_bin $(first_type shadow-tls) shadow-tls config --config $chain_local_config_file
 			local chain_type=$(uci_get_by_name $LOCAL_SERVER chain_type)
 			case ${chain_type} in
 			vmess)
-				if start_v2ray_with_mihomo "$LOCAL_SERVER" "$local_port" "$local_port" "${LOCAL_SERVER}-shadowtls-local" "socks" "shadowtls-vmess-local" "Global Socks5 Proxy:shadow-tls chain-to"; then
+				local enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
+				# 优先尝试 Mihomo（enable_mihomo=1 时）
+				if [ "$enable_mihomo" = "1" ] && start_v2ray_with_mihomo "$LOCAL_SERVER" "$local_port" "$local_port" "${LOCAL_SERVER}-shadowtls-local" "socks" "shadowtls-vmess-local" "Global Socks5 Proxy:shadow-tls chain-to"; then
 					:
 				else
-					ln_start_bin $(first_type xray) v2ray run -c $local_config_file
-					echolog "Global Socks5 Proxy:shadow-tls chain-to$($(first_type xray) --version) Started!"
+					# enable_mihomo=0 或 Mihomo 启动失败 → 尝试 Xray
+					local xray_bin="$(first_type xray)"
+					if [ -n "$xray_bin" ]; then
+						ln_start_bin $(first_type xray) v2ray run -c $local_config_file
+						echolog "Global Socks5 Proxy:shadow-tls chain-to$($(first_type xray) --version) Started!"
+					else
+						# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
+						if start_v2ray_with_mihomo "$LOCAL_SERVER" "$local_port" "$local_port" "${LOCAL_SERVER}-shadowtls-local" "socks" "shadowtls-vmess-local" "Global Socks5 Proxy:shadow-tls chain-to"; then
+							echolog "Global Socks5 Proxy:shadow-tls chain-to Xray 内核不存在，已回退到 Mihomo 内核启动。"
+						else
+							echolog "Global Socks5 Proxy:shadow-tls chain-to Xray 和 Mihomo 内核均不存在，无法启动。"
+							return 1
+						fi
+					fi
 				fi
 				;;
 			sslocal)
 				ln_start_bin $(first_type sslocal) sslocal -c $local_config_file
-				echolog "Global Socks5 Proxy:shadow-tls chain-to$($(first_type sslocal) --version) Started!"
+				echolog "Global Socks5 Proxy:shadow-tls chain-to $($(first_type sslocal) --version) Started!"
 				;;
-				esac
-			fi
-			;;
+			esac
+		fi
+		;;
 	clash)
 		echolog "Global_Socks5:Clash total node is only supported when using Same as Global Server."
 		return 1
@@ -1854,9 +1960,9 @@ Start_Run() {
 			local ss_workdir="$(get_ss_mihomo_workdir "$GLOBAL_SERVER")"
 			ln_start_bin "$mihomo_bin" ssr-retcp -d "$ss_workdir" -f "$ss_workdir/config.yaml"
 			if [ "$global_server_type" = "ss-rust" ]; then
-				echolog "Main node:ss-rust 主程序不存在，已回退到 Mihomo (Shadowsocks) 启动。"
+				echolog "Main node:$(get_name ${type})-Rust 内核不存在，已回退到 Mihomo ($(get_name ${type})-Rust) 启动。"
 			else
-				echolog "Main node:Mihomo (Shadowsocks) Started!"
+				echolog "Main node:Mihomo ($(get_name ${type})) Started!"
 			fi
 		else
 			gen_config_file $GLOBAL_SERVER $type 1 $tcp_port
@@ -1867,19 +1973,32 @@ Start_Run() {
 				rm -rf "$TMP_PATH/bin/${type}-redir"
 			fi
 			ln_start_bin $ss_program ${type}-redir -c $tcp_config_file
-			echolog "Main node:Shadowsocks-rust Started!"
+			echolog "Main node:$(get_name ${type})-Rust Started!"
 		fi
 		;;
 	v2ray)
-		if start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "$GLOBAL_SERVER" "redir" "ssr-retcp" "Main node"; then
+		local enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
+		if [ "$enable_mihomo" = "1" ] && start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "$GLOBAL_SERVER" "redir" "ssr-retcp" "Main node"; then
 			:
 		elif [ "$(uci_get_by_name "$GLOBAL_SERVER" v2ray_protocol)" = "snell" ]; then
 			echolog "Main node:Snell 需要 Mihomo 内核，且当前 Mihomo 启动失败。"
 			return 1
 		else
-			gen_config_file $GLOBAL_SERVER $type 1 $tcp_port $socks_port
-			ln_start_bin $(first_type xray) v2ray run -c $tcp_config_file
-			echolog "Main node:$($(first_type xray) version | head -1) Started!"
+			# enable_mihomo=0 或 Mihomo 启动失败（非 Snell）→ 优先使用 Xray
+			local xray_bin="$(first_type xray)"
+			if [ -n "$xray_bin" ]; then
+				gen_config_file $GLOBAL_SERVER $type 1 $tcp_port $socks_port
+				ln_start_bin $(first_type xray) v2ray run -c $tcp_config_file
+				echolog "Main node:$($(first_type xray) version | head -1) Started!"
+			else
+				# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
+				if start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "$GLOBAL_SERVER" "redir" "ssr-retcp" "Main node"; then
+					echolog "Main node:Xray 内核不存在，已回退到 Mihomo 内核启动。"
+				else
+					echolog "Main node:Xray 和 Mihomo 内核均不存在，无法启动。"
+					return 1
+				fi
+			fi
 		fi
 		;;
 	trojan)
@@ -1920,12 +2039,25 @@ Start_Run() {
 			local chain_type=$(uci_get_by_name $GLOBAL_SERVER chain_type)
 			case ${chain_type} in
 			vmess)
+				local enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
 				ln_start_bin $(first_type shadow-tls) shadow-tls config --config $chain_config_file
-				if start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "${GLOBAL_SERVER}-shadowtls" "redir" "shadowtls-vmess" "Main node:shadow-tls chain-to"; then
+				if [ "$enable_mihomo" = "1" ] && start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "${GLOBAL_SERVER}-shadowtls" "redir" "shadowtls-vmess" "Main node:shadow-tls chain-to"; then
 					:
 				else
-					ln_start_bin $(first_type xray) v2ray run -c $tcp_config_file
-					echolog "Mian node:shadow-tls chain-to $($(first_type xray) --version) Started!"
+					# enable_mihomo=0 或 Mihomo 启动失败 → 尝试 Xray
+					local xray_bin="$(first_type xray)"
+					if [ -n "$xray_bin" ]; then
+						ln_start_bin $(first_type xray) v2ray run -c $tcp_config_file
+						echolog "Mian node:shadow-tls chain-to $($(first_type xray) --version) Started!"
+					else
+						# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
+						if start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "${GLOBAL_SERVER}-shadowtls" "redir" "shadowtls-vmess" "Main node:shadow-tls chain-to"; then
+							echolog "Main node:shadow-tls chain-to Xray 内核不存在，已回退到 Mihomo 内核启动。"
+						else
+							echolog "Main node:shadow-tls chain-to Xray 和 Mihomo 内核均不存在，无法启动。"
+							return 1
+						fi
+					fi
 				fi
 				;;
 			sslocal)
@@ -2119,9 +2251,9 @@ start_server() {
 					local ss_server_workdir="$(get_ss_server_mihomo_workdir "$1")"
 					ln_start_bin "$mihomo_bin" ss-server-$server_count -d "$ss_server_workdir" -f "$ss_server_workdir/config.yaml"
 					if [ "$node_type" = "ss-rust" ]; then
-						echolog "Server:ss-rust 主程序不存在，已回退到 Mihomo Shadowsocks Server$server_count 启动。"
+						echolog "Server:$(get_name ${type})-Rust 内核不存在，已回退到 Mihomo ($(get_name ${type})) Server$server_count 启动。"
 					else
-						echolog "Server:Mihomo Shadowsocks Server$server_count Started!"
+						echolog "Server:Mihomo ($(get_name ${type})) Server$server_count Started!"
 					fi
 				else
 					gen_service_file ${type} $1 $TMP_PATH/ssr-server$server_count.json
@@ -2135,7 +2267,11 @@ start_server() {
 						rm -rf "$TMP_PATH/bin/${type}-server"
 					fi
 					ln_start_bin $ss_program ${type}-server -c $TMP_PATH/ssr-server$server_count.json
-					echolog "Server: $(get_name ${type}) Server$server_count Started!"
+					if [ "$node_type" = "ssr" ] || [ "$node_type" = "ss" ]; then
+						echolog "Server: $(get_name ${type}) Server$server_count Started!"
+					elif [ "$node_type" = "ss-rust" ]; then
+						echolog "Server: $(get_name ${type})-Rust Server$server_count Started!"
+					fi
 				fi
 			;;
 		socks5)
@@ -2166,6 +2302,7 @@ start_server() {
 			local tcp_guise=$(uci_get_by_name "$1" tcp_guise "none")
 			local tcp_guise_http_host=$(uci_get_by_name "$1" tcp_guise_http_host "")
 			local tcp_guise_http_path=$(uci_get_by_name "$1" tcp_guise_http_path "")
+			local enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
 			local mihomo_server_started=0
 
 			# 确定密码/UUID
@@ -2186,36 +2323,49 @@ start_server() {
 				return 1
 			}
 
-			local mihomo_bin="$(first_type mihomo)"
-			if [ -x "$mihomo_bin" ] && prepare_v2ray_server_mihomo_runtime_config "$1"; then
-				local server_workdir="$(get_v2ray_server_mihomo_workdir "$1")"
-				ln_start_bin "$mihomo_bin" mihomo-server-$server_count -d "$server_workdir" -f "$server_workdir/config.yaml"
-				echolog "Server: Mihomo $type 服务端 Server$server_count 已启动 (端口: $port)"
-				mihomo_server_started=1
+			if [ "$enable_mihomo" = "1" ]; then
+				local mihomo_bin="$(first_type mihomo)"
+				if [ -x "$mihomo_bin" ] && prepare_v2ray_server_mihomo_runtime_config "$1"; then
+					local server_workdir="$(get_v2ray_server_mihomo_workdir "$1")"
+					ln_start_bin "$mihomo_bin" mihomo-server-$server_count -d "$server_workdir" -f "$server_workdir/config.yaml"
+					echolog "Server: Mihomo $type 服务端 Server$server_count 已启动 (端口: $port)"
+					mihomo_server_started=1
+				fi
 			fi
 
 			if [ "$mihomo_server_started" != "1" ]; then
-
-				local config_file="$TMP_PATH/xray-server-$server_count.json"
-
-				# 生成 Xray 配置
-				generate_xray_config "$type" "$port" "$password" "$security" "$method" "$network" "$ws_path" "$ws_host" "$grpc_service" "$alter_id" "$tcp_guise" "$tcp_guise_http_host" "$tcp_guise_http_path" "$config_file"
-
-				if [ $? -ne 0 ]; then
-					echolog "Server: Xray $type 配置生成失败"
-					return 1
-				fi
-
 				local xray_bin=$(first_type xray)
-				if [ -z "$xray_bin" ]; then
-					echolog "Server: xray-core 未安装，无法启动 $type 服务端"
-					return 1
-				fi
+				if [ -n "$xray_bin" ]; then
+					local config_file="$TMP_PATH/xray-server-$server_count.json"
+					# 生成 Xray 配置
+					generate_xray_config "$type" "$port" "$password" "$security" "$method" "$network" "$ws_path" "$ws_host" "$grpc_service" "$alter_id" "$tcp_guise" "$tcp_guise_http_host" "$tcp_guise_http_path" "$config_file"
 
-				ln_start_bin "$xray_bin" xray-server-$server_count run -c "$config_file"
-				echolog "Server: Xray $type 服务端 Server$server_count 已启动 (端口: $port)"
+					if [ $? -ne 0 ]; then
+						echolog "Server: Xray $type 配置生成失败"
+						return 1
+					fi
+
+					ln_start_bin "$xray_bin" xray-server-$server_count run -c "$config_file"
+					echolog "Server: Xray $type 服务端 Server$server_count 已启动 (端口: $port)"
+				else
+					# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
+					if [ "$enable_mihomo" != "1" ]; then
+						local mihomo_bin="$(first_type mihomo)"
+						if [ -x "$mihomo_bin" ] && prepare_v2ray_server_mihomo_runtime_config "$1"; then
+							local server_workdir="$(get_v2ray_server_mihomo_workdir "$1")"
+							ln_start_bin "$mihomo_bin" mihomo-server-$server_count -d "$server_workdir" -f "$server_workdir/config.yaml"
+							echolog "Server: Xray 内核不存在，已回退到 Mihomo $type 服务端 Server$server_count (端口: $port)"
+						else
+							echolog "Server: Xray 和 Mihomo 内核均不可用，无法启动 $type 服务端"
+							return 1
+						fi
+					else
+						echolog "Server: Xray 和 Mihomo 内核均不可用，无法启动 $type 服务端"
+						return 1
+					fi
+				fi
 			fi
-				;;
+			;;
 		esac
 		server_port=$(uci_get_by_name $1 server_port)
 		if [ "$USE_TABLES" = "nftables" ]; then
