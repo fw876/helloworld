@@ -546,10 +546,16 @@ if has_mihomo then
 	o.template = "shadowsocksr/clash_yaml_upload"
 	o.description = translate("Upload a custom Clash/Mihomo YAML file. The file will be preprocessed and saved as a local Clash node.")
 
+	o = s:option(Flag, "enable_mihomo", string.format("<b><span style='color:red;'>%s</span></b>", translate("Enable Mihomo core")))
+	o.default = "0"
+	o.rmempty = true
+	o.description = translate("Disabled means use Xray or ShadowSocks-Rust core.")
+
 	o = s:option(Flag, "sub_convert", translate("Subscribe Convert Online"))
 	o.description = translate("Convert subscriptions to Clash/Mihomo YAML with a subscription template URL.")
 	o.default = "0"
 	o.rmempty = false
+	o:depends("enable_mihomo", "1")
 
 	o = s:option(Value, "convert_address", translate("Convert Address"))
 	o.default = "https://api.asailor.org/sub"
@@ -563,6 +569,7 @@ if has_mihomo then
 	o.default = "https://raw.githubusercontent.com/Fzlwhyc/OpenClash-Templates/main//fzlwhyc-openclash.ini"
 	o.placeholder = "https://raw.githubusercontent.com/Fzlwhyc/OpenClash-Templates/main//fzlwhyc-openclash.ini"
 	o:value("https://raw.githubusercontent.com/Fzlwhyc/OpenClash-Templates/main//fzlwhyc-openclash.ini", "Fzlwhyc")
+	o:value("https://gist.githubusercontent.com/vernesong/4c27ed54ab2a5fedd9c4011389ac11ed/raw/lhie1_clash.ini", "lhie1")
 	o.rmempty = true
 	o:depends("sub_convert", "1")
 end
