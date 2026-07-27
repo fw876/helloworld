@@ -2906,6 +2906,28 @@ start_rules() {
 		return $?
 	}
 
+wait_for_internet() {
+	local max_retries=30
+	local retry=0
+
+	while [ "$retry" -lt "$max_retries" ]; do
+		if ping -c1 -W2 223.5.5.5 >/dev/null 2>&1; then
+			echolog "Internet is reachable (attempt $((retry + 1)))"
+			return 0
+		fi
+		if ping -c1 -W2 119.29.29.29 >/dev/null 2>&1; then
+			echolog "Internet is reachable (attempt $((retry + 1)))"
+			return 0
+		fi
+
+		retry=$((retry + 1))
+		echolog "Waiting for internet access... ($retry/$max_retries)"
+		sleep 2
+	done
+
+	echolog "Warning: Internet access timeout (${max_retries} retries), starting anyway"
+}
+
 start() {
 	local run_mode
 	local CURRENT_SERVER
@@ -2915,6 +2937,7 @@ start() {
 
 	set_lock
 	echolog "----------start------------"
+	wait_for_internet
 	mkdir -p /var/run /var/lock /var/log "$DNSMASQ_CONF_DIR" "$TMP_BIN_PATH" "$TMP_DNSMASQ_PATH" "$CLASH_CONFIG_DIR"
 	echo "conf-dir=${TMP_DNSMASQ_PATH}" >"$DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf"
 	check_run_environment
@@ -3003,6 +3026,7 @@ start() {
 	start_monitor
 	clean_log
 	echolog "-----------end------------"
+	touch /var/run/ssrplus-last-start
 	unset_lock
 }
 
