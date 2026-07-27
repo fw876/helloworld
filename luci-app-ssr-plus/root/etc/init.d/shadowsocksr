@@ -1303,7 +1303,10 @@ start_dns() {
 			done
 			unset IFS  # 恢复默认分隔符
 			dnsserver="$chinadns_ng_dns"
-			ln_start_bin "$(first_type chinadns-ng)" chinadns-ng -b 127.0.0.1 -l "$tmp_dns_port" -l "$dns_port" -p 3 -d gfw "$dnsserver" -N --filter-qtype 64,65 -f -r --cache 4096 --cache-stale 86400 --cache-refresh 20
+			# $dnsserver holds a list of "-t <server>" arguments built above, so it
+			# has to stay unquoted and word-split into separate arguments
+			# shellcheck disable=SC2086
+			ln_start_bin "$(first_type chinadns-ng)" chinadns-ng -b 127.0.0.1 -l "$tmp_dns_port" -l "$dns_port" -p 3 -d gfw $dnsserver -N --filter-qtype 64,65 -f -r --cache 4096 --cache-stale 86400 --cache-refresh 20
 			echolog "ChinaDNS-NG query and cache Started!"
 			pdnsd_enable_flag=6
 			;;
