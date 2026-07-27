@@ -1529,14 +1529,14 @@ get_name() {
 gen_config_file() { #server1 type2 code3 local_port4 socks_port5 chain6 threads5
 	local server="$1"
 	local type="$2"
-	local mode="$3"
+	local code="$3"
 	local local_port="$4"
 	local socks_port="$5"
 	local chain="$6"
 	local tmp_port
 	local ss_protocol
 
-	case "$mode" in
+	case "$code" in
 	1)
 		config_file=$tcp_config_file
 		chain_config_file=$(echo "${config_file}" | sed 's/ssrplus\//ssrplus\/chain-/')
@@ -1563,7 +1563,7 @@ gen_config_file() { #server1 type2 code3 local_port4 socks_port5 chain6 threads5
 	case "$type" in
 	ss | ssr)
 		lua /usr/share/shadowsocksr/gen_config.lua "$server" "$mode" "$local_port" "${ss_protocol:-redir}" >"$config_file"
-		if [ "$mode" = "3" ]; then
+		if [ "$code" = "3" ]; then
 			lua /usr/share/shadowsocksr/gen_config.lua "$server" "$mode" "$tmp_port" socks >"$shunt_dns_config_file"
 		fi
 		;;
@@ -1571,7 +1571,7 @@ gen_config_file() { #server1 type2 code3 local_port4 socks_port5 chain6 threads5
 		lua /usr/share/shadowsocksr/gen_config.lua "$server" "$mode" "$local_port" "$socks_port" >"$config_file"
 		;;
 	trojan)
-		case "$mode" in
+		case "$code" in
 		1)
 			lua /usr/share/shadowsocksr/gen_config.lua "$server" nat "$local_port" >"$config_file"
 			;;
@@ -1588,7 +1588,7 @@ gen_config_file() { #server1 type2 code3 local_port4 socks_port5 chain6 threads5
 		esac
 		;;
 	naiveproxy)
-		case "$mode" in
+		case "$code" in
 		1)
 			lua /usr/share/shadowsocksr/gen_config.lua "$server" redir "$local_port" >"$config_file"
 			;;
@@ -1605,7 +1605,7 @@ gen_config_file() { #server1 type2 code3 local_port4 socks_port5 chain6 threads5
 		lua /usr/share/shadowsocksr/gen_config.lua "$server" "$mode" "$local_port" "$socks_port" >"$config_file"
 		;;
 	tuic)
-		case "$mode" in
+		case "$code" in
 		1|2|4)
 			lua /usr/share/shadowsocksr/gen_config.lua "$server" "$mode" "$local_port" >"$config_file"
 			;;
@@ -1619,7 +1619,7 @@ gen_config_file() { #server1 type2 code3 local_port4 socks_port5 chain6 threads5
 		esac
 		;;
 	shadowtls)
-		case "$mode" in
+		case "$code" in
 		1|2|4)
 			if [ -z "$chain" ]; then
 				lua /usr/share/shadowsocksr/gen_config.lua "$server" "$type" "$local_port" >"$chain_config_file"
