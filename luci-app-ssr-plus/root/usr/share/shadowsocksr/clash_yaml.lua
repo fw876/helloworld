@@ -306,6 +306,63 @@ local function prepare(input_path, output_path)
 	return true
 end
 
+local function get_wan_nameserver()
+	local f = io.open("/tmp/resolv.conf.d/resolv.conf.auto", "r")
+	if not f then
+		return nil
+	end
+
+	local ip
+	for line in f:lines() do
+		ip = line:match("^nameserver%s+(%d+%.%d+%.%d+%.%d+)%s*$")
+		if ip then
+			break
+		end
+	end
+	f:close()
+
+	return ip
+end
+
+-- With no nameserver configured, mihomo falls back to plaintext public
+-- resolvers, which are poisoned in the environment this package targets.
+-- Reuse the existing "Anti-pollution DNS Server" option and let the query
+-- follow the routing rules into the tunnel, which is the same semantic
+-- dns2tcp/dns2socks provide for the other DNS modes. respect-rules requires
+-- proxy-server-nameserver, so bootstrap it from the WAN-provided resolver.
+local function build_dns_upstreams()
+	local forward = uci:get_first("shadowsocksr", "global", "tunnel_forward", "8.8.4.4:53")
+	if forward == nil or forward == "" then
+		forward = "8.8.4.4:53"
+	end
+
+	return {
+		["respect-rules"] = true,
+		["proxy-server-nameserver"] = { "udp://" .. (get_wan_nameserver() or "223.5.5.5") .. ":53" },
+		nameserver = { "udp://" .. forward }
+	}
+end
+
+-- Only fills what the merged document is missing, so a subscription that
+-- ships its own dns.nameserver keeps it.
+local function fill_missing_dns_upstreams(doc)
+	if type(doc.dns) ~= "table" or not doc.dns.enable then
+		return 0
+	end
+
+	if has_nonempty_sequence(doc.dns.nameserver) then
+		return 0
+	end
+
+	for k, v in pairs(build_dns_upstreams()) do
+		if doc.dns[k] == nil then
+			doc.dns[k] = v
+		end
+	end
+
+	return 1
+end
+
 local function merge(raw_path, overlay_path, output_path)
 	local raw_doc, raw_err = load_yaml(raw_path)
 	if not raw_doc then
@@ -323,6 +380,7 @@ local function merge(raw_path, overlay_path, output_path)
 	local filled_groups = fill_empty_proxy_groups(raw_doc)
 	local stripped_rules = strip_incompatible_script_rules(raw_doc)
 	local merged = deep_merge(raw_doc, overlay_doc)
+	local filled_dns = fill_missing_dns_upstreams(merged)
 	local ok, rendered = pcall(lyaml.dump, { merged })
 	if not ok or not rendered then
 		io.stderr:write("dump_failed\n")
@@ -330,7 +388,7 @@ local function merge(raw_path, overlay_path, output_path)
 	end
 
 	write_file(output_path, rendered)
-	io.stdout:write(string.format("filled_groups=%d stripped_script_rules=%d\n", filled_groups, stripped_rules))
+	io.stdout:write(string.format("filled_groups=%d stripped_script_rules=%d filled_dns=%d\n", filled_groups, stripped_rules, filled_dns))
 	return true
 end
 
@@ -427,6 +485,21 @@ local function get_filter_aaaa()
 	return value
 end
 
+local function build_dns_section(dns_mode)
+	local dns = {
+		enable = dns_mode == "7",
+		["enhanced-mode"] = "redir-host",
+		listen = "127.0.0.1:5335",
+		ipv6 = get_filter_aaaa() ~= "1"
+	}
+
+	for k, v in pairs(build_dns_upstreams()) do
+		dns[k] = v
+	end
+
+	return dns
+end
+
 local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 	local server = get_server_field(sid, "server", "")
 	local server_port = tonumber(get_server_field(sid, "server_port", "0")) or 0
@@ -503,12 +576,7 @@ local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 		rules = { "MATCH,PROXY" },
 		tun = { enable = false },
 		profile = { ["store-selected"] = true },
-		dns = {
-			enable = dns_mode == "7",
-			["enhanced-mode"] = "redir-host",
-			listen = "127.0.0.1:5335",
-			ipv6 = get_filter_aaaa() ~= "1"
-		}
+		dns = build_dns_section(dns_mode)
 	}
 
 	if mode == "socks" then
@@ -944,12 +1012,7 @@ local function build_single_proxy_runtime_doc(proxy, local_port, socks_port, mod
 		rules = { "MATCH,PROXY" },
 		tun = { enable = false },
 		profile = { ["store-selected"] = true },
-		dns = {
-			enable = dns_mode == "7",
-			["enhanced-mode"] = "redir-host",
-			listen = "127.0.0.1:5335",
-			ipv6 = get_filter_aaaa() ~= "1"
-		}
+		dns = build_dns_section(dns_mode)
 	}
 
 	if mode == "socks" then
@@ -1219,12 +1282,7 @@ local function build_shadowsocks_runtime_doc(sid, local_port, socks_port, mode)
 		rules = { "MATCH,PROXY" },
 		tun = { enable = false },
 		profile = { ["store-selected"] = true },
-		dns = {
-			enable = dns_mode == "7",
-			["enhanced-mode"] = "redir-host",
-			listen = "127.0.0.1:5335",
-			ipv6 = get_filter_aaaa() ~= "1"
-		}
+		dns = build_dns_section(dns_mode)
 	}
 
 	local listen_port = tonumber(local_port)
