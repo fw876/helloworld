@@ -608,6 +608,7 @@ prepare_clash_runtime_config() {
 	local dns_mode
 	local client_policy_stats
 	local client_rules
+	local enable_fake_ip
 
 	cache_file="$(get_clash_cache_file "$sid")"
 	workdir="$(get_clash_workdir "$sid")"
@@ -623,6 +624,7 @@ prepare_clash_runtime_config() {
 	dns_mode="$(uci_get_by_type global pdnsd_enable 0)"
 	client_policy_stats=""
 	client_rules=0
+	enable_fake_ip="$(uci_get_by_type server_subscribe enable_fake_ip "")"
 
 	[ -s "$cache_file" ] || return 1
 
@@ -642,12 +644,29 @@ prepare_clash_runtime_config() {
 		  store-selected: true
 		tun:
 		  enable: false
-		dns:
-		  enable: $( [ "$dns_mode" = "7" ] && echo "true" || echo "false" )
-		  enhanced-mode: redir-host
-		  listen: 127.0.0.1:$dns_port
-		  ipv6: $( [ "$dns_ipv4_only" = "1" ] && echo "false" || echo "true" )
 	EOF
+
+	# 根据 dns_mode 添加不同的 dns 配置
+	if [ "$dns_mode" = "7" ]; then
+		# 根据 enable_fake_ip 决定 enhanced-mode
+		if [ "$enable_fake_ip" = "1" ]; then
+			ENHANCED_MODE="fake-ip"
+		else
+			ENHANCED_MODE="redir-host"
+		fi
+		cat >> "$overlay_file" <<-EOF
+			dns:
+			  enable: true
+			  enhanced-mode: $ENHANCED_MODE
+			  listen: 127.0.0.1:$dns_port
+			  ipv6: $( [ "$dns_ipv4_only" = "1" ] && echo "false" || echo "true" )
+		EOF
+	else
+		cat >> "$overlay_file" <<-EOF
+			dns:
+			  enable: false
+		EOF
+	fi
 
 	if [ -n "$socks_port" ] && [ "$socks_port" != "0" ]; then
 		echo "socks-port: $socks_port" >>"$overlay_file"
@@ -1230,14 +1249,24 @@ start_dns() {
 	ssrplus_dns="$(uci_get_by_type global pdnsd_enable 0)"
 	global_server_type="$(uci_get_by_name "$GLOBAL_SERVER" type)"
 	builtin_dns_enabled=0
-	dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
 
 	if [ "$ssrplus_dns" = "5" ]; then
 		ssrplus_dns="$(force_dns2tcp_fallback "旧版 DNSPROXY 模式已移除")" || return 1
 		uci_set_by_type global pdnsd_enable "$ssrplus_dns"
-	elif [ "$ssrplus_dns" = "6" ]; then
-		dnsserver="$(uci_get_by_type global chinadns_ng_tunnel_forward 8.8.4.4:53)"
 	fi
+	case "$ssrplus_dns" in
+		1)
+			dnsserver="$(uci_get_by_type global dns2tcp_tunnel_forward 8.8.4.4:53)"
+		;;
+		6)
+			dnsserver="$(uci_get_by_type global chinadns_ng_tunnel_forward 8.8.4.4:53)"
+		;;
+		7)
+			dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
+		;;
+		*)
+			;;
+	esac
 	run_mode="$(normalize_run_mode)"
 
 	if [ "$ssrplus_dns" = "4" ] && ! is_finded "mosdns"; then
@@ -1503,15 +1532,15 @@ generate_xray_config() {
 		{
 			"log": {
 				"loglevel": "warning"
-		},
-		"inbounds": [$inbound_json],
-		"outbounds": [
-			{
-				"protocol": "freedom",
-				"settings": {}
-			}
-		]
-	}
+			},
+			"inbounds": [$inbound_json],
+			"outbounds": [
+				{
+					"protocol": "freedom",
+					"settings": {}
+				}
+			]
+		}
 	EOF
 	return 0
 }

@@ -39,6 +39,14 @@ if [ -s "/etc/config/shadowsocksr" ]; then
         uci -q set shadowsocksr.@server_subscribe[0].auto_update_min_time='0'
     fi
 
+    if ! uci -q get shadowsocksr.@server_subscribe[0].enable_mihomo > /dev/null; then
+        uci -q set shadowsocksr.@server_subscribe[0].enable_mihomo='1'
+    fi
+
+    if ! uci -q get shadowsocksr.@server_subscribe[0].enable_fake_ip > /dev/null; then
+        uci -q set shadowsocksr.@server_subscribe[0].enable_fake_ip='1'
+    fi
+
     if ! uci -q get shadowsocksr.@server_subscribe[0].config_auto_update_mode > /dev/null; then
         uci -q set shadowsocksr.@server_subscribe[0].config_auto_update_mode='0'
     fi

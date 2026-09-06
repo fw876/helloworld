@@ -5,24 +5,27 @@
 local m, s, sec, o
 local uci = require "luci.model.uci".cursor()
 local URL = require "url"
+local sys = require "luci.sys"
+local util = require "luci.util"
+local datatypes = require "luci.cbi.datatypes"
 
 -- 获取 LAN IP 地址
 function lanip()
 	local lan_ip
 
 	-- 尝试从 UCI 直接读取
-	lan_ip = luci.sys.exec("uci -q get network.lan.ipaddr 2>/dev/null | awk -F'/' '{print $1}' | tr -d '\\n'")
+	lan_ip = sys.exec("uci -q get network.lan.ipaddr 2>/dev/null | awk -F'/' '{print $1}' | tr -d '\\n'")
 
 	-- 尝试从 LAN 接口信息中读取（优先 ifname，再 fallback 到 device）
 	if not lan_ip or lan_ip == "" then
-		lan_ip = luci.sys.exec([[
+		lan_ip = sys.exec([[
 ip -4 addr show $(uci -q -p /tmp/state get network.lan.ifname || uci -q -p /tmp/state get network.lan.device) 2>/dev/null \
   | grep -w 'inet' | awk '{print $2}' | cut -d'/' -f1 | grep -v '^127\.' | head -n1 | tr -d '\n']])
 	end
 
 	-- 取任意一个 global IPv4 地址
 	if not lan_ip or lan_ip == "" then
-		lan_ip = luci.sys.exec([[
+		lan_ip = sys.exec([[
 ip -4 addr show scope global 2>/dev/null \
   | grep -w 'inet' | awk '{print $2}' | cut -d'/' -f1 | grep -v '^127\.' | head -n1 | tr -d '\n']])
 	end
@@ -31,10 +34,9 @@ ip -4 addr show scope global 2>/dev/null \
 end
 
 local lan_ip = lanip()
-local validation = require "luci.cbi.datatypes"
 local clash_nodes = {}
 local function is_finded(e)
-	return luci.sys.exec(string.format('type -t -p "%s" -p "/usr/libexec/%s" 2>/dev/null', e, e)) ~= ""
+	return sys.exec(string.format('type -t -p "%s" -p "/usr/libexec/%s" 2>/dev/null', e, e)) ~= ""
 end
 
 local function clash_display_name(s)
@@ -46,6 +48,28 @@ local function clash_display_name(s)
 		return "[CLASH]:" .. parsed.host
 	end
 	return "[CLASH]"
+end
+
+local function is_valid_dns(str)
+	if datatypes.ip4addrport(str) then
+		return true
+	end
+
+	local scheme, target = str:match("^([a-zA-Z0-9%+%-%.]+)://(.+)$")
+	if scheme and target and #target > 0 then
+		return true
+	end
+
+	local host = str:match("^([^:]+):%d+$") or str
+	if host:match("[a-zA-Z]") 
+	   and not host:match("[^%w%.%-]") 
+	   and not host:match("^[%.%-]") 
+	   and not host:match("[%.%-]$") 
+	   and not host:match("%.%.") then
+		return true
+	end
+
+	return false
 end
 
 m = Map("shadowsocksr", translate("ShadowSocksR Plus+ Settings"), translate("<h3>Support SS/SSR/V2RAY/XRAY/TROJAN/TUIC/HYSTERIA2/NAIVEPROXY/SOCKS5/CLASH etc.</h3>"))
@@ -131,7 +155,7 @@ o:value("7", translate("Prefer module built-in DNS"))
 o:value("0", translate("Use Local DNS Service listen port 5335"))
 o.default = 1
 
-o = s:option(Value, "tunnel_forward", translate("Anti-pollution DNS Server"))
+o = s:option(Value, "dns2tcp_tunnel_forward", translate("Anti-pollution DNS Server"))
 o:value("8.8.4.4:53", translate("Google Public DNS (8.8.4.4)"))
 o:value("8.8.8.8:53", translate("Google Public DNS (8.8.8.8)"))
 o:value("208.67.222.222:53", translate("OpenDNS (208.67.222.222)"))
@@ -144,10 +168,54 @@ o:value("4.2.2.3:53", translate("Level 3 Public DNS (4.2.2.3)"))
 o:value("4.2.2.4:53", translate("Level 3 Public DNS (4.2.2.4)"))
 o:value("1.1.1.1:53", translate("Cloudflare DNS (1.1.1.1)"))
 o:depends("pdnsd_enable", "1")
-o:depends("pdnsd_enable", "7")
 o.description = translate("Custom DNS Server format as IP:PORT (default: 8.8.4.4:53)")
 o.datatype = "ip4addrport"
 o.default = "8.8.4.4:53"
+
+o = s:option(Value, "tunnel_forward", translate("Anti-pollution DNS Server"))
+o:value("8.8.4.4:53", translate("Google Public DNS (8.8.4.4)"))
+o:value("8.8.8.8:53", translate("Google Public DNS (8.8.8.8)"))
+o:value("208.67.222.222:53", translate("OpenDNS (208.67.222.222)"))
+o:value("208.67.220.220:53", translate("OpenDNS (208.67.220.220)"))
+o:value("209.244.0.3:53", translate("Level 3 Public DNS (209.244.0.3)"))
+o:value("209.244.0.4:53", translate("Level 3 Public DNS (209.244.0.4)"))
+o:value("4.2.2.1:53", translate("Level 3 Public DNS (4.2.2.1)"))
+o:value("4.2.2.2:53", translate("Level 3 Public DNS (4.2.2.2)"))
+o:value("4.2.2.3:53", translate("Level 3 Public DNS (4.2.2.3)"))
+o:value("4.2.2.4:53", translate("Level 3 Public DNS (4.2.2.4)"))
+o:value("1.1.1.1:53", translate("Cloudflare DNS (1.1.1.1)"))
+o:depends("pdnsd_enable", "7")
+o.datatype = nil
+o.description =
+	"<ul>" ..
+	"<li>" .. translate("Custom DNS Server (supports format IP:PORT, domain name, or scheme://...).") .. "</li>" ..
+	"<li>" .. translate("Muitiple DNS server can saperate with ','") .. "</li>" ..
+	"<li>" .. translate("Note: IP addresses MUST specify a port.") .. "</li>" ..
+	"</ul>"
+o.default = "8.8.4.4:53"
+o.validate = function(self, value, section)
+	if section and value and value ~= "" then
+		local parts = {}
+		for part in (value .. ","):gmatch("(.-),") do
+			part = part:gsub("^%s*", ""):gsub("%s*$", "")
+			if part ~= "" then
+				if not is_valid_dns(part) then
+					return nil, translate("Expecting: %s"):format(translate("IP:PORT, Domain, or Protocol URL (e.g. 8.8.8.8:53, dns.google, https://...).") ..
+						"<br>".. translate("Note: Pure IP without port is not allowed."))
+				end
+				table.insert(parts, part)
+			end
+		end
+
+		if #parts > 0 then
+			return table.concat(parts, ",")
+		end
+
+		return nil, translate("Expecting: %s"):format(translate("valid address:port"))
+	end
+
+	return value
+end
 
 o = s:option(Value, "tunnel_forward_mosdns", translate("Anti-pollution DNS Server"))
 o:value("tcp://8.8.4.4:53,tcp://8.8.8.8:53", translate("Google Public DNS"))
@@ -225,7 +293,7 @@ if is_finded("chinadns-ng") then
 				local parts = {}
 				for part in string.gmatch(value, "[^,]+") do
 					part = part:gsub("^%s*", ""):gsub("%s*$", "")
-					if not validation.ip4addrport(part) then
+					if not datatypes.ip4addrport(part) then
 						return nil, translate("Expecting: %s"):format(translate("valid address:port (comma separated)"))
 					end
 					table.insert(parts, part)
@@ -236,7 +304,7 @@ if is_finded("chinadns-ng") then
 				return table.concat(parts, ",")
 			end
 
-			if validation.ip4addrport(value) then
+			if datatypes.ip4addrport(value) then
 				return value
 			end
 

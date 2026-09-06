@@ -3,6 +3,7 @@
 require "luci.sys"
 local ucursor = require "luci.model.uci".cursor()
 local json = require "luci.jsonc"
+local datatypes = require "luci.cbi.datatypes"
 
 -- An omitted value reaches us either as a missing argument or as an empty
 -- string, depending on whether the caller quoted the expansion. Empty strings
@@ -179,6 +180,62 @@ local function format_host_port(host, port)
 		return host
 	end
 	return host .. ":" .. tostring(port)
+end
+
+local function format_dns_server(proxy)
+	if not proxy or proxy == "" then
+		return proxy
+	end
+
+	local scheme, rest = proxy:match("^([a-zA-Z0-9%+%-%.]+)://(.+)$")
+	if scheme then
+		scheme = scheme:lower()
+		if scheme == "tls" or scheme == "dot" then
+			if not rest:match(":%d+$") then
+				rest = rest .. ":853"
+			end
+			return "tls://" .. rest
+		elseif scheme == "https" or scheme == "doh" or scheme == "dohl" or scheme == "doq" or scheme == "doql" then
+			local host, path = rest:match("^([^/]+)(.*)$")
+			host = host or rest
+			path = path or ""
+			if path == "" or path == "/" then
+				path = "/dns-query"
+			end
+			return "https://" .. host .. path
+		elseif scheme == "tcp" or scheme == "udp" then
+			if not rest:match(":%d+$") then
+				rest = rest .. ":53"
+			end
+			return scheme .. "://" .. rest
+		else
+			return proxy
+		end
+	end
+
+	local host, port = proxy:match("^([^:]+):(%d+)$")
+	if host and port then
+		if port == "853" then
+			return "tls://" .. host .. ":853"
+		elseif port == "443" then
+			return "https://" .. host .. "/dns-query"
+		elseif port == "53" then
+			return host -- 53 端口输出纯 IP / Host (如 8.8.4.4)
+		else
+			return "udp://" .. host .. ":" .. port
+		end
+	end
+
+	-- 确保包含字母，防止把 IP 当成域名
+	if proxy:match("[a-zA-Z]") and not proxy:match("[^%w%.%-]") then
+		local path = ""
+		if not proxy:match("/") then
+			path = "/dns-query"
+		end
+		return "https://" .. proxy .. path
+	end
+
+	return proxy
 end
 
 -- 确保正确判断程序是否存在
@@ -391,31 +448,141 @@ local Xray = {
 }
 
 if server.type == "v2ray" and dns_mode == "7" and os.getenv("SSR_SWITCH_PROBE") ~= "1" then
-	local dns_host = builtin_dns_server:match("^([^:]+)") or "8.8.4.4"
-	local dns_port = tonumber(builtin_dns_server:match(":(%d+)$")) or 53
+	local raw_servers_str = builtin_dns_server or "8.8.4.4:53"
 
+	local dns_servers = {}
+	local host_list = {}
+	local port_list = {}
+	local first_host = nil
+	local first_port = nil
+
+	-- 按逗号或空格分割多个 DNS 地址
+	for raw_server in string.gmatch(raw_servers_str, "[^,%s\r\n]+") do
+		if raw_server and raw_server ~= "" then
+			-- 1. 先进行格式化处理
+			local formatted = format_dns_server(raw_server)
+
+			local host = nil
+			local port = nil
+
+			-- 2. 解析 host 和对应的实际端口
+			if formatted:match("^https://") then
+				local target = formatted:match("^https://([^/]+)")
+				if target:match(":%d+$") then
+					host, port = target:match("^([^:]+):(%d+)$")
+					port = tonumber(port)
+				else
+					host = target
+					port = 443
+				end
+			elseif formatted:match("^tls://") then
+				local target = formatted:match("^tls://([^/]+)")
+				if target:match(":%d+$") then
+					host, port = target:match("^([^:]+):(%d+)$")
+					port = tonumber(port)
+				else
+					host = target
+					port = 853
+				end
+			elseif formatted:match("^tcp://") or formatted:match("^udp://") then
+				local target = formatted:match("^[a-zA-Z0-9%+%-%.]+://([^/]+)")
+				if target:match(":%d+$") then
+					host, port = target:match("^([^:]+):(%d+)$")
+					port = tonumber(port)
+				else
+					host = target
+					port = 53
+				end
+			else
+				if formatted:match(":%d+$") then
+					host, port = formatted:match("^([^:]+):(%d+)$")
+					port = tonumber(port)
+				else
+					host = formatted
+					port = 53
+				end
+			end
+
+			-- 保存格式化后的 Xray.dns.servers 条目
+			table.insert(dns_servers, formatted)
+
+			-- 分别收集 Host 与 Port
+			if host and port then
+				table.insert(host_list, host)
+				table.insert(port_list, port)
+				-- 保存第一个 DNS 的 host 和 port
+				-- if not first_host then --dokodemo-door 入站的 address 单个地址使用。
+				-- 	first_host = host  --dokodemo-door 入站的 address 单个地址使用。
+				--	first_port = port  --dokodemo-door 入站的 address 单个地址使用。
+				-- end
+			end
+		end
+	end
+
+	-- 如果没有有效的 DNS 服务器，使用默认值
+	if #dns_servers == 0 then
+		table.insert(dns_servers, "8.8.4.4")
+		table.insert(host_list, "8.8.4.4")
+		table.insert(port_list, 53)
+		-- first_host = "8.8.4.4" --dokodemo-door 入站的 address 单个地址使用。
+		-- first_port = 53 --dokodemo-door 入站的 address 单个地址使用。
+	end
+
+	-- 构建 dns 出站地址（支持逗号分隔的多个地址）
+	-- 检查所有 DNS 端口是否一致
+	--local outbound_address = "" --dokodemo-door 入站的 address 单个地址使用。
+	local all_same_port = true
+	local common_port = port_list[1]
+	for i = 2, #port_list do
+		if port_list[i] ~= common_port then
+			all_same_port = false
+			break
+		end
+	end
+
+	-- 根据端口一致性计算 address 与 target_port
+	local address_str = ""
+	local target_port = 0
+
+	if all_same_port then
+		-- outbound_address = table.concat(host_list, ",") --dokodemo-door 入站的 address 单个地址时使用。
+		address_str = table.concat(host_list, ",")
+		target_port = common_port
+	else
+		local combined = {}
+		for i = 1, #host_list do
+			table.insert(combined, string.format("%s:%d", host_list[i], port_list[i]))
+		end
+		-- outbound_address = table.concat(combined, ",") --dokodemo-door 入站的 address 单个地址时使用。
+		address_str = table.concat(combined, ",")
+		target_port = 0
+	end
+	
+	-- 构建 Xray.dns 配置
 	Xray.dns = {
 		queryStrategy = (dns_ipv4_only == "1") and "UseIPv4" or "UseIP",
-		servers = {
-			string.format("tcp://%s:%d", dns_host, dns_port)
-		}
+		servers = dns_servers
 	}
 
+	-- 构建 dokodemo-door 入站
 	table.insert(Xray.inbounds, {
 		listen = "127.0.0.1",
 		port = 5335,
 		protocol = "dokodemo-door",
 		settings = {
-			address = dns_host,
-			port = dns_port,
+			address = address_str,
+			-- address = first_host,        -- 单个地址
+			port = target_port,
+			-- port = first_port,           -- 对应端口
 			network = "tcp,udp"
 		},
 		tag = "builtin-dns-in"
 	})
-
+	
 	xray_builtin_dns = {
-		address = dns_host,
-		port = dns_port
+		address = address_str,
+		-- address = outbound_address, --dokodemo-door 入站的 address 单个地址时使用。
+		port = target_port
 	}
 end
 	-- 传入连接
