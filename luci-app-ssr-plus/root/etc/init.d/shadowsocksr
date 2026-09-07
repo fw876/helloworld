@@ -2952,6 +2952,80 @@ start_rules() {
 		return $?
 	}
 
+startup_check_probe() {
+	local method="$1"
+	local host="$2"
+	local domain="$3"
+
+	case "$method" in
+	ping)
+		if echo "$host" | grep -q ':'; then
+			ping6 -c1 -W2 "$host" >/dev/null 2>&1
+		else
+			ping -c1 -W2 "$host" >/dev/null 2>&1
+		fi
+		;;
+	*)
+		# Prefer nslookup, which queries the configured server directly and so
+		# does not depend on /etc/resolv.conf being populated yet. busybox does
+		# not always ship the nslookup applet, so fall back to resolveip, which
+		# ships with netifd and is always present, resolving via the system
+		# resolver - the same path get_host_ip() relies on at startup.
+		if command -v nslookup >/dev/null 2>&1; then
+			if command -v timeout >/dev/null 2>&1; then
+				timeout 3 nslookup "$domain" "$host" >/dev/null 2>&1
+			else
+				nslookup "$domain" "$host" >/dev/null 2>&1
+			fi
+		else
+			resolveip -4 -t 3 "$domain" >/dev/null 2>&1
+		fi
+		;;
+	esac
+}
+
+wait_for_internet() {
+	local method hosts domain max_retries interval retry host
+
+	# Only gate the boot path: a manual restart must not block the LuCI UI.
+	[ "${SSR_BOOT:-0}" = "1" ] || return 0
+	[ "$(uci_get_by_type startup_check enabled 1)" = "1" ] || return 0
+	# 未配置主节点相当于未启用服务，没有需要解析的域名，无需等待
+	[ "$(uci_get_by_type global global_server nil)" != "nil" ] || return 0
+
+	hosts="$(uci_get_by_type startup_check host "223.5.5.5 119.29.29.29")"
+	# Unquoted on purpose: word splitting collapses a whitespace-only list to ""
+	hosts="$(echo $hosts)"
+	[ -n "$hosts" ] || return 0
+
+	method="$(uci_get_by_type startup_check method dns)"
+	domain="$(uci_get_by_type startup_check domain www.baidu.com)"
+	max_retries="$(uci_get_by_type startup_check retry 30)"
+	interval="$(uci_get_by_type startup_check interval 2)"
+
+	# Guard against blank/invalid values left behind by the UI
+	echo "$max_retries" | grep -Eq '^[0-9]+$' || max_retries=30
+	echo "$interval" | grep -Eq '^[0-9]+$' || interval=2
+	[ "$interval" -lt 1 ] && interval=1
+	[ "$method" = "ping" ] || [ -n "$domain" ] || domain="www.baidu.com"
+
+	retry=0
+	while [ "$retry" -lt "$max_retries" ]; do
+		for host in $hosts; do
+			if startup_check_probe "$method" "$host" "$domain"; then
+				echolog "Internet is reachable via $host ($method, attempt $((retry + 1)))"
+				return 0
+			fi
+		done
+
+		retry=$((retry + 1))
+		echolog "Waiting for internet access... ($retry/$max_retries)"
+		sleep "$interval"
+	done
+
+	echolog "Warning: Internet access timeout (${max_retries} retries), starting anyway"
+}
+
 start() {
 	local run_mode
 	local CURRENT_SERVER
@@ -2964,6 +3038,7 @@ start() {
 	mkdir -p /var/run /var/lock /var/log "$DNSMASQ_CONF_DIR" "$TMP_BIN_PATH" "$TMP_DNSMASQ_PATH" "$CLASH_CONFIG_DIR"
 	echo "conf-dir=${TMP_DNSMASQ_PATH}" >"$DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf"
 	check_run_environment
+	wait_for_internet
 	normalize_run_mode >/dev/null
 	normalize_xray_protocol_nodes
 
@@ -3055,6 +3130,7 @@ start() {
 boot() {
 	echolog "boot！"
 	mkdir -p /var/run /var/lock /var/log "$DNSMASQ_CONF_DIR" "$TMP_BIN_PATH" "$TMP_DNSMASQ_PATH"
+	SSR_BOOT=1
 	start
 }
 

@@ -68,6 +68,17 @@ if [ -s "/etc/config/shadowsocksr" ]; then
         uci -q set shadowsocksr.@global_xray_fragment[0].noise='0'
     fi
 
+    if ! uci -q get shadowsocksr.@startup_check[0] > /dev/null; then
+        uci -q add shadowsocksr startup_check
+        uci -q set shadowsocksr.@startup_check[0].enabled='1'
+        uci -q set shadowsocksr.@startup_check[0].method='dns'
+        uci -q add_list shadowsocksr.@startup_check[0].host='223.5.5.5'
+        uci -q add_list shadowsocksr.@startup_check[0].host='119.29.29.29'
+        uci -q set shadowsocksr.@startup_check[0].domain='www.baidu.com'
+        uci -q set shadowsocksr.@startup_check[0].retry='30'
+        uci -q set shadowsocksr.@startup_check[0].interval='2'
+    fi
+
     if ! uci -q get shadowsocksr.@global[0].component_mirror > /dev/null; then
         uci -q set shadowsocksr.@global[0].component_mirror='direct'
     fi

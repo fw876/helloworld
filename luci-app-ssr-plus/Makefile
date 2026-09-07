@@ -213,9 +213,6 @@ define Package/$(PKG_NAME)/install
 		chmod 0755 "$(1)/usr/bin/ssr-rules" 2>/dev/null || true; \
 		chmod 0755 "$(1)/usr/bin/ssr-switch" 2>/dev/null || true; \
 	fi
-	if [ -f "$(1)/etc/hotplug.d/iface/99-ssrplus-pppoe" ]; then \
-		chmod 0755 "$(1)/etc/hotplug.d/iface/99-ssrplus-pppoe" 2>/dev/null || true; \
-	fi
 endef
 
 # call BuildPackage - OpenWrt buildroot signature
