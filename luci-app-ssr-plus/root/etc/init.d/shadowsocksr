@@ -70,6 +70,7 @@ local_enable=0
 http_enable=0
 kcp_enable_flag=0
 pdnsd_enable_flag=0
+ACTUAL_CORE=""
 
 USE_TABLES=""
 HAS_NFT=0
@@ -640,6 +641,13 @@ prepare_clash_runtime_config() {
 	local dns_mode
 	local client_policy_stats
 	local client_rules
+	local enable_fake_ip
+	local socks5_auth
+	local socks5_user
+	local socks5_pass
+	local default_dashboard
+	local yacd_type
+	local dashboard_type
 
 	cache_file="$(get_clash_cache_file "$sid")"
 	workdir="$(get_clash_workdir "$sid")"
@@ -655,6 +663,7 @@ prepare_clash_runtime_config() {
 	dns_mode="$(uci_get_by_type global pdnsd_enable 0)"
 	client_policy_stats=""
 	client_rules=0
+	enable_fake_ip="$(uci_get_by_type server_subscribe enable_fake_ip "")"
 
 	[ -s "$cache_file" ] || return 1
 
@@ -662,25 +671,75 @@ prepare_clash_runtime_config() {
 	cp -f "$cache_file" "$raw_file"
 	filter_clash_yaml_proxies "$raw_file"
 
+	default_dashboard=$(uci_get_by_type global default_dashboard "zashboard")
+	yacd_type=$(uci_get_by_type global yacd_type "Meta")
+	dashboard_type=$(uci_get_by_type global dashboard_type "Official")
+	case "$default_dashboard" in
+		dashboard)
+			if [ "$dashboard_type" = "Official" ]; then
+				EXTERNAL_UI_URL="https://codeload.github.com/ayanamist/clash-dashboard/zip/refs/heads/gh-pages"
+			else
+				EXTERNAL_UI_URL="https://codeload.github.com/MetaCubeX/Razord-meta/zip/refs/heads/gh-pages"
+			fi
+			;;
+		yacd)
+			if [ "$yacd_type" = "Official" ]; then
+				EXTERNAL_UI_URL="https://codeload.github.com/haishanh/yacd/zip/refs/heads/gh-pages"
+			else
+				EXTERNAL_UI_URL="https://codeload.github.com/MetaCubeX/Yacd-meta/zip/refs/heads/gh-pages"
+			fi
+			;;
+		metacubexd)
+			EXTERNAL_UI_URL="https://codeload.github.com/MetaCubeX/metacubexd/zip/refs/heads/gh-pages"
+			;;
+		zashboard|*)
+			EXTERNAL_UI_URL="https://codeload.github.com/Zephyruso/zashboard/zip/refs/heads/gh-pages-cdn-fonts"
+			default_dashboard="zashboard"
+			;;
+	esac
+
 	cat >"$overlay_file" <<-EOF
 		redir-port: $local_port
-		tproxy-port: $local_port
-		external-controller: 127.0.0.1:$CLASH_API_PORT
-		secret: $clash_secret
+		tproxy-port: $((local_port + 1))
+		external-controller: 0.0.0.0:$CLASH_API_PORT
+		secret: ""
+		external-ui: /usr/share/shadowsocksr/ui
+		external-ui-name: $default_dashboard
+		external-ui-url: $EXTERNAL_UI_URL
 		allow-lan: true
 		bind-address: "$(ipv6_enabled && echo '*' || echo '0.0.0.0')"
 		ipv6: $(ipv6_enabled && echo true || echo false)
 		routing-mark: $CLASH_OUTBOUND_MARK
 		profile:
 		  store-selected: true
+		  store-fake-ip: true
 		tun:
 		  enable: false
-		dns:
-		  enable: $( [ "$dns_mode" = "7" ] && echo "true" || echo "false" )
-		  enhanced-mode: redir-host
-		  listen: 127.0.0.1:$dns_port
-		  ipv6: $( [ "$dns_ipv4_only" = "1" ] && echo "false" || echo "true" )
 	EOF
+
+	# 根据 enable_fake_ip 决定 enhanced-mode
+	if [ "$enable_fake_ip" = "1" ]; then
+		ENHANCED_MODE="fake-ip"
+	else
+		ENHANCED_MODE="redir-host"
+	fi
+	# 根据 dns_mode 添加不同的 dns 配置
+	if [ "$dns_mode" = "7" ]; then
+		cat >> "$overlay_file" <<-EOF
+			dns:
+			  enable: true
+			  enhanced-mode: $ENHANCED_MODE
+			  listen: 127.0.0.1:$dns_port
+			  ipv6: $( [ "$dns_ipv4_only" = "1" ] && echo "false" || echo "true" )
+		EOF
+	else
+		cat >> "$overlay_file" <<-EOF
+			dns:
+			  enable: true
+			  enhanced-mode: $ENHANCED_MODE
+			  ipv6: $( [ "$dns_ipv4_only" = "1" ] && echo "false" || echo "true" )
+		EOF
+	fi
 
 	if [ -n "$socks_port" ] && [ "$socks_port" != "0" ]; then
 		echo "socks-port: $socks_port" >>"$overlay_file"
@@ -1298,14 +1357,24 @@ start_dns() {
 	ssrplus_dns="$(uci_get_by_type global pdnsd_enable 0)"
 	global_server_type="$(uci_get_by_name "$GLOBAL_SERVER" type)"
 	builtin_dns_enabled=0
-	dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
 
 	if [ "$ssrplus_dns" = "5" ]; then
 		ssrplus_dns="$(force_dns2tcp_fallback "旧版 DNSPROXY 模式已移除")" || return 1
 		uci_set_by_type global pdnsd_enable "$ssrplus_dns"
-	elif [ "$ssrplus_dns" = "6" ]; then
-		dnsserver="$(uci_get_by_type global chinadns_ng_tunnel_forward 8.8.4.4:53)"
 	fi
+	case "$ssrplus_dns" in
+		1)
+			dnsserver="$(uci_get_by_type global dns2tcp_tunnel_forward 8.8.4.4:53)"
+		;;
+		6)
+			dnsserver="$(uci_get_by_type global chinadns_ng_tunnel_forward 8.8.4.4:53)"
+		;;
+		7)
+			dnsserver="$(uci_get_by_type global tunnel_forward 8.8.4.4:53)"
+		;;
+		*)
+			;;
+	esac
 	run_mode="$(normalize_run_mode)"
 
 	if [ "$ssrplus_dns" = "4" ] && ! is_finded "mosdns"; then
@@ -1567,15 +1636,15 @@ generate_xray_config() {
 		{
 			"log": {
 				"loglevel": "warning"
-		},
-		"inbounds": [$inbound_json],
-		"outbounds": [
-			{
-				"protocol": "freedom",
-				"settings": {}
-			}
-		]
-	}
+			},
+			"inbounds": [$inbound_json],
+			"outbounds": [
+				{
+					"protocol": "freedom",
+					"settings": {}
+				}
+			]
+		}
 	EOF
 	return 0
 }
@@ -2345,6 +2414,7 @@ Start_Run() {
 			for i in $(seq 1 "$threads"); do
 				ln_start_bin "$ss_program" "${type}-redir" -c "$tcp_config_file"
 			done
+			ACTUAL_CORE="${type}-redir"
 			echolog "Main node:$(get_name "$type") $threads Threads Started!"
 		elif [ "$global_server_type" = "ss" ] || { [ "$global_server_type" = "ss-rust" ] && use_mihomo_for_ss_rust_client; }; then
 			mihomo_bin="$(first_type mihomo)"
@@ -2359,6 +2429,7 @@ Start_Run() {
 			prepare_ss_mihomo_runtime_config "$GLOBAL_SERVER" "$tcp_port" "$ss_socks_port" "$GLOBAL_SERVER" "redir" || return 1
 			ss_workdir="$(get_ss_mihomo_workdir "$GLOBAL_SERVER")"
 			ln_start_bin "$mihomo_bin" ssr-retcp -d "$ss_workdir" -f "$ss_workdir/config.yaml"
+			ACTUAL_CORE="mihomo"
 			if [ "$global_server_type" = "ss-rust" ]; then
 				echolog "Main node:$(get_name "${type}")-Rust 内核不存在，已回退到 Mihomo ($(get_name "${type}")-Rust) 启动。"
 			else
@@ -2373,6 +2444,7 @@ Start_Run() {
 				rm -rf "$TMP_PATH/bin/${type}-redir"
 			fi
 			ln_start_bin "$ss_program" "${type}-redir" -c "$tcp_config_file"
+			ACTUAL_CORE="sslocal"
 			echolog "Main node:$(get_name "${type}")-Rust Started!"
 		fi
 		;;
@@ -2380,6 +2452,7 @@ Start_Run() {
 		enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
 		if [ "$enable_mihomo" = "1" ] && start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "$GLOBAL_SERVER" "redir" "ssr-retcp" "Main node"; then
 			:
+			ACTUAL_CORE="mihomo"
 		elif [ "$(uci_get_by_name "$GLOBAL_SERVER" v2ray_protocol)" = "snell" ]; then
 			echolog "Main node:Snell 需要 Mihomo 内核，且当前 Mihomo 启动失败。"
 			return 1
@@ -2389,10 +2462,12 @@ Start_Run() {
 			if [ -n "$xray_bin" ]; then
 				gen_config_file "$GLOBAL_SERVER" "$type" 1 "$tcp_port" "$socks_port"
 				ln_start_bin "$(first_type xray)" v2ray run -c "$tcp_config_file"
+				ACTUAL_CORE="xray"
 				echolog "Main node:$($(first_type xray) version | head -1) Started!"
 			else
 				# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
 				if start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "$GLOBAL_SERVER" "redir" "ssr-retcp" "Main node"; then
+					ACTUAL_CORE="mihomo"
 					echolog "Main node:Xray 内核不存在，已回退到 Mihomo 内核启动。"
 				else
 					echolog "Main node:Xray 和 Mihomo 内核均不存在，无法启动。"
@@ -2406,11 +2481,13 @@ Start_Run() {
 		for i in $(seq 1 "$threads"); do
 			ln_start_bin "$(first_type "$type")" "$type" --config "$tcp_config_file"
 		done
+		ACTUAL_CORE="trojan"
 		echolog "Main node:$($(first_type "$type") --version 2>&1 | head -1) , $threads Threads Started!"
 		;;
 	naiveproxy)
 		gen_config_file "$GLOBAL_SERVER" "$type" 1 "$tcp_port"
 		ln_start_bin "$(first_type naive)" naive "$tcp_config_file"
+		ACTUAL_CORE="naive"
 		echolog "Main node:$($(first_type naive) --version 2>&1 | head -1) , $threads Threads Started!"
 		;;
 	tuic)
@@ -2426,6 +2503,7 @@ Start_Run() {
 		prepare_tuic_runtime_config "$GLOBAL_SERVER" "$tcp_port" "$tuic_socks_port" "$GLOBAL_SERVER" "redir" || return 1
 		tuic_workdir="$(get_tuic_workdir "$GLOBAL_SERVER")"
 		ln_start_bin "$mihomo_bin" ssr-retcp -d "$tuic_workdir" -f "$tuic_workdir/config.yaml"
+		ACTUAL_CORE="mihomo"
 		echolog "Main node:Mihomo (TUIC) Started!"
 		;;
 	shadowtls)
@@ -2443,15 +2521,18 @@ Start_Run() {
 			ln_start_bin "$(first_type shadow-tls)" shadow-tls config --config "$chain_config_file"
 			if [ "$enable_mihomo" = "1" ] && start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "${GLOBAL_SERVER}-shadowtls" "redir" "shadowtls-vmess" "Main node:shadow-tls chain-to"; then
 				:
+				ACTUAL_CORE="mihomo"
 			else
 				# enable_mihomo=0 或 Mihomo 启动失败 → 尝试 Xray
 				xray_bin="$(first_type xray)"
 				if [ -n "$xray_bin" ]; then
 					ln_start_bin "$(first_type xray)" v2ray run -c "$tcp_config_file"
+					ACTUAL_CORE="xray"
 					echolog "Main node:shadow-tls chain-to $($(first_type xray) --version) Started!"
 				else
 					# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
 					if start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "${GLOBAL_SERVER}-shadowtls" "redir" "shadowtls-vmess" "Main node:shadow-tls chain-to"; then
+						ACTUAL_CORE="mihomo"
 						echolog "Main node:shadow-tls chain-to Xray 内核不存在，已回退到 Mihomo 内核启动。"
 					else
 						echolog "Main node:shadow-tls chain-to Xray 和 Mihomo 内核均不存在，无法启动。"
@@ -2463,6 +2544,7 @@ Start_Run() {
 		sslocal)
 			ln_start_bin "$(first_type shadow-tls)" shadow-tls config --config "$chain_config_file"
 			ln_start_bin "$(first_type sslocal)" sslocal -c "$tcp_config_file"
+			ACTUAL_CORE="sslocal"
 			echolog "Main node:shadow-tls chain-to $($(first_type sslocal) --version) Started!"
 			;;
 		esac
@@ -2487,13 +2569,16 @@ Start_Run() {
 			return 1
 		}
 		clash_workdir="$(get_clash_workdir "$GLOBAL_SERVER")"
-		ln_start_bin "$mihomo_bin" ssr-retcp -d "$clash_workdir" -f "$clash_workdir/config.yaml"
+		SAFE_PATHS="/usr/share/shadowsocksr/" ln_start_bin "$mihomo_bin" ssr-retcp -d "$clash_workdir" -f "$clash_workdir/config.yaml"
+		ACTUAL_CORE="mihomo"
 		echolog "Main node: $($mihomo_bin -v 2>&1 | head -1 | awk '{print $1, $3}') (Clash) Started!"
 		;;
 	socks5)
 		if start_socks5_redir_with_ipt2socks "$GLOBAL_SERVER" "$tcp_port" "$threads"; then
 			:
+			ACTUAL_CORE="ipt2socks"
 		elif start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "$GLOBAL_SERVER" "redir" "ssr-retcp" "Main node"; then
+			ACTUAL_CORE="mihomo"
 			echolog "Main node:Socks5 缺少 ipt2socks，已回退到 Mihomo。"
 		else
 			echolog "Main node:Socks5 缺少 ipt2socks，且 Mihomo 不可用。"
@@ -2513,11 +2598,13 @@ load_config() {
 	else
 		GLOBAL_SERVER=$switch_server
 	fi
+	# 全局 socks5 注释掉后配合 advanced.lua 中取消注释 -- Server Selection 选项
 	if [ "$(uci_get_by_type socks5_proxy enabled 0)" = "1" ]; then
 		uci -q set "$NAME.@socks5_proxy[0].server=same"
 	else
 		uci -q set "$NAME.@socks5_proxy[0].server=nil"
 	fi
+	# 全局 3proxy 注释掉后配合 advanced.lua 中取消注释 -- Server Selection 选项
 	if [ "$(uci_get_by_type http_proxy enabled 0)" = "1" ]; then
 		uci -q set "$NAME.@http_proxy[0].server=same"
 	else
@@ -2951,11 +3038,17 @@ start_rules() {
 	local ac_ips
 	local custom_ports
 	local proxyport
+	local enable_fake_ip
 
 	server=$(get_host_ip "$GLOBAL_SERVER")
 	local_port=$(get_default_node_local_port)
 	lan_ac_ips=$(uci_get_by_type access_control lan_ac_ips)
 	lan_ac_mode=$(uci_get_by_type access_control lan_ac_mode)
+
+	enable_fake_ip=$(uci_get_by_type server_subscribe enable_fake_ip "")
+	if [ -z "$enable_fake_ip" ]; then
+		enable_fake_ip="0"
+	fi
 
 	if [ "$kcp_enable_flag" = "0" ] && [ "$redir_udp" = "1" ]; then
 		udp_server=$(get_host_ip "$UDP_RELAY_SERVER")
@@ -3001,26 +3094,28 @@ start_rules() {
 		fi
 	elif [ "$USE_TABLES" = "iptables" ]; then
 		ARG_A=""
-		fi
-		/usr/share/shadowsocksr/gfw2ipset.sh
-		/usr/bin/ssr-rules \
-			-s "$server" \
-			-l "$local_port" \
-			-S "$udp_server" \
-			-L "$udp_local_port" \
-			-a "$ac_ips" \
-			-i "/etc/ssrplus/china_ssr.txt" \
-			-b "$(uci_get_by_type access_control wan_bp_ips)" \
-			-w "$(uci_get_by_type access_control wan_fw_ips)" \
-			-B "$(uci_get_by_type access_control lan_bp_ips)" \
-			-p "$(uci_get_by_type access_control lan_fp_ips)" \
-			-G "$(uci_get_by_type access_control lan_gm_ips)" \
-			-m "$(uci_get_by_type access_control Interface)" \
-			-D "$proxyport" \
-			$(get_arg_out) $(gfwmode) $ARG_UDP $ARG_UDP_RULES $ARG_A
+	fi
+	/usr/share/shadowsocksr/gfw2ipset.sh
+	/usr/bin/ssr-rules \
+		-s "$server" \
+		-l "$local_port" \
+		-T "$ACTUAL_CORE" \
+		-S "$udp_server" \
+		-L "$udp_local_port" \
+		-a "$ac_ips" \
+		-i "/etc/ssrplus/china_ssr.txt" \
+		-b "$(uci_get_by_type access_control wan_bp_ips)" \
+		-w "$(uci_get_by_type access_control wan_fw_ips)" \
+		-B "$(uci_get_by_type access_control lan_bp_ips)" \
+		-p "$(uci_get_by_type access_control lan_fp_ips)" \
+		-G "$(uci_get_by_type access_control lan_gm_ips)" \
+		-m "$(uci_get_by_type access_control Interface)" \
+		-D "$proxyport" \
+		-E "$enable_fake_ip" \
+		$(get_arg_out) $(gfwmode) $ARG_UDP $ARG_UDP_RULES $ARG_A
 
-		return $?
-	}
+	return $?
+}
 
 start() {
 	local run_mode
