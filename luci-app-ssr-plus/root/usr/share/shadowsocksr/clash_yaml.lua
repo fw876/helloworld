@@ -4,6 +4,9 @@ require "nixio"
 require "nixio.fs"
 require "luci.model.uci"
 
+local command_cache = {}
+local ech_cache = {}
+
 local ok_lyaml, lyaml = pcall(require, "lyaml")
 if not ok_lyaml then
 	io.stderr:write("lyaml_not_found\n")
@@ -12,6 +15,18 @@ end
 
 local uci = require "luci.model.uci".cursor()
 local ok_jsonc, jsonc = pcall(require, "luci.jsonc")
+
+local dns_mode = uci:get_first("shadowsocksr", "global", "pdnsd_enable", "0")
+if dns_mode == nil or dns_mode == "" then
+	dns_mode = "0"
+end
+
+local enable_fake_ip = uci:get_first("shadowsocksr", "server_subscribe", "enable_fake_ip", "")
+if enable_fake_ip == nil or enable_fake_ip == "" then
+	enable_fake_ip = "0"
+end
+
+-- ==================== 基础工具函数 ====================
 
 local function read_file(path)
 	local data = nixio.fs.readfile(path)
@@ -39,11 +54,31 @@ local function load_yaml(path)
 	return parsed
 end
 
+local function quote_nameserver_policy_keys(rendered)
+	rendered = rendered:gsub("[^\n]+", function(line)
+		local indent = line:match("^(%s*)geosite:geolocation%-!cn:%s*$")
+		if indent then
+			return indent .. '"geosite:geolocation-!cn":'
+		end
+
+		indent = line:match("^(%s*)geosite:cn,private,apple:%s*$")
+		if indent then
+			return indent .. '"geosite:cn,private,apple":'
+		end
+
+		return line
+	end)
+
+	return rendered
+end
+
 local function dump_yaml(path, data)
 	local ok, rendered = pcall(lyaml.dump, { data })
 	if not ok or not rendered then
 		return nil, "dump_failed"
 	end
+
+	rendered = quote_nameserver_policy_keys(rendered)
 
 	write_file(path, rendered)
 	return true
@@ -132,6 +167,25 @@ local function has_proxy_sections(doc)
 	return type(doc.proxies) == "table" or type(doc["proxy-providers"]) == "table"
 end
 
+-- ==================== 强制开启 UDP ====================
+
+local function force_udp_true(doc)
+	if type(doc) ~= "table" then
+		return 0
+	end
+
+	local count = 0
+	for _, proxy in ipairs(doc.proxies or {}) do
+		if type(proxy) == "table" then
+			if proxy.udp ~= true then
+				proxy.udp = true
+				count = count + 1
+			end
+		end
+	end
+	return count
+end
+
 local function validate(path)
 	local doc = load_yaml(path)
 	if not doc then
@@ -149,6 +203,9 @@ local function filter(path, filter_words)
 
 	local words = split_filter_words(filter_words)
 	if #words == 0 then
+		force_udp_true(doc)
+		dump_yaml(path, doc)
+		io.stdout:write("0\n")
 		return true
 	end
 
@@ -170,6 +227,8 @@ local function filter(path, filter_words)
 	end
 	doc.proxies = proxies
 
+	force_udp_true(doc)
+
 	for _, group in ipairs(doc["proxy-groups"] or {}) do
 		if type(group.proxies) == "table" then
 			local kept = {}
@@ -190,6 +249,24 @@ local function filter(path, filter_words)
 	dump_yaml(path, doc)
 	io.stdout:write(tostring(count), "\n")
 	return true
+end
+
+local function clone_table(src)
+	if type(src) ~= "table" then
+		return nil
+	end
+
+	local dst = {}
+
+	for k, v in pairs(src) do
+		if type(v) == "table" then
+			dst[k] = clone_table(v)
+		else
+			dst[k] = v
+		end
+	end
+
+	return dst
 end
 
 local function deep_merge(dst, src)
@@ -222,6 +299,59 @@ local function strip_runtime_conflicts(doc)
 	if type(doc.dns) == "table" then
 		doc.dns["fake-ip-range"] = nil
 		doc.dns["fake-ip-filter"] = nil
+	end
+end
+
+-- ==================== Sniffer 配置 ====================
+
+local function apply_sniffer_config(doc, enable_fake_ip)
+	if type(doc) ~= "table" then return end
+
+	local sniffer_config = {
+		enable = true,
+		["override-destination"] = true,
+		sniff = {
+			HTTP = {
+				ports = { 80, 2052, 2082, 2086, 2095, "8080-8880" },
+				["override-destination"] = true
+			},
+			TLS = {
+				ports = { 443, 2053, 2083, 2087, 2096, 8443 }
+			},
+			QUIC = {
+				ports = { 443, 8443 }
+			}
+		},
+		["skip-domain"] = { "Mijia Cloud", "dlg.io.mi.com" },
+		["force-domain"] = { "+.v2ex.com" },
+		["force-dns-mapping"] = true,
+		["parse-pure-ip"] = true
+	}
+
+	if not doc.sniffer then
+		doc.sniffer = sniffer_config
+	else
+		if doc.sniffer.enable == nil then
+			doc.sniffer.enable = true
+		end
+		if doc.sniffer["override-destination"] == nil then
+			doc.sniffer["override-destination"] = true
+		end
+		if not doc.sniffer.sniff then
+			doc.sniffer.sniff = sniffer_config.sniff
+		end
+		if not doc.sniffer["skip-domain"] then
+			doc.sniffer["skip-domain"] = sniffer_config["skip-domain"]
+		end
+		if not doc.sniffer["force-domain"] then
+			doc.sniffer["force-domain"] = sniffer_config["force-domain"]
+		end
+		if doc.sniffer["force-dns-mapping"] == nil then
+			doc.sniffer["force-dns-mapping"] = true
+		end
+		if doc.sniffer["parse-pure-ip"] == nil then
+			doc.sniffer["parse-pure-ip"] = true
+		end
 	end
 end
 
@@ -281,6 +411,354 @@ local function strip_incompatible_script_rules(doc)
 	return removed
 end
 
+-- ==================== 规则合并 ====================
+
+local function merge_rules_with_direct(existing_rules)
+	local new_rules = {}
+	local existing_set = {}
+	local match_rule = nil
+
+	if existing_rules then
+		for _, rule in ipairs(existing_rules) do
+			local clean_rule = rule:match("^%s*(.-)%s*$") or rule
+
+			if clean_rule:upper():find("^MATCH,") then
+				if not match_rule then
+					match_rule = clean_rule
+				end
+			else
+				if not existing_set[clean_rule] and clean_rule ~= "" then
+					table.insert(new_rules, clean_rule)
+					existing_set[clean_rule] = true
+				end
+			end
+		end
+	end
+
+	table.insert(new_rules, match_rule or "MATCH,PROXY")
+
+	return new_rules
+end
+
+-- ==================== 时间/列表工具 ====================
+
+local function get_uptime_ms()
+	local f = io.open("/proc/uptime", "r")
+	if f then
+		local line = f:read("*l")
+		f:close()
+		if line then
+			local sec, frac = line:match("^(%d+)%.(%d+)")
+			if sec and frac then
+				frac = (frac .. "00"):sub(1, 3)
+				return tonumber(sec) * 1000 + tonumber(frac)
+			end
+		end
+	end
+	return os.time() * 1000
+end
+
+local function load_list_file(file_path)
+	local list = {}
+	local file = io.open(file_path, "r")
+	if not file then
+		return nil
+	end
+
+	for line in file:lines() do
+		line = line:match("^%s*(.-)%s*$")
+		if line ~= "" and not line:match("^#") then
+			table.insert(list, line)
+		end
+	end
+	file:close()
+	return #list > 0 and list or nil
+end
+
+-- ==================== DNS 相关函数 ====================
+
+local function format_dns_server(proxy)
+	if not proxy or proxy == "" then
+		return proxy
+	end
+
+	local scheme, rest = proxy:match("^([a-zA-Z0-9%+%-%.]+)://(.+)$")
+	if scheme then
+		scheme = scheme:lower()
+		if scheme == "tls" or scheme == "dot" then
+			if not rest:match(":%d+$") then
+				rest = rest .. ":853"
+			end
+			return "tls://" .. rest
+		elseif scheme == "https" or scheme == "doh" or scheme == "dohl" or scheme == "doq" or scheme == "doql" then
+			local host, path = rest:match("^([^/]+)(.*)$")
+			host = host or rest
+			path = path or ""
+			if path == "" or path == "/" then
+				path = "/dns-query"
+			end
+			return "https://" .. host .. path
+		elseif scheme == "tcp" or scheme == "udp" then
+			if not rest:match(":%d+$") then
+				rest = rest .. ":53"
+			end
+			return scheme .. "://" .. rest
+		else
+			return proxy
+		end
+	end
+
+	local host, port = proxy:match("^([^:]+):(%d+)$")
+	if host and port then
+		if port == "853" then
+			return "tls://" .. host .. ":853"
+		elseif port == "443" then
+			return "https://" .. host .. "/dns-query"
+		elseif port == "53" then
+			return host
+		else
+			return "udp://" .. host .. ":" .. port
+		end
+	end
+
+	if proxy:match("[a-zA-Z]") and not proxy:match("[^%w%.%-]") then
+		local path = ""
+		if not proxy:match("/") then
+			path = "/dns-query"
+		end
+		return "https://" .. proxy .. path
+	end
+
+	return proxy
+end
+
+local function get_fastest_dns()
+	local dns_list = {
+		"223.5.5.5", "119.29.29.29",
+		"114.114.114.114", "180.76.76.76",
+		"114.114.115.115", "223.6.6.6",
+		"1.2.4.8", "1.12.12.12",
+		"101.226.4.6", "180.184.1.1",
+	}
+	local test_domain = "www.baidu.com"
+	local valid_dns_results = {}
+
+	for _, dns in ipairs(dns_list) do
+		local start_time = get_uptime_ms()
+
+		local cmd = string.format(
+			"timeout 2 nslookup %s %s 2>/dev/null",
+			test_domain,
+			dns
+		)
+
+		local f = io.popen(cmd)
+		if f then
+			local output = f:read("*a") or ""
+			f:close()
+
+			local elapsed = get_uptime_ms() - start_time
+			local parsed_ip
+			for ip in output:gmatch("Address%s*%d*%s*:%s*(%d+%.%d+%.%d+%.%d+)") do
+				if ip ~= dns then
+					parsed_ip = ip
+					break
+				end
+			end
+			local is_success =
+				parsed_ip
+				and not output:match("[Cc]an't find")
+				and not output:match("[Tt]imed out")
+				and not output:match("[Nn]o servers could be reached")
+			if is_success and elapsed >= 0 and elapsed < 2500 then
+				table.insert(valid_dns_results, {
+					dns = dns,
+					latency = elapsed,
+				})
+			end
+		end
+	end
+
+	table.sort(valid_dns_results, function(a, b)
+		return a.latency < b.latency
+	end)
+
+	local result = {}
+	local used = {}
+
+	for i = 1, math.min(3, #valid_dns_results) do
+		local dns = valid_dns_results[i].dns
+		table.insert(result, dns)
+		used[dns] = true
+	end
+
+	local fallbacks = {
+		"223.5.5.5",
+		"119.29.29.29",
+		"114.114.114.114",
+	}
+
+	for _, dns in ipairs(fallbacks) do
+		if #result >= 3 then
+			break
+		end
+
+		if not used[dns] then
+			table.insert(result, dns)
+			used[dns] = true
+		end
+	end
+
+	return result
+end
+
+local function get_forward_dns_list()
+	local forward = uci:get_first("shadowsocksr", "global", "tunnel_forward", "8.8.4.4:53")
+	if not forward or forward == "" then
+		forward = "8.8.4.4:53"
+	end
+
+	local forward_list = {}
+	local used = {}
+
+	for proxy in tostring(forward):gmatch("[^%s,;]+") do
+		if proxy ~= "" then
+			local formatted = format_dns_server(proxy)
+			if not used[formatted] then
+				table.insert(forward_list, formatted)
+				used[formatted] = true
+			end
+		end
+	end
+
+	if #forward_list == 0 then
+		forward_list = { format_dns_server(forward) }
+	end
+
+	return forward_list
+end
+
+local function build_dns_upstreams()
+	local fastest_list = get_fastest_dns()
+	local nameserver_list = {}
+
+	local proxy_server_list = {
+		"https://cn.ali-oss.cn:44443/dns-query/6dafe708-d9d6-48cc-a768-e6ed3018a9ec",
+		"https://hk.ali-oss.cn:44443/dns-query/6dafe708-d9d6-48cc-a768-e6ed3018a9ec"
+	}
+
+	for _, dns_ip in ipairs(fastest_list) do
+		local formatted = format_dns_server(dns_ip)
+		table.insert(nameserver_list, formatted)
+	end
+
+	return {
+		["respect-rules"] = true,
+		["nameserver"] = nameserver_list,
+		["proxy-server-nameserver"] = proxy_server_list
+	}
+end
+
+local function build_dns_section(dns_mode, user_dns)
+	local result
+	local has_user_dns = type(user_dns) == "table" and next(user_dns)
+	dns_mode = tostring(dns_mode or "0")
+
+	if not has_user_dns then
+		result = {
+			enable = true
+		}
+	else
+		result = clone_table(user_dns)
+		result.enable = true
+	end
+
+	if enable_fake_ip == "1" then
+		result["enhanced-mode"] = "fake-ip"
+		result["fake-ip-range"] = "198.18.0.1/16"
+		if not result["fake-ip-filter"] then
+			local filter_file = "/etc/ssrplus/fake_ip_filter.list"
+			local loaded_filter = load_list_file(filter_file) or { "*.lan", "*.local", "time.*.com", "ntp.*.com" }
+			if loaded_filter then
+				result["fake-ip-filter"] = loaded_filter
+			end
+		end
+		if result["use-hosts"] == nil then
+			result["use-hosts"] = true
+		end
+
+		result["fallback"] = nil
+		result["fallback"] = get_forward_dns_list()
+
+		if not result["default-nameserver"] then
+			result["default-nameserver"] = get_fastest_dns()
+		end
+		if not result["direct-nameserver"] then
+			result["direct-nameserver"] = get_fastest_dns()
+		end
+		if result["direct-nameserver-follow-policy"] == nil then
+			result["direct-nameserver-follow-policy"] = false
+		end
+		if result["respect-rules"] == nil then
+			result["respect-rules"] = true
+		end
+		if not result["fallback-filter"] then
+			local domain_file = "/etc/ssrplus/fallback_domain.list"
+			local domain_list = load_list_file(domain_file) or { "+.google.com", "+.facebook.com", "+.youtube.com" }
+			local ipcidr_file = "/etc/ssrplus/fallback_ipcidr.list"
+			local ipcidr_list = load_list_file(ipcidr_file) or { "240.0.0.0/4" }
+			result["fallback-filter"] = {
+				domain = domain_list,
+				ipcidr = ipcidr_list,
+				geoip = true,
+				["geoip-code"] = "CN"
+			}
+		else
+			if result["fallback-filter"].geosite then
+				result["fallback-filter"].geosite = nil
+			end
+		end
+
+		result["nameserver-policy"] = nil
+		result["nameserver-policy"] = {
+			["geosite:geolocation-!cn"] = result["fallback"] or get_forward_dns_list(),
+			["geosite:cn,private,apple"] = get_fastest_dns()
+		}
+	else
+		result["enhanced-mode"] = "redir-host"
+		result["fake-ip-range"] = nil
+		result["fake-ip-filter"] = nil
+		result["use-hosts"] = nil
+		result["fallback"] = nil
+		result["respect-rules"] = nil
+		result["fallback-filter"] = nil
+		result["nameserver-policy"] = nil
+		result["direct-nameserver"] = nil
+		result["direct-nameserver-follow-policy"] = nil
+	end
+
+	local upstreams = build_dns_upstreams()
+	for k, v in pairs(upstreams) do
+		if k == "proxy-server-nameserver" then
+			result[k] = v
+		elseif result[k] == nil and not (k == "respect-rules" and enable_fake_ip ~= "1") then
+			result[k] = v
+		end
+	end
+
+	if dns_mode == "7" then
+		result.listen = "127.0.0.1:5335"
+	else
+		result.listen = nil
+	end
+
+	if result.ipv6 == nil then
+		result.ipv6 = get_filter_aaaa() ~= "1"
+	end
+
+	return result
+end
+
 local function prepare(input_path, output_path)
 	local doc, err = load_yaml(input_path)
 	if not doc then
@@ -292,17 +770,38 @@ local function prepare(input_path, output_path)
 		return false
 	end
 
+	local user_dns = nil
+	if type(doc.dns) == "table" and next(doc.dns) then
+		user_dns = clone_table(doc.dns)
+	end
+
 	strip_runtime_conflicts(doc)
 	local filled_groups = fill_empty_proxy_groups(doc)
 	local stripped_rules = strip_incompatible_script_rules(doc)
-	local ok, rendered = pcall(lyaml.dump, { doc })
-	if not ok or not rendered then
+
+	doc.dns = build_dns_section(dns_mode, user_dns)
+
+	doc.rules = merge_rules_with_direct(doc.rules)
+	apply_sniffer_config(doc, enable_fake_ip)
+
+	local udp_count = force_udp_true(doc)
+
+	if doc["unified-delay"] == nil then
+		doc["unified-delay"] = true
+	end
+	if doc["tcp-concurrent"] == nil then
+		doc["tcp-concurrent"] = true
+	end
+
+	if doc["find-process-mode"] == nil then
+		doc["find-process-mode"] = "off"
+	end
+
+	if not dump_yaml(output_path, doc) then
 		io.stderr:write("dump_failed\n")
 		return false
 	end
-
-	write_file(output_path, rendered)
-	io.stdout:write(string.format("filled_groups=%d stripped_script_rules=%d\n", filled_groups, stripped_rules))
+	io.stdout:write(string.format("filled_groups=%d stripped_script_rules=%d udp_enabled=%d\n", filled_groups, stripped_rules, udp_count))
 	return true
 end
 
@@ -319,18 +818,43 @@ local function merge(raw_path, overlay_path, output_path)
 		return false
 	end
 
+	local user_dns = nil
+	if type(raw_doc.dns) == "table" and next(raw_doc.dns) then
+		user_dns = clone_table(raw_doc.dns)
+	end
+
 	strip_runtime_conflicts(raw_doc)
 	local filled_groups = fill_empty_proxy_groups(raw_doc)
 	local stripped_rules = strip_incompatible_script_rules(raw_doc)
 	local merged = deep_merge(raw_doc, overlay_doc)
-	local ok, rendered = pcall(lyaml.dump, { merged })
-	if not ok or not rendered then
+
+	local target_dns = user_dns
+	if not target_dns and type(merged.dns) == "table" and next(merged.dns) then
+		target_dns = merged.dns
+	end
+	merged.dns = build_dns_section(dns_mode, target_dns)
+
+	merged.rules = merge_rules_with_direct(merged.rules)
+	apply_sniffer_config(merged, enable_fake_ip)
+
+	local udp_count = force_udp_true(merged)
+
+	if merged["unified-delay"] == nil then
+		merged["unified-delay"] = true
+	end
+	if merged["tcp-concurrent"] == nil then
+		merged["tcp-concurrent"] = true
+	end
+
+	if merged["find-process-mode"] == nil then
+		merged["find-process-mode"] = "off"
+	end
+
+	if not dump_yaml(output_path, merged) then
 		io.stderr:write("dump_failed\n")
 		return false
 	end
-
-	write_file(output_path, rendered)
-	io.stdout:write(string.format("filled_groups=%d stripped_script_rules=%d\n", filled_groups, stripped_rules))
+	io.stdout:write(string.format("filled_groups=%d stripped_script_rules=%d udp_enabled=%d\n", filled_groups, stripped_rules, udp_count))
 	return true
 end
 
@@ -376,28 +900,38 @@ local function append_client_policy_rules(runtime_path, sid)
 	for _, rule in ipairs(doc.rules or {}) do
 		local text = tostring(rule or "")
 		if not text:match("^SRC%-IP%-CIDR,") then
-			existing_rules[#existing_rules + 1] = rule
+			table.insert(existing_rules, rule)
 		end
 	end
 
-	doc.rules = {}
+	local new_rules = {}
+	local existing_set = {}
+
 	for _, rule in ipairs(custom_rules) do
-		doc.rules[#doc.rules + 1] = rule
-	end
-	for _, rule in ipairs(existing_rules) do
-		doc.rules[#doc.rules + 1] = rule
+		if not existing_set[rule] then
+			table.insert(new_rules, rule)
+			existing_set[rule] = true
+		end
 	end
 
-	local ok, rendered = pcall(lyaml.dump, { doc })
-	if not ok or not rendered then
+	for _, rule in ipairs(existing_rules) do
+		if not existing_set[rule] then
+			table.insert(new_rules, rule)
+			existing_set[rule] = true
+		end
+	end
+
+	doc.rules = merge_rules_with_direct(new_rules)
+
+	if not dump_yaml(runtime_path, doc) then
 		io.stderr:write("dump_failed\n")
 		return false
 	end
-
-	write_file(runtime_path, rendered)
 	io.stdout:write(string.format("client_rules=%d\n", #custom_rules))
 	return true
 end
+
+-- ==================== 基础类型辅助函数 ====================
 
 local function bool_enabled(value)
 	return value == "1" or value == 1 or value == true or value == "true"
@@ -419,6 +953,112 @@ local function get_server_field(sid, option, default)
 	return value
 end
 
+-- ==================== ECH 配置获取 ====================
+
+local function command_exists(cmd)
+	if command_cache[cmd] ~= nil then
+		return command_cache[cmd]
+	end
+
+	local safe_cmd = cmd:match("^[%w_%-]+$")
+	if not safe_cmd then
+		command_cache[cmd] = false
+		return false
+	end
+
+	local handle = io.popen(string.format("command -v %s 2>/dev/null", safe_cmd))
+	if not handle then
+		command_cache[cmd] = false
+		return false
+	end
+
+	local result = handle:read("*a")
+	handle:close()
+
+	command_cache[cmd] = (result and result ~= "")
+	return command_cache[cmd]
+end
+
+local function fetch_ech_config(domain, dns_server)
+	if not domain or domain == "" or not dns_server or dns_server == "" then
+		return nil
+	end
+
+	local cache_key = domain .. "|" .. dns_server
+	if ech_cache[cache_key] ~= nil then
+		return ech_cache[cache_key] or nil
+	end
+
+	if not command_exists("dig") then
+		ech_cache[cache_key] = false
+		return nil
+	end
+
+	local proto = dns_server:match("^([a-zA-Z0-9%+%-%.]+)://") or ""
+	local port = dns_server:match(":(%d+)")
+	local server = dns_server
+		:gsub("^[a-zA-Z0-9%+%-%.]+://", "")
+		:gsub("/.*$", "")
+		:gsub(":%d+$", "")
+
+	if server == "" then
+		ech_cache[cache_key] = false
+		return nil
+	end
+
+	local safe_domain = domain:match("^[%w%-%._]+$")
+	local safe_server = server:match("^[%w%-%._]+$")
+	local safe_port = port and port:match("^%d+$") or nil
+
+	if not safe_domain or not safe_server then
+		ech_cache[cache_key] = false
+		return nil
+	end
+
+	local dig_opts = ""
+	proto = proto:lower()
+
+	if proto == "https" or proto == "doh" then
+		dig_opts = "+https"
+		if safe_port and safe_port ~= "443" then
+			dig_opts = dig_opts .. " -p " .. safe_port
+		end
+	elseif proto == "tls" or proto == "dot" then
+		dig_opts = "+tls"
+		if safe_port and safe_port ~= "853" then
+			dig_opts = dig_opts .. " -p " .. safe_port
+		end
+	else
+		if safe_port and safe_port ~= "53" then
+			dig_opts = "-p " .. safe_port
+		end
+	end
+
+	local cmd = string.format("dig %s +short TYPE65 %s @%s 2>/dev/null", dig_opts, safe_domain, safe_server)
+	local handle = io.popen(cmd)
+	if not handle then
+		ech_cache[cache_key] = false
+		return nil
+	end
+
+	local output = handle:read("*a")
+	handle:close()
+
+	if not output or output == "" then
+		ech_cache[cache_key] = false
+		return nil
+	end
+
+	local ech = output:match('ech="?([^"%s]+)"?')
+	if ech and ech ~= "" then
+		ech_cache[cache_key] = ech
+		return ech
+	end
+
+	ech_cache[cache_key] = false
+	return nil
+end
+
 local function ipv6_enabled()
 	return uci:get_first("shadowsocksr", "global", "ipv6_support", "0") == "1"
 end
@@ -432,13 +1072,14 @@ local function get_filter_aaaa()
 	return value
 end
 
+-- ==================== TUIC 节点 ====================
+
 local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 	local server = get_server_field(sid, "server", "")
 	local server_port = tonumber(get_server_field(sid, "server_port", "0")) or 0
 	local tuic_ip = get_server_field(sid, "tuic_ip", "")
 	local tls_host = get_server_field(sid, "tls_host", "")
 	local ipstack_prefer = get_server_field(sid, "ipstack_prefer", "")
-	local dns_mode = uci:get_first("shadowsocksr", "global", "pdnsd_enable", "0")
 
 	local proxy = {
 		name = sid,
@@ -451,7 +1092,8 @@ local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 		["congestion-controller"] = get_server_field(sid, "congestion_control", "cubic"),
 		["skip-cert-verify"] = bool_enabled(get_server_field(sid, "insecure", "0")),
 		["disable-sni"] = bool_enabled(get_server_field(sid, "disable_sni", "0")),
-		["reduce-rtt"] = bool_enabled(get_server_field(sid, "zero_rtt_handshake", "0"))
+		["reduce-rtt"] = bool_enabled(get_server_field(sid, "zero_rtt_handshake", "0")),
+		udp = true
 	}
 
 	if tuic_ip ~= "" then
@@ -508,20 +1150,19 @@ local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 		},
 		rules = { "MATCH,PROXY" },
 		tun = { enable = false },
-		profile = { ["store-selected"] = true },
-		dns = {
-			enable = dns_mode == "7",
-			["enhanced-mode"] = "redir-host",
-			listen = "127.0.0.1:5335",
-			ipv6 = get_filter_aaaa() ~= "1"
-		}
+		profile = {
+			["store-selected"] = true,
+			["store-fake-ip"] = true
+		},
+		dns = build_dns_section(dns_mode, nil)
 	}
+	apply_sniffer_config(doc, enable_fake_ip)
 
 	if mode == "socks" then
 		doc["socks-port"] = listen_port
 	else
 		doc["redir-port"] = listen_port
-		doc["tproxy-port"] = listen_port
+		doc["tproxy-port"] = listen_port + 1
 		if socks_listen and socks_listen > 0 then
 			doc["socks-port"] = socks_listen
 		end
@@ -543,20 +1184,19 @@ local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 		end
 	end
 
-
 	return doc
 end
 
 local function generate_tuic_runtime(sid, output_path, local_port, socks_port, mode)
 	local doc = build_tuic_runtime_doc(sid, local_port, socks_port, mode)
-	local ok, rendered = pcall(lyaml.dump, { doc })
-	if not ok or not rendered then
+	if not dump_yaml(output_path, doc) then
 		io.stderr:write("dump_failed\n")
 		return false
 	end
-	write_file(output_path, rendered)
 	return true
 end
+
+-- ==================== 插件选项解析 ====================
 
 local function parse_plugin_opts(value)
 	local result = {}
@@ -714,10 +1354,50 @@ local function apply_v2ray_tls_options(proxy, sid)
 	end
 
 	if get_server_field(sid, "enable_ech", "0") == "1" then
-		proxy["ech-opts"] = {
-			enable = true,
-			config = string_or_nil(get_server_field(sid, "ech_config", ""))
-		}
+		local raw_ech_cfg = get_server_field(sid, "ech_config", "")
+		local raw_domain = get_server_field(sid, "ech_domain", "")
+
+		local ech_base64_result = nil
+		local query_server_name = nil
+
+		local function is_strict_domain(str)
+			if not str or str == "" then return false end
+			return str:match("^[%w%-%_]+%.[%w%-%._]+$") ~= nil
+		end
+
+		local function is_dns_input(str)
+			if not str or str == "" then return false end
+			return str:match("^https?://") ~= nil
+				or str:match("^tls://") ~= nil
+				or str:match("^tcp://") ~= nil
+				or str:match("^udp://") ~= nil
+				or str:match("^%d+%.%d+%.%d+%.%d+") ~= nil
+		end
+
+		local domain_part, dns_part = raw_ech_cfg:match("^([%w%-%_]+%.[%w%-%._]+)%+(.+)$")
+		if domain_part and dns_part and is_dns_input(dns_part) then
+			ech_base64_result = string_or_nil(fetch_ech_config(domain_part, dns_part))
+			query_server_name = domain_part
+		elseif is_dns_input(raw_ech_cfg) and is_strict_domain(raw_domain) then
+			ech_base64_result = string_or_nil(fetch_ech_config(raw_domain, raw_ech_cfg))
+			query_server_name = raw_domain
+		elseif raw_ech_cfg:match("^[A-Za-z0-9%+%/%-%_%=]+$") and #raw_ech_cfg >= 32 then
+			ech_base64_result = raw_ech_cfg
+			if is_strict_domain(raw_domain) then
+				query_server_name = raw_domain
+			end
+		end
+
+		if ech_base64_result then
+			proxy["ech-opts"] = {
+				enable = true,
+				config = ech_base64_result
+			}
+
+			if query_server_name and query_server_name ~= "" then
+				proxy["ech-opts"]["query-server-name"] = query_server_name
+			end
+		end
 	end
 end
 
@@ -737,6 +1417,53 @@ local function apply_trojan_tls_options(proxy, sid)
 			["public-key"] = string_or_nil(get_server_field(sid, "reality_publickey", "")),
 			["short-id"] = string_or_nil(get_server_field(sid, "reality_shortid", ""))
 		}
+	end
+
+	if get_server_field(sid, "enable_ech", "0") == "1" then
+		local raw_ech_cfg = get_server_field(sid, "ech_config", "")
+		local raw_domain = get_server_field(sid, "ech_domain", "")
+
+		local ech_base64_result = nil
+		local query_server_name = nil
+
+		local function is_strict_domain(str)
+			if not str or str == "" then return false end
+			return str:match("^[%w%-%_]+%.[%w%-%._]+$") ~= nil
+		end
+
+		local function is_dns_input(str)
+			if not str or str == "" then return false end
+			return str:match("^https?://") ~= nil
+				or str:match("^tls://") ~= nil
+				or str:match("^tcp://") ~= nil
+				or str:match("^udp://") ~= nil
+				or str:match("^%d+%.%d+%.%d+%.%d+") ~= nil
+		end
+
+		local domain_part, dns_part = raw_ech_cfg:match("^([%w%-%_]+%.[%w%-%._]+)%+(.+)$")
+		if domain_part and dns_part and is_dns_input(dns_part) then
+			ech_base64_result = string_or_nil(fetch_ech_config(domain_part, dns_part))
+			query_server_name = domain_part
+		elseif is_dns_input(raw_ech_cfg) and is_strict_domain(raw_domain) then
+			ech_base64_result = string_or_nil(fetch_ech_config(raw_domain, raw_ech_cfg))
+			query_server_name = raw_domain
+		elseif raw_ech_cfg:match("^[A-Za-z0-9%+%/%-%_%=]+$") and #raw_ech_cfg >= 32 then
+			ech_base64_result = raw_ech_cfg
+			if is_strict_domain(raw_domain) then
+				query_server_name = raw_domain
+			end
+		end
+
+		if ech_base64_result then
+			proxy["ech-opts"] = {
+				enable = true,
+				config = ech_base64_result
+			}
+
+			if query_server_name and query_server_name ~= "" then
+				proxy["ech-opts"]["query-server-name"] = query_server_name
+			end
+		end
 	end
 end
 
@@ -951,9 +1678,9 @@ local function build_v2ray_mihomo_proxy(sid)
 end
 
 local function build_single_proxy_runtime_doc(proxy, local_port, socks_port, mode)
-	local dns_mode = uci:get_first("shadowsocksr", "global", "pdnsd_enable", "0")
 	local listen_port = tonumber(local_port)
 	local socks_listen = tonumber(socks_port)
+
 	local doc = {
 		["allow-lan"] = true,
 		["bind-address"] = ipv6_enabled() and "*" or "0.0.0.0",
@@ -974,24 +1701,24 @@ local function build_single_proxy_runtime_doc(proxy, local_port, socks_port, mod
 		},
 		rules = { "MATCH,PROXY" },
 		tun = { enable = false },
-		profile = { ["store-selected"] = true },
-		dns = {
-			enable = dns_mode == "7",
-			["enhanced-mode"] = "redir-host",
-			listen = "127.0.0.1:5335",
-			ipv6 = get_filter_aaaa() ~= "1"
-		}
+		profile = {
+			["store-selected"] = true,
+			["store-fake-ip"] = true
+		},
+		dns = build_dns_section(dns_mode, nil)
 	}
+	apply_sniffer_config(doc, enable_fake_ip)
 
 	if mode == "socks" then
 		doc["socks-port"] = listen_port
 	else
 		doc["redir-port"] = listen_port
-		doc["tproxy-port"] = listen_port
+		doc["tproxy-port"] = listen_port + 1
 		if socks_listen and socks_listen > 0 then
 			doc["socks-port"] = socks_listen
 		end
 	end
+
 	if doc["socks-port"] and doc["socks-port"] > 0 then
 		local socks5_auth = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_auth", "noauth")
 		if socks5_auth == "password" then
@@ -1008,9 +1735,10 @@ local function build_single_proxy_runtime_doc(proxy, local_port, socks_port, mod
 		end
 	end
 
-
 	return doc
 end
+
+-- ==================== 插件处理 ====================
 
 local function pick_plugin_opt(plugin_opts, ...)
 	for i = 1, select("#", ...) do
@@ -1224,11 +1952,11 @@ local function build_kcptun_plugin(proxy, sid)
 end
 
 local function build_shadowsocks_runtime_doc(sid, local_port, socks_port, mode)
-	local dns_mode = uci:get_first("shadowsocksr", "global", "pdnsd_enable", "0")
 	local server = get_server_field(sid, "server", "")
 	local server_port = tonumber(get_server_field(sid, "server_port", "0")) or 0
 	local method = get_server_field(sid, "encrypt_method_ss", "none")
 	local password = get_server_field(sid, "password", "")
+
 	local proxy = {
 		name = sid,
 		type = "ss",
@@ -1267,14 +1995,13 @@ local function build_shadowsocks_runtime_doc(sid, local_port, socks_port, mode)
 		},
 		rules = { "MATCH,PROXY" },
 		tun = { enable = false },
-		profile = { ["store-selected"] = true },
-		dns = {
-			enable = dns_mode == "7",
-			["enhanced-mode"] = "redir-host",
-			listen = "127.0.0.1:5335",
-			ipv6 = get_filter_aaaa() ~= "1"
-		}
+		profile = {
+			["store-selected"] = true,
+			["store-fake-ip"] = true
+		},
+		dns = build_dns_section(dns_mode, nil)
 	}
+	apply_sniffer_config(doc, enable_fake_ip)
 
 	local listen_port = tonumber(local_port)
 	local socks_listen = tonumber(socks_port)
@@ -1282,7 +2009,7 @@ local function build_shadowsocks_runtime_doc(sid, local_port, socks_port, mode)
 		doc["socks-port"] = listen_port
 	else
 		doc["redir-port"] = listen_port
-		doc["tproxy-port"] = listen_port
+		doc["tproxy-port"] = listen_port + 1
 		if socks_listen and socks_listen > 0 then
 			doc["socks-port"] = socks_listen
 		end
@@ -1304,18 +2031,15 @@ local function build_shadowsocks_runtime_doc(sid, local_port, socks_port, mode)
 		end
 	end
 
-
 	return doc
 end
 
 local function generate_shadowsocks_runtime(sid, output_path, local_port, socks_port, mode)
 	local doc = build_shadowsocks_runtime_doc(sid, local_port, socks_port, mode)
-	local ok, rendered = pcall(lyaml.dump, { doc })
-	if not ok or not rendered then
+	if not dump_yaml(output_path, doc) then
 		io.stderr:write("dump_failed\n")
 		return false
 	end
-	write_file(output_path, rendered)
 	return true
 end
 
@@ -1326,12 +2050,10 @@ local function generate_v2ray_runtime(sid, output_path, local_port, socks_port, 
 		return false
 	end
 	local doc = build_single_proxy_runtime_doc(proxy, local_port, socks_port, mode)
-	local ok, rendered = pcall(lyaml.dump, { doc })
-	if not ok or not rendered then
+	if not dump_yaml(output_path, doc) then
 		io.stderr:write("dump_failed\n")
 		return false
 	end
-	write_file(output_path, rendered)
 	return true
 end
 
@@ -1371,12 +2093,10 @@ end
 
 local function generate_shadowsocks_server(sid, output_path)
 	local doc = build_shadowsocks_server_doc(sid)
-	local ok, rendered = pcall(lyaml.dump, { doc })
-	if not ok or not rendered then
+	if not dump_yaml(output_path, doc) then
 		io.stderr:write("dump_failed\n")
 		return false
 	end
-	write_file(output_path, rendered)
 	return true
 end
 
@@ -1451,14 +2171,14 @@ local function generate_mihomo_listener(sid, output_path)
 		io.stderr:write("unsupported_listener\n")
 		return false
 	end
-	local ok, rendered = pcall(lyaml.dump, { doc })
-	if not ok or not rendered then
+	if not dump_yaml(output_path, doc) then
 		io.stderr:write("dump_failed\n")
 		return false
 	end
-	write_file(output_path, rendered)
 	return true
 end
+
+-- ==================== 命令行入口 ====================
 
 local action = arg[1]
 if action == "validate" then
