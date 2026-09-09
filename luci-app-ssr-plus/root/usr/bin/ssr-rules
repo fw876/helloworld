@@ -47,6 +47,8 @@ CHECK_STATUS=0
 RESTORE_RULES=0
 FLUSH_RULES=0
 CLEANUP_PERSISTENCE=0
+ENABLE_FAKE_IP=0
+ACTUAL_CORE=""
 # ASCII code for SSRP.Use whatever,just not the same.
 FWMARK="0x53535250"
 
@@ -69,6 +71,9 @@ usage() {
 		    -l <local_port>         port number of shadowsocksr local server
 		    -S <server_ip>          ip address of shadowsocksr remote UDP server
 		    -L <local_port>         port number of shadowsocksr local UDP server
+		    -T <core_type>          actual core type (mihomo/xray/sslocal/ssr-redir/...)
+		                            used to decide tproxy port:
+		                            mihomo -> local_port + 1, others -> local_port
 		    -i <ip_list_file>       a file content is bypassed ip list
 		    -a <lan_ips>            lan ip of access control, need a prefix to
 		                            define access control mode
@@ -84,14 +89,15 @@ usage() {
 		    -m <Interface>          Interface name
 		    -I <ip_list_file>       a file content is bypassed shunt ip list
 		    -e <extra_options>      extra options for iptables
+		    -E <0|1>				enable_fake_ip status
 		    -o                      apply the rules to the OUTPUT chain
 		    -O                      apply the global rules to the OUTPUT chain
-			    -u                      enable udprelay mode, TPROXY is required
-			    -U                      enable udprelay mode, using different IP
-			                            and ports for TCP and UDP
-			    -y                      disable all auxiliary UDP rules when UDP
-			                            transparent proxy is unavailable
-			    -f                      flush the rules
+		    -u                      enable udprelay mode, TPROXY is required
+		    -U                      enable udprelay mode, using different IP
+			                        and ports for TCP and UDP
+		    -y                      disable all auxiliary UDP rules when UDP
+			                        transparent proxy is unavailable
+		    -f                      flush the rules
 		    -g                      gfwlist mode
 		    -r                      router mode
 		    -z                      all mode
@@ -115,8 +121,18 @@ loger() {
 }
 
 # IP list normalization function (for comparison)
+# NOTE: preserves token order after sort, only for plain IP lists.
 normalize_ip_list() {
 	echo "$1" | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//'
+}
+
+# Normalize LAN_AC_IP: format is "<w|b><ip> [ip ...]".
+# The prefix MUST stay at the head, so we sort only the IP part.
+normalize_lan_ac_ip() {
+	local prefix="${1%"${1#?}"}"   # first char (w/b/W/B)
+	local rest="${1#?}"            # remaining IPs
+	[ -z "$prefix" ] && { echo ""; return; }
+	echo "${prefix}$(echo "$rest" | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//')"
 }
 
 # Check if IP list has changed
@@ -233,6 +249,18 @@ cleanup_persistence_files() {
 		loger 5 "Removed xhttp hash file: /tmp/.last_xhttp_hash"
 	fi
 
+	# Remove Fake_IP Mode state file
+	if [ -f "$ENABLE_FAKE_IP_STATE_FILE" ]; then
+		rm -f "$ENABLE_FAKE_IP_STATE_FILE" 2>/dev/null
+		loger 5 "Removed Fake_IP Mode state file: $ENABLE_FAKE_IP_STATE_FILE"
+	fi
+
+	# Remove ACTUAL_CORE state file
+	if [ -f "$ACTUAL_CORE_STATE_FILE" ]; then
+		rm -f "$ACTUAL_CORE_STATE_FILE" 2>/dev/null
+		loger 5 "Removed ACTUAL_CORE state file: $ACTUAL_CORE_STATE_FILE"
+	fi
+
 	loger 5 "Persistence cleanup completed"
 	return 0
 }
@@ -270,6 +298,10 @@ flush_nftables() {
 
 	# Delete ip ss_spec_mangle table (if exists)
 	if $NFT list table ip ss_spec_mangle >/dev/null 2>&1; then
+		# Delete output chain
+		$NFT flush chain ip ss_spec_mangle output 2>/dev/null
+		$NFT delete chain ip ss_spec_mangle output 2>/dev/null
+
 		# Delete all chains
 		local CHAINS=$($NFT list table ip ss_spec_mangle | awk '/chain [a-zA-Z0-9_-]+/ {print $2}' | sort -u)
 		for chain in $CHAINS; do
@@ -283,8 +315,37 @@ flush_nftables() {
 			$NFT flush set ip ss_spec_mangle $setname 2>/dev/null
 			$NFT delete set ip ss_spec_mangle $setname 2>/dev/null
 		done
+
 		# Delete entire table
 		$NFT delete table ip ss_spec_mangle 2>/dev/null
+	fi
+
+	# Delete ip ss_spec_filter table (if exists)
+	if $NFT list table ip ss_spec_filter >/dev/null 2>&1; then
+		# Delete forward chain
+		$NFT flush chain ip ss_spec_filter forward 2>/dev/null
+		$NFT delete chain ip ss_spec_filter forward 2>/dev/null
+
+		# Delete output chain
+		$NFT flush chain ip ss_spec_filter output 2>/dev/null
+		$NFT delete chain ip ss_spec_filter output 2>/dev/null
+
+		# Delete all chains
+		local CHAINS=$($NFT list table ip ss_spec_filter | awk '/chain [a-zA-Z0-9_-]+/ {print $2}' | sort -u)
+		for chain in $CHAINS; do
+			$NFT flush chain ip ss_spec_filter $chain 2>/dev/null
+			$NFT delete chain ip ss_spec_filter $chain 2>/dev/null
+		done
+
+		# Delete all sets
+		local SETS=$($NFT list table ip ss_spec_filter | awk '/set [a-zA-Z0-9_-]+/ {print $2}' | sort -u)
+		for setname in $SETS; do
+			$NFT flush set ip ss_spec_filter $setname 2>/dev/null
+			$NFT delete set ip ss_spec_filter $setname 2>/dev/null
+		done
+
+		# Delete entire table
+		$NFT delete table ip ss_spec_filter 2>/dev/null
 	fi
 
 	# Delete policy routing mark rules
@@ -300,6 +361,7 @@ flush_nftables() {
 			china fplan bplan gmlan whitelist whitelist_domain blacklist gfwlist music; do
 		$NFT delete set inet ss_spec $setname 2>/dev/null
 		$NFT delete set ip ss_spec_mangle $setname 2>/dev/null
+		$NFT delete set ip ss_spec_filter $setname 2>/dev/null 
 	done
 
 	# Reset firewall include file
@@ -317,25 +379,74 @@ flush_nftables() {
 
 flush_iptables_legacy() {
 	flush_iptables() {
-		local ipt="iptables -t $1"
-		local DAT=$(iptables-save -t $1)
-		eval $(echo "$DAT" | grep "$TAG" | sed -e 's/^-A/$ipt -D/' -e 's/$/;/')
-		for chain in $(echo "$DAT" | awk '/^:SS_SPEC/{print $1}'); do
-			$ipt -F ${chain:1} 2>/dev/null && $ipt -X ${chain:1}
+		local table=$1
+		local ipt="iptables -t $table"
+		local DAT
+
+		DAT=$(iptables-save -t $table 2>/dev/null)
+
+		[ -z "$DAT" ] && return 0
+
+		# 1. 解除所有引用 SS_SPEC* 链的规则
+		echo "$DAT" | grep -E "^-A .*SS_SPEC" | while read -r line; do
+			local chain rule
+			chain=$(echo "$line" | awk '{print $2}')
+			rule=$(echo "$line" | sed 's/^-A [^ ]* //')
+			[ -n "$chain" ] && [ -n "$rule" ] && \
+				eval "$ipt -D \"$chain\" $rule 2>/dev/null"
 		done
+
+		# 2. 删除带 TAG 或 mark 的残留规则（同样加上 eval）
+		echo "$DAT" | grep -E "^-A " | grep -E "$TAG|-m mark|--mark" | while read -r line; do
+			local chain rule
+			chain=$(echo "$line" | awk '{print $2}')
+			rule=$(echo "$line" | sed 's/^-A [^ ]* //')
+			[ -n "$chain" ] && [ -n "$rule" ] && \
+				eval "$ipt -D \"$chain\" $rule 2>/dev/null"
+		done
+
+		# 3. 删除 OUTPUT 链上针对 QUIC 的 MARK 规则
+		echo "$DAT" | grep -E "^-A OUTPUT .*--set-xmark.*${FWMARK}" | while read -r line; do
+			local chain rule
+			chain=$(echo "$line" | awk '{print $2}')
+			rule=$(echo "$line" | sed 's/^-A [^ ]* //')
+			[ -n "$chain" ] && [ -n "$rule" ] && \
+				eval "$ipt -D \"$chain\" $rule 2>/dev/null"
+		done
+
+		# 4. 提取所有以 SS_SPEC 开头的自定义链
+		local chains
+		chains=$(echo "$DAT" | awk '/^:SS_SPEC/{sub(/^:/,"",$1); print $1}')
+
+		# 5. 清空并彻底删除 SS_SPEC* 自定义链
+		for chain in $chains; do
+			$ipt -F "$chain" 2>/dev/null
+			$ipt -X "$chain" 2>/dev/null
+		done
+
+		return 0
 	}
+
+	# 依次对 nat 和 mangle 表执行清理
 	flush_iptables nat
 	flush_iptables mangle
-	if ip rule show | grep -Eq "fwmark ${FWMARK}.*lookup 999"; then
+	flush_iptables filter
+
+	# 清理策略路由与路由表
+	if ip rule show | grep -Eiq "fwmark ${FWMARK}.*lookup 999"; then
 		ip rule del fwmark ${FWMARK} table 999 2>/dev/null
 	fi
 	if ip route show table 999 | grep -Eq "^local.*dev lo"; then
 		ip route del local 0.0.0.0/0 dev lo table 999 2>/dev/null
 	fi
+
+	# 清理 IPSET 集合（先 -F 清空，后 -X 销毁）
 	for setname in ss_spec_lan_ac ss_spec_wan_ac ssr_gen_router \
 			china fplan bplan gmlan whitelist blacklist gfwlist music; do
+		ipset -F $setname 2>/dev/null
 		ipset -X $setname 2>/dev/null
 	done
+
 	[ -n "$FWI" ] && echo '#!/bin/sh' >$FWI
 	return 0
 }
@@ -378,7 +489,9 @@ ipset_nft() {
 
 	# Bulk import xhttp ip list into nft whitelist (server + shunt)
 	if [ -f "${xhttp_ip:=/etc/ssrplus/xhttp_address.txt}" ]; then
-		$NFT add element inet ss_spec whitelist "{ $(tr '\n' ',' < "${xhttp_ip}" | sed 's/,$//') }" 2>/dev/null
+		local xhttp_ips
+		xhttp_ips=$(grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}' "${xhttp_ip}" | tr '\n' ',' | sed 's/,$//')
+		[ -n "$xhttp_ips" ] && $NFT add element inet ss_spec whitelist "{ $xhttp_ips }" 2>/dev/null
 	fi
 
 	# Add IP addresses to sets
@@ -408,20 +521,21 @@ ipset_nft() {
 
 	# Add basic rules
 	# BASIC RULES (exceptions first) — TCP
+	$NFT add rule inet ss_spec ss_spec_wan_ac meta mark 255 return 2>/dev/null
 	$NFT add rule inet ss_spec ss_spec_wan_ac meta l4proto tcp tcp dport 53 ip daddr 127.0.0.0/8 return
 	[ -n "$server" ] && $NFT add rule inet ss_spec ss_spec_wan_ac meta l4proto tcp tcp dport != 53 ip daddr "$server" return
 
 	# Access control: blacklist -> whitelist -> fplan/bplan — TCP
-	$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @blacklist jump ss_spec_wan_fw
 	$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @whitelist return
 	$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @whitelist_domain return
-	$NFT add rule inet ss_spec ss_spec_wan_ac ip saddr @fplan jump ss_spec_wan_fw
-	$NFT add rule inet ss_spec ss_spec_wan_ac ip saddr @bplan return
-
 	# Music unlocking support
 	if $NFT list set inet ss_spec music >/dev/null 2>&1; then
 		$NFT add rule inet ss_spec ss_spec_wan_ac meta l4proto tcp ip daddr @music return
 	fi
+	$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @blacklist jump ss_spec_wan_fw
+	$NFT add rule inet ss_spec ss_spec_wan_ac ip saddr @fplan jump ss_spec_wan_fw
+	$NFT add rule inet ss_spec ss_spec_wan_ac ip saddr @bplan return
+
 
 	# Set up mode-specific rules
 	case "$RUNMODE" in
@@ -466,10 +580,33 @@ ipset_iptables() {
 
 	$IPT -N SS_SPEC_WAN_AC 2>/dev/null
 	$IPT -F SS_SPEC_WAN_AC
-	$IPT -I SS_SPEC_WAN_AC -m mark --mark 255 -j RETURN
 
-	$IPT -I SS_SPEC_WAN_AC -p tcp --dport 53 -d 127.0.0.0/8 -j RETURN
-	[ -n "$server" ] && $IPT -I SS_SPEC_WAN_AC -p tcp ! --dport 53 -d "$server" -j RETURN
+	$IPT -A SS_SPEC_WAN_AC -m mark --mark 255 -j RETURN
+
+	$IPT -A SS_SPEC_WAN_AC -p tcp --dport 53 -d 127.0.0.0/8 -j RETURN
+	[ -n "$server" ] && $IPT -A SS_SPEC_WAN_AC -p tcp ! --dport 53 -d "$server" -j RETURN
+
+	ipset -N whitelist hash:net 2>/dev/null
+	if [ -f "${xhttp_ip:=/etc/ssrplus/xhttp_address.txt}" ]; then
+		while IFS= read -r ip; do
+			[ -n "$ip" ] && ipset add whitelist "$ip" -exist
+		done < "$xhttp_ip"
+	fi
+	for ip in $WAN_BP_IP; do ipset -! add whitelist "$ip"; done
+	$IPT -A SS_SPEC_WAN_AC -m set --match-set whitelist dst -j RETURN
+	if [ $(ipset list music -name -quiet | grep music) ]; then
+		$IPT -A SS_SPEC_WAN_AC -m set --match-set music dst -j RETURN 2>/dev/null
+	fi
+	ipset -N blacklist hash:net 2>/dev/null
+	for ip in $WAN_FW_IP; do ipset -! add blacklist "$ip"; done
+	$IPT -A SS_SPEC_WAN_AC -m set --match-set blacklist dst -j SS_SPEC_WAN_FW
+	ipset -N fplan hash:net 2>/dev/null
+	for ip in $LAN_FP_IP; do ipset -! add fplan "$ip"; done
+	$IPT -A SS_SPEC_WAN_AC -m set --match-set fplan src -j SS_SPEC_WAN_FW
+
+	ipset -N bplan hash:net 2>/dev/null
+	for ip in $LAN_BP_IP; do ipset -! add bplan "$ip"; done
+	$IPT -A SS_SPEC_WAN_AC -m set --match-set bplan src -j RETURN
 
 	ipset -N gmlan hash:net 2>/dev/null
 	for ip in $LAN_GM_IP; do ipset -! add gmlan "$ip"; done
@@ -496,31 +633,6 @@ ipset_iptables() {
 		;;
 	esac
 
-	ipset -N fplan hash:net 2>/dev/null
-	for ip in $LAN_FP_IP; do ipset -! add fplan "$ip"; done
-	$IPT -I SS_SPEC_WAN_AC -m set --match-set fplan src -j SS_SPEC_WAN_FW
-
-	ipset -N bplan hash:net 2>/dev/null
-	for ip in $LAN_BP_IP; do ipset -! add bplan "$ip"; done
-	$IPT -I SS_SPEC_WAN_AC -m set --match-set bplan src -j RETURN
-
-	ipset -N whitelist hash:net 2>/dev/null
-	if [ -f "${xhttp_ip:=/etc/ssrplus/xhttp_address.txt}" ]; then
-		while IFS= read -r ip; do
-			[ -n "$ip" ] && ipset add whitelist "$ip" -exist
-		done < "$xhttp_ip"
-	fi
-
-	ipset -N blacklist hash:net 2>/dev/null
-	$IPT -I SS_SPEC_WAN_AC -m set --match-set blacklist dst -j SS_SPEC_WAN_FW
-	$IPT -I SS_SPEC_WAN_AC -m set --match-set whitelist dst -j RETURN
-
-	if [ $(ipset list music -name -quiet | grep music) ]; then
-		$IPT -I SS_SPEC_WAN_AC -m set --match-set music dst -j RETURN 2>/dev/null
-	fi
-
-	for ip in $WAN_BP_IP; do ipset -! add whitelist "$ip"; done
-	for ip in $WAN_FW_IP; do ipset -! add blacklist "$ip"; done
 	return $?
 }
 
@@ -534,24 +646,34 @@ fw_rule() {
 }
 
 fw_rule_nft() {
+	# Always flush the chain first to avoid accumulating duplicate
+	# rules when grep below cannot match nft's reformatted output.
+	if ! $NFT list chain inet ss_spec ss_spec_wan_fw >/dev/null 2>&1; then
+		$NFT add chain inet ss_spec ss_spec_wan_fw 2>/dev/null
+	fi
+	$NFT flush chain inet ss_spec ss_spec_wan_fw 2>/dev/null
+
+	# NOTE: Fake-IP TCP redirect is intentionally NOT added here.
+	# It is handled earlier in ac_rule_nft() (ss_spec_prerouting),
+	# so a rule here would never match and is redundant.
+
 	# redirect/translation: when PROXY_PORTS present, redirect those tcp ports to local_port
 	if [ -n "$PROXY_PORTS" ]; then
 		PORTS_ARGS=$(echo "$PROXY_PORTS" | sed 's/-m multiport --dports //')
 		if [ -n "$PORTS_ARGS" ]; then
-			TCP_EXT_ARGS="meta l4proto tcp tcp dport { $PORTS_ARGS }"
 			TCP_RULE="meta l4proto tcp tcp dport { $PORTS_ARGS } counter redirect to :$local_port"
+		else
+			TCP_RULE="meta l4proto tcp counter redirect to :$local_port"
 		fi
 	else
-		TCP_EXT_ARGS="meta l4proto tcp"
 		# default: redirect everything except ssh(22)
 		TCP_RULE="meta l4proto tcp tcp dport != 22 counter redirect to :$local_port"
 	fi
+
 	# add TCP rule to fw chain if not exists (use -F exact match)
-	if ! $NFT list chain inet ss_spec ss_spec_wan_fw 2>/dev/null | grep -F -- "$TCP_RULE" >/dev/null 2>&1; then
-		if ! $NFT add rule inet ss_spec ss_spec_wan_fw $TCP_RULE 2>/dev/null; then
-			loger 3 "Can't redirect TCP, please check nftables."
-			return 1
-		fi
+	if ! $NFT add rule inet ss_spec ss_spec_wan_fw $TCP_RULE 2>/dev/null; then
+		loger 3 "Can't redirect TCP, please check nftables."
+		return 1
 	fi
 
 	return $?
@@ -563,13 +685,17 @@ fw_rule_iptables() {
 	$IPT -F SS_SPEC_WAN_FW
 
 	for net in \
-		0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 \
+		0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 \
 		172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4
 	do
 		$IPT -A SS_SPEC_WAN_FW -d "$net" -j RETURN
 	done
 
-	$IPT -A SS_SPEC_WAN_FW -p tcp $PROXY_PORTS -j REDIRECT --to-ports "$local_port" 2>/dev/null || {
+	if [ "$ENABLE_FAKE_IP" = "1" ]; then
+		$IPT -A SS_SPEC_WAN_FW -d 198.18.0.0/16 -p tcp -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+	fi
+
+	$IPT -A SS_SPEC_WAN_FW -p tcp $PROXY_PORTS -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG" 2>/dev/null || {
 		loger 3 "Can't redirect TCP, please check the iptables."
 		exit 1
 	}
@@ -622,9 +748,36 @@ ac_rule_nft() {
 	$NFT flush chain inet ss_spec ss_spec_prerouting 2>/dev/null
 	$NFT add rule inet ss_spec ss_spec_prerouting meta nfproto ipv6 return
 
+	# Fake-IP 重定向处理 (引入 Interface 匹配，防止 WAN 口越权)
+	if [ "$ENABLE_FAKE_IP" = "1" ]; then
+		if [ -z "$Interface" ]; then
+			if [ -n "$MATCH_SET" ]; then
+				$NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+				# $NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+			else
+				$NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+				# $NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+			fi
+		else
+			for name in $Interface; do
+				local IFNAME=$(uci -P /var/state get network."$name".ifname 2>/dev/null)
+				[ -z "$IFNAME" ] && IFNAME=$(uci -P /var/state get network."$name".device 2>/dev/null)
+				if [ -n "$IFNAME" ]; then
+					if [ -n "$MATCH_SET" ]; then
+						$NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+						# $NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+					else
+						$NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+						# $NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+					fi
+				fi
+			done
+		fi
+	fi
+
 	# Exclude special local addresses
 	if $NFT list chain inet ss_spec ss_spec_prerouting >/dev/null 2>&1; then
-		for net in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+		for net in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
 			$NFT add rule inet ss_spec ss_spec_prerouting ip daddr $net return 2>/dev/null
 		done
 	fi
@@ -635,16 +788,6 @@ ac_rule_nft() {
 	#		$NFT add rule inet ss_spec ss_spec_prerouting ip6 daddr $net return 2>/dev/null
 	#	done
 	#fi
-
-	# Build a rule in the prerouting hook chain that jumps to business chain with conditions
-	if [ -n "$PROXY_PORTS" ]; then
-		PORTS_ARGS=$(echo "$PROXY_PORTS" | sed 's/-m multiport --dports //')
-		if [ -n "$PORTS_ARGS" ]; then
-			TCP_EXT_ARGS="meta l4proto tcp tcp dport { $PORTS_ARGS }"
-		fi
-	else
-		TCP_EXT_ARGS="meta l4proto tcp"
-	fi
 
 	# Block UDP port 443 when TPROXY not Enable
 	if [ -z "$TPROXY" ] && [ "$DISABLE_UDP_RULES" != "1" ]; then
@@ -669,6 +812,17 @@ ac_rule_nft() {
 			done
 		fi
 	fi
+
+	# Build a rule in the prerouting hook chain that jumps to business chain with conditions
+	if [ -n "$PROXY_PORTS" ]; then
+		PORTS_ARGS=$(echo "$PROXY_PORTS" | sed 's/-m multiport --dports //')
+		if [ -n "$PORTS_ARGS" ]; then
+			TCP_EXT_ARGS="meta l4proto tcp tcp dport { $PORTS_ARGS }"
+		fi
+	else
+		TCP_EXT_ARGS="meta l4proto tcp"
+	fi
+
 	if [ -z "$Interface" ]; then
 		# generic prerouting jump already exists (see ipset_nft), but if we have MATCH_SET_CONDITION we add a more specific rule
 		if [ -n "$MATCH_SET" ]; then
@@ -694,16 +848,21 @@ ac_rule_nft() {
 	case "$OUTPUT" in
 	1)
 		# Create ss_spec_output tcp chain
-			if ! $NFT list chain inet ss_spec ss_spec_output >/dev/null 2>&1; then
-				$NFT add chain inet ss_spec ss_spec_output '{ type nat hook output priority 0; policy accept; }'
-			fi
-			$NFT flush chain inet ss_spec ss_spec_output 2>/dev/null
-			$NFT add rule inet ss_spec ss_spec_output meta nfproto ipv6 return
-			$NFT add rule inet ss_spec ss_spec_output meta mark 255 return 2>/dev/null
+		if ! $NFT list chain inet ss_spec ss_spec_output >/dev/null 2>&1; then
+			$NFT add chain inet ss_spec ss_spec_output '{ type nat hook output priority 0; policy accept; }'
+		fi
+		$NFT flush chain inet ss_spec ss_spec_output 2>/dev/null
+		$NFT add rule inet ss_spec ss_spec_output meta nfproto ipv6 return
+		$NFT add rule inet ss_spec ss_spec_output meta mark 255 return 2>/dev/null
+
+		if [ "$ENABLE_FAKE_IP" = "1" ]; then
+			$NFT add rule inet ss_spec ss_spec_output ip daddr 198.18.0.0/16 meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+			# $NFT add rule inet ss_spec ss_spec_output ip daddr 198.18.0.0/16 meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+		fi
 		
 		# Exclude special local addresses
 		if $NFT list chain inet ss_spec ss_spec_output >/dev/null 2>&1; then
-			for net in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+			for net in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
 				$NFT add rule inet ss_spec ss_spec_output ip daddr $net return 2>/dev/null
 			done
 		fi
@@ -720,16 +879,21 @@ ac_rule_nft() {
 		;;
 	2)
 		# Create ss_spec_output tcp chain
-			if ! $NFT list chain inet ss_spec ss_spec_output >/dev/null 2>&1; then
-				$NFT add chain inet ss_spec ss_spec_output '{ type nat hook output priority 0; policy accept; }'
-			fi
-			$NFT flush chain inet ss_spec ss_spec_output 2>/dev/null
-			$NFT add rule inet ss_spec ss_spec_output meta nfproto ipv6 return
-			$NFT add rule inet ss_spec ss_spec_output meta mark 255 return 2>/dev/null
+		if ! $NFT list chain inet ss_spec ss_spec_output >/dev/null 2>&1; then
+			$NFT add chain inet ss_spec ss_spec_output '{ type nat hook output priority 0; policy accept; }'
+		fi
+		$NFT flush chain inet ss_spec ss_spec_output 2>/dev/null
+		$NFT add rule inet ss_spec ss_spec_output meta nfproto ipv6 return
+		$NFT add rule inet ss_spec ss_spec_output meta mark 255 return 2>/dev/null
+
+		if [ "$ENABLE_FAKE_IP" = "1" ]; then
+			$NFT add rule inet ss_spec ss_spec_output ip daddr 198.18.0.0/16 meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+			# $NFT add rule inet ss_spec ss_spec_output ip daddr 198.18.0.0/16 meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+		fi
 		
 		# Exclude special local addresses
 		if $NFT list chain inet ss_spec ss_spec_output >/dev/null 2>&1; then
-			for net in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+			for net in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
 				$NFT add rule inet ss_spec ss_spec_output ip daddr $net return 2>/dev/null
 			done
 		fi
@@ -739,12 +903,12 @@ ac_rule_nft() {
 		for ip in $(gen_spec_iplist); do
 			[ -n "$ip" ] && $NFT add element inet ss_spec ssr_gen_router "{ $ip }" 2>/dev/null
 		done
-			if ! $NFT list chain inet ss_spec ss_spec_router >/dev/null 2>&1; then
-				$NFT add chain inet ss_spec ss_spec_router 2>/dev/null
-			fi
-			$NFT flush chain inet ss_spec ss_spec_router 2>/dev/null
-			$NFT add rule inet ss_spec ss_spec_router meta mark 255 return 2>/dev/null
-			$NFT add rule inet ss_spec ss_spec_router ip daddr @ssr_gen_router return 2>/dev/null
+		if ! $NFT list chain inet ss_spec ss_spec_router >/dev/null 2>&1; then
+			$NFT add chain inet ss_spec ss_spec_router 2>/dev/null
+		fi
+		$NFT flush chain inet ss_spec ss_spec_router 2>/dev/null
+		$NFT add rule inet ss_spec ss_spec_router meta mark 255 return 2>/dev/null
+		$NFT add rule inet ss_spec ss_spec_router ip daddr @ssr_gen_router return 2>/dev/null
 		$NFT add rule inet ss_spec ss_spec_router jump ss_spec_wan_fw 2>/dev/null
 		$NFT add rule inet ss_spec ss_spec_output $TCP_EXT_ARGS jump ss_spec_router comment "\"$TAG\"" 2>/dev/null
 		;;
@@ -767,11 +931,38 @@ ac_rule_iptables() {
 			return 2
 			;;
 		esac
+
+		local ip_list="${LAN_AC_IP#?}"
+		ipset -! create ss_spec_lan_ac hash:net 2>/dev/null
+		ipset flush ss_spec_lan_ac 2>/dev/null
+		if [ -n "$ip_list" ]; then
+			for ip in $ip_list; do
+				ipset add ss_spec_lan_ac "$ip" 2>/dev/null
+			done
+		fi
 	fi
-	ipset -! -R <<-EOF || return 1
-		create ss_spec_lan_ac hash:net
-		$(for ip in ${LAN_AC_IP#?}; do echo "add ss_spec_lan_ac $ip"; done)
-	EOF
+
+	# 2. PREROUTING 链处理
+	if [ -z "$Interface" ]; then
+		# Global rules
+		if [ -n "$MATCH_SET" ]; then
+			$IPT -I PREROUTING 1 -p tcp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
+		else
+			$IPT -I PREROUTING 1 -p tcp $EXT_ARGS -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
+		fi
+	else
+		for name in $Interface; do
+			local IFNAME=$(uci -P /var/state get network."$name".ifname 2>/dev/null)
+			[ -z "$IFNAME" ] && IFNAME=$(uci -P /var/state get network."$name".device 2>/dev/null)
+			if [ -n "$IFNAME" ]; then
+				if [ -n "$MATCH_SET" ]; then
+					$IPT -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p tcp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
+				else
+					$IPT -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p tcp $EXT_ARGS -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
+				fi
+			fi
+		done
+	fi
 
 	# Block UDP port 443 when TPROXY not Enable
 	if [ -z "$TPROXY" ] && [ "$DISABLE_UDP_RULES" != "1" ]; then
@@ -797,52 +988,81 @@ ac_rule_iptables() {
 			done
 		fi
 	fi
-	if [ -z "$Interface" ]; then
-		# Global rules
-		if [ -n "$MATCH_SET" ]; then
-			$IPT -I PREROUTING 1 -p tcp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
-		else
-			$IPT -I PREROUTING 1 -p tcp $EXT_ARGS -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
-		fi
-	else
-		for name in $Interface; do
-			local IFNAME=$(uci -P /var/state get network."$name".ifname 2>/dev/null)
-			[ -z "$IFNAME" ] && IFNAME=$(uci -P /var/state get network."$name".device 2>/dev/null)
-			if [ -n "$IFNAME" ]; then
-				if [ -n "$MATCH_SET" ]; then
-					$IPT -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p tcp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
-				else
-					$IPT -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p tcp $EXT_ARGS -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
-				fi
+
+	# 拦截 Fake-IP 流量 (198.18.0.0/16)，受 Interface 和 LAN_AC 控制
+	if [ "$ENABLE_FAKE_IP" = "1" ]; then
+		if [ -z "$Interface" ]; then
+			if [ -n "$MATCH_SET" ]; then
+				$IPT -I PREROUTING 1 -p tcp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+				# $IPT -I PREROUTING 2 -p udp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+			else
+				$IPT -I PREROUTING 1 -p tcp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+				# $IPT -I PREROUTING 2 -p udp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
 			fi
-		done
+		else
+			for name in $Interface; do
+				local IFNAME=$(uci -P /var/state get network."$name".ifname 2>/dev/null)
+				[ -z "$IFNAME" ] && IFNAME=$(uci -P /var/state get network."$name".device 2>/dev/null)
+				if [ -n "$IFNAME" ]; then
+					if [ -n "$MATCH_SET" ]; then
+						$IPT -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p tcp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+						# $IPT -I PREROUTING 2 ${IFNAME:+-i $IFNAME} -p udp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+					else
+						$IPT -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p tcp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+						# $IPT -I PREROUTING 2 ${IFNAME:+-i $IFNAME} -p udp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+					fi
+				fi
+			done
+		fi
 	fi
 
 	case "$OUTPUT" in
 	1)
-		$IPT -I OUTPUT 1 -p tcp $EXT_ARGS -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
+		# fake-ip first
+		if [ "$ENABLE_FAKE_IP" = "1" ]; then
+			$IPT -I OUTPUT 1 -m mark --mark 255 -j RETURN 2>/dev/null
+			$IPT -I OUTPUT 2 -p tcp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+			# $IPT -I OUTPUT 3 -p udp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+			$IPT -I OUTPUT 3 -p tcp $EXT_ARGS -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
+		else
+			$IPT -I OUTPUT 1 -m mark --mark 255 -j RETURN 2>/dev/null
+			$IPT -I OUTPUT 2 -p tcp $EXT_ARGS -m comment --comment "$TAG" -j SS_SPEC_WAN_AC
+		fi
 		;;
 	2)
 		ipset -! -R <<-EOF || return 1
 			create ssr_gen_router hash:net
 			$(gen_spec_iplist | sed -e "s/^/add ssr_gen_router /")
 		EOF
-			$IPT -N SS_SPEC_ROUTER 2>/dev/null
-			$IPT -F SS_SPEC_ROUTER 2>/dev/null
-			$IPT -A SS_SPEC_ROUTER -m mark --mark 255 -j RETURN && \
-			$IPT -A SS_SPEC_ROUTER -m set --match-set ssr_gen_router dst -j RETURN && \
-			$IPT -A SS_SPEC_ROUTER -j SS_SPEC_WAN_FW
-		$IPT -I OUTPUT 1 -p tcp -m comment --comment "$TAG" -j SS_SPEC_ROUTER
+		$IPT -N SS_SPEC_ROUTER 2>/dev/null
+		$IPT -F SS_SPEC_ROUTER 2>/dev/null
+		# $IPT -A SS_SPEC_ROUTER -m mark --mark 255 -j RETURN
+		$IPT -A SS_SPEC_ROUTER -m set --match-set ssr_gen_router dst -j RETURN
+		$IPT -A SS_SPEC_ROUTER -j SS_SPEC_WAN_FW
+		# fake-ip first
+		if [ "$ENABLE_FAKE_IP" = "1" ]; then
+			$IPT -I OUTPUT 1 -m mark --mark 255 -j RETURN 2>/dev/null
+			$IPT -I OUTPUT 2 -p tcp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+			# $IPT -I OUTPUT 3 -p udp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+			$IPT -I OUTPUT 3 -p tcp -m comment --comment "$TAG" -j SS_SPEC_ROUTER
+		else
+			$IPT -I OUTPUT 1 -m mark --mark 255 -j RETURN 2>/dev/null
+			$IPT -I OUTPUT 2 -p tcp -m comment --comment "$TAG" -j SS_SPEC_ROUTER
+		fi
 		;;
 	esac
 	return $?
 }
 
 tp_rule() {
-	[ -n "$TPROXY" ] || return 0
+	if [ -z "$TPROXY" ] && [ "$DISABLE_UDP_RULES" != "1" ]; then
+		return 0
+	fi
 
 	# Apply sysctl settings for TPROXY
-	set_tproxy_sysctl
+	if [ -n "$TPROXY" ] && [ "$DISABLE_UDP_RULES" != "1" ]; then
+		set_tproxy_sysctl
+	fi
 
 	if [ "$USE_NFT" = "1" ]; then
 		tp_rule_nft
@@ -853,6 +1073,116 @@ tp_rule() {
 }
 
 tp_rule_nft() {
+	# ============================================================
+	# DISABLE_UDP_RULES=1：纯 TCP 单节点场景
+	# 非 china UDP 80、443 直接 DROP，强制 QUIC 回落 TCP
+	# ============================================================
+	if [ -z "$TPROXY" ] || [ "$DISABLE_UDP_RULES" = "1" ]; then
+		if ! $NFT list table ip ss_spec_filter >/dev/null 2>&1; then
+			$NFT add table ip ss_spec_filter 2>/dev/null
+		fi
+
+		# 创建 china / whitelist 集合
+		for setname in china whitelist; do
+			if ! $NFT list set ip ss_spec_filter $setname >/dev/null 2>&1; then
+				$NFT add set ip ss_spec_filter $setname '{ type ipv4_addr; flags interval; auto-merge; }' 2>/dev/null
+			else
+				$NFT flush set ip ss_spec_filter $setname 2>/dev/null
+			fi
+		done
+
+		if [ -f "$IGNORE_LIST" ]; then
+			{
+				echo "add element ip ss_spec_filter china {"
+				grep -vE '^\s*#|^\s*$' "$IGNORE_LIST" | sed 's/^/  /;s/$/,/'
+				echo "}"
+			} | $NFT -f - 2>/dev/null
+		fi
+
+		# xhttp 地址
+		local xhttp_file="${xhttp_ip:=/etc/ssrplus/xhttp_address.txt}"
+		if [ -s "$xhttp_file" ]; then
+			local xhttp_content=$(tr '\n' ',' < "$xhttp_file" | sed 's/,$//')
+			[ -n "$xhttp_content" ] && $NFT add element ip ss_spec_filter whitelist "{ $xhttp_content }" 2>/dev/null
+		fi
+
+		# 同步 whitelist 内容
+		for ip in $WAN_BP_IP; do
+			[ -n "$ip" ] && $NFT add element ip ss_spec_filter whitelist "{ $ip }" 2>/dev/null
+		done
+		if [ -n "$SERVER" ] && [ "$server" != "$SERVER" ]; then
+			$NFT add element ip ss_spec_filter whitelist "{ $SERVER }" 2>/dev/null
+		fi
+
+		if ! $NFT list chain ip ss_spec_filter forward >/dev/null 2>&1; then
+			$NFT add chain ip ss_spec_filter forward '{ type filter hook forward priority filter; policy accept; }' 2>/dev/null
+		else
+			$NFT flush chain ip ss_spec_filter forward 2>/dev/null
+		fi
+
+		# 放行代理内核程序自身发出的数据包 (mark 255)
+		$NFT add rule ip ss_spec_filter forward meta mark 255 counter return comment "\"$TAG\"" 2>/dev/null
+
+		# 放行 SERVER IP
+		if [ -n "$server" ]; then
+			$NFT add rule ip ss_spec_filter forward meta l4proto udp ip daddr "$server" counter return comment "\"$TAG\"" 2>/dev/null
+		fi
+
+		# 放行 china：国内目标直连
+		$NFT add rule ip ss_spec_filter forward meta l4proto udp ip daddr @china counter return comment "\"$TAG\"" 2>/dev/null
+
+		# 放行 whitelist：上游、DNS、订阅等直连目标
+		$NFT add rule ip ss_spec_filter forward meta l4proto udp ip daddr @whitelist counter return comment "\"$TAG\"" 2>/dev/null
+
+		# fake-ip
+		if [ "$ENABLE_FAKE_IP" = "1" ]; then
+			$NFT add rule ip ss_spec_filter forward meta l4proto udp ip daddr 198.18.0.0/16 counter return comment "\"$TAG\"" 2>/dev/null
+		fi
+
+		# 阻断 UDP 80/443，强制 QUIC 回落到 TCP
+		$NFT add rule ip ss_spec_filter forward meta l4proto udp udp dport 80 counter drop comment "\"$TAG\"" 2>/dev/null
+		$NFT add rule ip ss_spec_filter forward meta l4proto udp udp dport 443 counter drop comment "\"$TAG\"" 2>/dev/null
+
+		# 末尾 RETURN
+		$NFT add rule ip ss_spec_filter forward counter return comment "\"$TAG\"" 2>/dev/null
+
+		if [ -n "$OUTPUT" ]; then
+			if ! $NFT list chain ip ss_spec_filter output >/dev/null 2>&1; then
+				$NFT add chain ip ss_spec_filter output '{ type filter hook output priority filter; policy accept; }' 2>/dev/null
+			else
+				$NFT flush chain ip ss_spec_filter output 2>/dev/null
+			fi
+
+			# 放行代理内核自身发出的数据包 (mark 255)
+			$NFT add rule ip ss_spec_filter output meta mark 255 counter return comment "\"$TAG\"" 2>/dev/null
+
+			# 放行 SERVER IP
+			if [ -n "$server" ]; then
+				$NFT add rule ip ss_spec_filter output meta l4proto udp ip daddr "$server" counter return comment "\"$TAG\"" 2>/dev/null
+			fi
+
+			# 放行 china：国内目标直连
+			$NFT add rule ip ss_spec_filter output meta l4proto udp ip daddr @china counter return comment "\"$TAG\"" 2>/dev/null
+
+			# 放行 whitelist：上游、DNS、订阅等直连目标
+			$NFT add rule ip ss_spec_filter output meta l4proto udp ip daddr @whitelist counter return comment "\"$TAG\"" 2>/dev/null
+
+			# fake-ip：fake-ip 的 UDP 交给代理内核，不在这里 DROP
+			if [ "$ENABLE_FAKE_IP" = "1" ]; then
+				$NFT add rule ip ss_spec_filter output meta l4proto udp ip daddr 198.18.0.0/16 counter return comment "\"$TAG\"" 2>/dev/null
+			fi
+
+			# DROP 的 UDP 80/443，强制 QUIC 回落 TCP
+			$NFT add rule ip ss_spec_filter output meta l4proto udp udp dport 80 counter drop comment "\"$TAG\"" 2>/dev/null
+			$NFT add rule ip ss_spec_filter output meta l4proto udp udp dport 443 counter drop comment "\"$TAG\"" 2>/dev/null
+
+			# 末尾 RETURN
+			$NFT add rule ip ss_spec_filter output counter return comment "\"$TAG\"" 2>/dev/null
+		fi
+
+		return $?
+	fi
+
 	# set up routing table for tproxy
 	if ! ip rule show | grep -Eq "fwmark ${FWMARK}.*lookup 999"; then
 		ip rule add fwmark ${FWMARK} table 999 priority 999 2>/dev/null
@@ -868,29 +1198,29 @@ tp_rule_nft() {
 	fi
 
 	local MATCH_SET=""
+	local EXT_ARGS=""
 
 	if [ -n "$PROXY_PORTS" ]; then
-		PORTS_ARGS=$(echo "$PROXY_PORTS" | sed 's/-m multiport --dports //')
-		if [ -n "$PORTS_ARGS" ]; then
-			EXT_ARGS="udp dport { $PORTS_ARGS }"
-		else
-			EXT_ARGS=""
-		fi
+		local PORTS_ARGS=$(echo "$PROXY_PORTS" | sed 's/-m multiport --dports //')
+		[ -n "$PORTS_ARGS" ] && EXT_ARGS="udp dport { $PORTS_ARGS }"
 	fi
 
 	if [ -n "$LAN_AC_IP" ]; then
 		# Create LAN access control set if needed
+		local mode="${LAN_AC_IP:0:1}"
+		local ips="${LAN_AC_IP:1}"
+
 		if ! $NFT list set ip ss_spec_mangle ss_spec_lan_ac >/dev/null 2>&1; then
 			$NFT add set ip ss_spec_mangle ss_spec_lan_ac '{ type ipv4_addr; flags interval; auto-merge; }' 2>/dev/null
 		else
 			$NFT flush set ip ss_spec_mangle ss_spec_lan_ac 2>/dev/null
 		fi
 
-		for ip in ${LAN_AC_IP#?}; do
+		for ip in $ips; do
 			[ -n "$ip" ] && $NFT add element ip ss_spec_mangle ss_spec_lan_ac "{ $ip }" 2>/dev/null
 		done
 
-		case "${LAN_AC_IP%${LAN_AC_IP#?}}" in
+		case "$mode" in
 		w | W)
 			MATCH_SET="ip saddr @ss_spec_lan_ac"
 			;;
@@ -905,7 +1235,7 @@ tp_rule_nft() {
 	fi
 
 	# Create necessary collections
-	for setname in china gmlan fplan bplan whitelist; do
+	for setname in china gmlan fplan bplan whitelist blacklist; do
 		if ! $NFT list set ip ss_spec_mangle $setname >/dev/null 2>&1; then
 			$NFT add set ip ss_spec_mangle $setname '{ type ipv4_addr; flags interval; auto-merge; }'
 		else
@@ -918,11 +1248,6 @@ tp_rule_nft() {
 		SKIP_INET=2 /usr/share/shadowsocksr/chinaipset.sh "$IGNORE_LIST"
 	fi
 
-	# Bulk import xhttp ip list into nft whitelist (server + shunt)
-	if [ -f "${xhttp_ip:=/etc/ssrplus/xhttp_address.txt}" ]; then
-		$NFT add element ip ss_spec_mangle whitelist "{ $(tr '\n' ',' < "${xhttp_ip}" | sed 's/,$//') }" 2>/dev/null
-	fi
-
 	# use priority mangle for compatibility with other rules
 	if ! $NFT list chain ip ss_spec_mangle ss_spec_tproxy >/dev/null 2>&1; then
 		$NFT add chain ip ss_spec_mangle ss_spec_tproxy 2>/dev/null
@@ -930,9 +1255,10 @@ tp_rule_nft() {
 		$NFT flush chain ip ss_spec_mangle ss_spec_tproxy 2>/dev/null
 	fi
 
+	# Exclude special local addresses
 	if $NFT list chain ip ss_spec_mangle ss_spec_tproxy >/dev/null 2>&1; then
-		for net in 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
-			$NFT add rule ip ss_spec_mangle ss_spec_tproxy ip daddr $net return 2>/dev/null
+		for net in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+			$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip daddr $net return 2>/dev/null
 		done
 	fi
 
@@ -947,21 +1273,50 @@ tp_rule_nft() {
 	$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp dport 53 return 2>/dev/null
 
 	# avoid redirecting to udp server address
-	if [ -n "$server" ]; then
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp dport != 53 ip daddr "$server" return 2>/dev/null
-	fi
+	# if [ -n "$server" ]; then
+	# 	$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp dport != 53 ip daddr "$server" return 2>/dev/null
+	# fi
 
 	# if server != SERVER add SERVER to whitelist set (so tproxy won't touch it)
 	if [ -n "$server" ]; then
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy ip daddr "$server" return 2>/dev/null
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip daddr "$server" return 2>/dev/null
 	fi
 	if [ -n "$SERVER" ] && [ "$server" != "$SERVER" ]; then
 		$NFT add element ip ss_spec_mangle whitelist "{ $SERVER }" 2>/dev/null
 	fi
 
 	# access control and tproxy rules
+	# whitelist dst TPROXY
+	for ip in $WAN_BP_IP; do
+		[ -n "$ip" ] && $NFT add element ip ss_spec_mangle whitelist "{ $ip }" 2>/dev/null
+	done
+	# Bulk import xhttp ip list into nft whitelist (server + shunt)
+	local xhttp_file="${xhttp_ip:=/etc/ssrplus/xhttp_address.txt}"
+	if [ -s "$xhttp_file" ]; then
+		local xhttp_content=$(tr '\n' ',' < "$xhttp_file" | sed 's/,$//')
+		[ -n "$xhttp_content" ] && $NFT add element ip ss_spec_mangle whitelist "{ $xhttp_content }" 2>/dev/null
+	fi
+	$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip daddr @whitelist return 2>/dev/null
+	# bplan dst TPROXY
 	$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip saddr @bplan return 2>/dev/null
+
+	# 对 Fake-IP 进行 TPROXY 重定向 (受 LAN 访问控制限制)
+	if [ "$ENABLE_FAKE_IP" = "1" ]; then
+		if [ -n "$MATCH_SET" ]; then
+			$NFT add rule ip ss_spec_mangle ss_spec_tproxy ip daddr 198.18.0.0/16 meta l4proto udp $MATCH_SET counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
+		else
+			$NFT add rule ip ss_spec_mangle ss_spec_tproxy ip daddr 198.18.0.0/16 meta l4proto udp counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
+		fi
+	fi
+
+	# fplan dst TPROXY
 	$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip saddr @fplan counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
+	
+	# blacklist dst TPROXY
+	for ip in $WAN_FW_IP; do
+		[ -n "$ip" ] && $NFT add element ip ss_spec_mangle blacklist "{ $ip }" 2>/dev/null
+	done
+	$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip daddr @blacklist counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
 
 	# Handle different run modes for nftables
 	case "$RUNMODE" in
@@ -978,9 +1333,13 @@ tp_rule_nft() {
 
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip daddr @ss_spec_wan_ac return 2>/dev/null
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip daddr @china return 2>/dev/null
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 80 counter drop comment "\"$TAG\"" 2>/dev/null
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 443 counter drop comment "\"$TAG\"" 2>/dev/null
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip saddr @gmlan ip daddr != @china counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
+		
+		# 80 端口规则：非国内 IP 的 80 端口，走 TPROXY
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 80 counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
+		# 443 端口规则：非国内 IP 的 443 端口，走 TPROXY
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 443 counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
+		
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip daddr != @ss_spec_wan_ac counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
 		;;
 	gfw)
@@ -988,24 +1347,78 @@ tp_rule_nft() {
 			$NFT add set ip ss_spec_mangle gfwlist '{ type ipv4_addr; flags interval; auto-merge; }' 2>/dev/null
 		fi
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip daddr @china return 2>/dev/null
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 80 counter drop comment "\"$TAG\"" 2>/dev/null
-		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 443 counter drop comment "\"$TAG\"" 2>/dev/null
+
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip daddr @gfwlist counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip saddr @gmlan ip daddr != @china counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
+
+		# 80 端口规则：非国内 IP 的 80 端口，走 TPROXY
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 80 counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
+		# 443 端口规则：非国内 IP 的 443 端口，走 TPROXY
+		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 443 counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
 		;;
 	all)
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS counter tproxy ip to :"$LOCAL_PORT" meta mark set ${FWMARK} 2>/dev/null
 		;;
 	esac
 
+	# ============================================================
+	# 路由器自身 OUTPUT 链
+	# ------------------------------------------------------------
+	# - 仅在 TPROXY 启用时添加
+	# - 排除核心自己的出站（mark 255）
+	# - 排除上游/旁路目标（whitelist、$SERVER、china）
+	# - 只对"国外 UDP 443"打 mark
+	# ============================================================
+	if [ "$OUTPUT" = "1" ] && [ -n "$TPROXY" ] && [ "$DISABLE_UDP_RULES" != "1" ]; then
+		if ! $NFT list chain ip ss_spec_mangle output >/dev/null 2>&1; then
+			$NFT add chain ip ss_spec_mangle output '{ type route hook output priority mangle; policy accept; }' 2>/dev/null
+		else
+			$NFT flush chain ip ss_spec_mangle output 2>/dev/null
+		fi
+
+		# 内网/回环/私有/组播/保留网段优先直连
+		for net in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 \
+			172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+			$NFT add rule ip ss_spec_mangle output meta l4proto udp ip daddr $net counter return comment "\"$TAG\"" 2>/dev/null
+		done
+
+		# 上游服务器与白名单直连
+		[ -n "$SERVER" ] && $NFT add rule ip ss_spec_mangle output meta l4proto udp udp dport != 53 ip daddr "$SERVER" counter return comment "\"$TAG\"" 2>/dev/null
+		$NFT add rule ip ss_spec_mangle output meta l4proto udp ip daddr @whitelist counter return comment "\"$TAG\"" 2>/dev/null
+
+		# 国内 IP 放行直连
+		$NFT add rule ip ss_spec_mangle output meta l4proto udp ip daddr @china counter return comment "\"$TAG\"" 2>/dev/null
+
+		# 放行代理内核程序自身发出的数据包 (mark 255)
+		$NFT add rule ip ss_spec_mangle output meta l4proto udp meta mark 255 counter return comment "\"$TAG\"" 2>/dev/null
+
+		# Fake-IP
+		if [ "$ENABLE_FAKE_IP" = "1" ]; then
+			$NFT add rule ip ss_spec_mangle output meta l4proto udp ip daddr 198.18.0.0/16 counter meta mark set ${FWMARK} comment "\"$TAG\"" 2>/dev/null
+		fi
+
+		# 非 china UDP 80/443 DROP
+		$NFT add rule ip ss_spec_mangle output meta l4proto udp udp dport 80 counter meta mark set ${FWMARK} comment "\"$TAG\"" 2>/dev/null
+		$NFT add rule ip ss_spec_mangle output meta l4proto udp udp dport 443 counter meta mark set ${FWMARK} comment "\"$TAG\"" 2>/dev/null
+	fi
+
 	# finally, ensure prerouting hook entry to jump to tproxy chain
 	if ! $NFT list chain ip ss_spec_mangle prerouting >/dev/null 2>&1; then
 		$NFT add chain ip ss_spec_mangle prerouting '{ type filter hook prerouting priority mangle; policy accept; }'
+	else
+		$NFT flush chain ip ss_spec_mangle prerouting 2>/dev/null
 	fi
 
 	# add prerouting jump (idempotent)
 	if [ -z "$Interface" ]; then
 		# Global rules
+		if [ "$ENABLE_FAKE_IP" = "1" ]; then
+			if [ -n "$MATCH_SET" ]; then
+				$NFT add rule ip ss_spec_mangle prerouting ip daddr 198.18.0.0/16 meta l4proto udp $MATCH_SET jump ss_spec_tproxy comment "\"$TAG\"" 2>/dev/null
+			else
+				$NFT add rule ip ss_spec_mangle prerouting ip daddr 198.18.0.0/16 meta l4proto udp jump ss_spec_tproxy comment "\"$TAG\"" 2>/dev/null
+			fi
+		fi
 		if [ -n "$MATCH_SET" ]; then
 			$NFT add rule ip ss_spec_mangle prerouting meta l4proto udp $EXT_ARGS $MATCH_SET jump ss_spec_tproxy comment "\"$TAG\"" 2>/dev/null
 		else
@@ -1017,6 +1430,13 @@ tp_rule_nft() {
 			IFNAME=$(uci -P /var/state get network."$name".ifname 2>/dev/null)
 			[ -z "$IFNAME" ] && IFNAME=$(uci -P /var/state get network."$name".device 2>/dev/null)
 			if [ -n "$IFNAME" ]; then
+				if [ "$ENABLE_FAKE_IP" = "1" ]; then
+					if [ -n "$MATCH_SET" ]; then
+						$NFT add rule ip ss_spec_mangle prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 meta l4proto udp $MATCH_SET jump ss_spec_tproxy comment "\"$TAG\"" 2>/dev/null
+					else
+						$NFT add rule ip ss_spec_mangle prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 meta l4proto udp jump ss_spec_tproxy comment "\"$TAG\"" 2>/dev/null
+					fi
+				fi
 				if [ -n "$MATCH_SET" ]; then
 					$NFT add rule ip ss_spec_mangle prerouting meta iifname "$IFNAME" meta l4proto udp $EXT_ARGS $MATCH_SET jump ss_spec_tproxy comment "\"$TAG\"" 2>/dev/null
 				else
@@ -1030,6 +1450,46 @@ tp_rule_nft() {
 }
 
 tp_rule_iptables() {
+	# ============================================================
+	# DISABLE_UDP_RULES=1：纯 TCP 单节点场景
+	# 非 china UDP 80、443 直接 DROP，强制 QUIC 回落 TCP
+	# ============================================================
+	if [ -z "$TPROXY" ] || [ "$DISABLE_UDP_RULES" = "1" ]; then
+		$ipt -t filter -N SS_SPEC_UDP_BLOCK 2>/dev/null
+		$ipt -t filter -F SS_SPEC_UDP_BLOCK
+
+		# 放行代理内核程序自身发出的数据包 (mark 255)
+		$ipt -t filter -A SS_SPEC_UDP_BLOCK -m mark --mark 255 -m comment --comment "$TAG" -j RETURN
+
+		# 放行 SERVER IP
+		[ -n "$server" ] && $ipt -t filter -A SS_SPEC_UDP_BLOCK -p udp -d "$server" -m comment --comment "$TAG" -j RETURN
+
+		# 放行 fake-ip：fake-ip 的 UDP 交给代理内核，不在这里 DROP
+		if [ "$ENABLE_FAKE_IP" = "1" ]; then
+			$ipt -t filter -A SS_SPEC_UDP_BLOCK -p udp -d 198.18.0.0/16 -m comment --comment "$TAG" -j RETURN
+		fi
+
+		# 放行 whitelist：上游、DNS、订阅等直连目标
+		[ -n "$SERVER" ] && [ "$server" != "$SERVER" ] && ipset -! add whitelist "$SERVER"
+		$ipt -t filter -A SS_SPEC_UDP_BLOCK -m set --match-set whitelist dst -m comment --comment "$TAG" -j RETURN
+
+		# 放行 china：国内目标直连
+		$ipt -t filter -A SS_SPEC_UDP_BLOCK -m set --match-set china dst -m comment --comment "$TAG" -j RETURN
+
+		# DROP 的 UDP 80/443，强制 QUIC 回落 TCP
+		$ipt -t filter -A SS_SPEC_UDP_BLOCK -p udp --dport 80 -m comment --comment "$TAG" -j DROP
+		$ipt -t filter -A SS_SPEC_UDP_BLOCK -p udp --dport 443 -m comment --comment "$TAG" -j DROP
+
+		# 末尾显式 RETURN
+		$ipt -t filter -A SS_SPEC_UDP_BLOCK -m comment --comment "$TAG" -j RETURN
+
+		# 挂载 FORWARD 和 OUTPUT
+		$ipt -t filter -I FORWARD -p udp -m comment --comment "$TAG" -j SS_SPEC_UDP_BLOCK
+		[ -n "$OUTPUT" ] && $ipt -t filter -I OUTPUT -p udp -m comment --comment "$TAG" -j SS_SPEC_UDP_BLOCK
+
+		return $?
+	fi
+
 	# set up routing table for tproxy
 	if ! ip rule show | grep -Eq "fwmark ${FWMARK}.*lookup 999"; then
 		ip rule add fwmark ${FWMARK} table 999 priority 999 2>/dev/null
@@ -1038,10 +1498,9 @@ tp_rule_iptables() {
 	if ! ip route show table 999 | grep -Eq "^local.*dev lo"; then
 		ip route add local 0.0.0.0/0 dev lo table 999 2>/dev/null
 	fi
+
 	$ipt -N SS_SPEC_TPROXY 2>/dev/null
 	$ipt -F SS_SPEC_TPROXY
-
-	$ipt -A SS_SPEC_TPROXY -p udp --dport 53 -j RETURN
 
 	local MATCH_SET=""
 	if [ -n "$LAN_AC_IP" ]; then
@@ -1064,20 +1523,44 @@ tp_rule_iptables() {
 	EOF
 
 	for net in \
-		0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 \
+		0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 \
 		172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4
 	do
 		$ipt -A SS_SPEC_TPROXY -p udp -d "$net" -j RETURN
 	done
+
+	$ipt -A SS_SPEC_TPROXY -p udp --dport 53 -j RETURN
+
 	[ -n "$SERVER" ] && $ipt -A SS_SPEC_TPROXY -p udp ! --dport 53 -d "$SERVER" -j RETURN
+	# Add $SERVER to whitelist.
 	[ -n "$SERVER" ] && [ "$server" != "$SERVER" ] && ipset -! add whitelist "$SERVER"
+	# Add xhttp to whitelist
 	if [ -f "${xhttp_ip:=/etc/ssrplus/xhttp_address.txt}" ]; then
 		while IFS= read -r ip; do
 			[ -n "$ip" ] && ipset add whitelist "$ip" -exist
 		done < "$xhttp_ip"
 	fi
+	# whitelist dst RETURN
+	$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set whitelist dst -j RETURN
+
+	# bplan src RETURN
 	$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set bplan src -j RETURN
+
+	# 对 Fake-IP 进行 TPROXY 重定向 (受 LAN 访问控制限制)
+	if [ "$ENABLE_FAKE_IP" = "1" ]; then
+		if [ -n "$MATCH_SET" ]; then
+			$ipt -A SS_SPEC_TPROXY -p udp $MATCH_SET -d 198.18.0.0/16 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
+		else
+			$ipt -A SS_SPEC_TPROXY -p udp -d 198.18.0.0/16 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
+		fi
+	fi
+
+	# fplan dst TPROXY
 	$ipt -A SS_SPEC_TPROXY -p udp $PROXY_PORTS -m set --match-set fplan src -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
+
+	# blacklist dst TPROXY （ipset_iptables function created.）
+	$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set blacklist dst -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
+
 	case "$RUNMODE" in
 	router)
 		ipset -! -R <<-EOF || return 1
@@ -1086,28 +1569,89 @@ tp_rule_iptables() {
 		EOF
 		$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set ss_spec_wan_ac dst -j RETURN
 		$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set china dst -j RETURN
-		$ipt -A SS_SPEC_TPROXY -p udp --dport 80 -j DROP
-		$ipt -A SS_SPEC_TPROXY -p udp --dport 443 -j DROP 
 		$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set gmlan src -m set ! --match-set china dst -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
+		# 80 端口规则：非国内 IP 的 80 端口，走 TPROXY
+		#$ipt -A SS_SPEC_TPROXY -p udp --dport 80 -j DROP
+		$ipt -A SS_SPEC_TPROXY -p udp --dport 80 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
+		# 443 端口规则：非国内 IP 的 443 端口，走 TPROXY
+		#$ipt -A SS_SPEC_TPROXY -p udp --dport 443 -j DROP
+		#$ipt -I SS_SPEC_TPROXY -p udp --dport 443 -m set ! --match-set china dst -j DROP # 禁用国外 quic
+		$ipt -A SS_SPEC_TPROXY -p udp --dport 443 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK} # 启用国外 quic
+		# 保留海外 QUIC 代理
+		# $ipt -A SS_SPEC_TPROXY -p udp --dport 80 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
+		# $ipt -A SS_SPEC_TPROXY -p udp --dport 443 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
+		# $ipt -A SS_SPEC_TPROXY -p udp -m set ! --match-set china dst --dport 80 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
+		# $ipt -A SS_SPEC_TPROXY -p udp -m set ! --match-set china dst --dport 443 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
 		$ipt -A SS_SPEC_TPROXY -p udp $PROXY_PORTS -m set ! --match-set ss_spec_wan_ac dst -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
 		;;
 	gfw)
 		$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set china dst -j RETURN
-		$ipt -A SS_SPEC_TPROXY -p udp --dport 80 -j DROP
-		$ipt -A SS_SPEC_TPROXY -p udp --dport 443 -j DROP 
 		$ipt -A SS_SPEC_TPROXY -p udp $PROXY_PORTS -m set --match-set gfwlist dst -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
 		$ipt -A SS_SPEC_TPROXY -p udp -m set --match-set gmlan src -m set ! --match-set china dst -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
+		# 80 端口规则：非国内 IP 的 80 端口，走 TPROXY
+		# $ipt -A SS_SPEC_TPROXY -p udp --dport 80 -j DROP
+		$ipt -A SS_SPEC_TPROXY -p udp --dport 80 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
+		# 443 端口规则：非国内 IP 的 443 端口，走 TPROXY
+		# $ipt -A SS_SPEC_TPROXY -p udp --dport 443 -j DROP
+		$ipt -A SS_SPEC_TPROXY -p udp --dport 443 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
+		# 保留海外 QUIC 代理
+		# $ipt -A SS_SPEC_TPROXY -p udp --dport 80 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
+		# $ipt -A SS_SPEC_TPROXY -p udp --dport 443 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
 		;;
 	all)
 		$ipt -A SS_SPEC_TPROXY -p udp $PROXY_PORTS -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
 		;;
 	esac
+
+	# ============================================================
+	# 路由器自身 OUTPUT 链
+	# ------------------------------------------------------------
+	# - 仅在 TPROXY 启用时添加
+	# - 排除核心自己的出站（mark 255）
+	# - 排除上游/旁路目标（whitelist、$SERVER、china）
+	# - 只对"国外 UDP 443"打 mark
+	# ============================================================
+	if [ "$OUTPUT" = "1" ] && [ -n "$TPROXY" ] && [ "$DISABLE_UDP_RULES" != "1" ]; then
+		# 放行 Loopback 本地回环网络
+		for net in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 \
+			172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+			$ipt -A OUTPUT -p udp -d "$net" -m comment --comment "$TAG" -j RETURN
+		done
+
+		# 排除上游代理服务器 IP 及白名单
+		[ -n "$SERVER" ] && $ipt -A OUTPUT -p udp ! --dport 53 -d "$SERVER" -m comment --comment "$TAG" -j RETURN
+		$ipt -A OUTPUT -p udp -m set --match-set whitelist dst -m comment --comment "$TAG" -j RETURN
+
+		# 4) 排除国内 IP
+		$ipt -A OUTPUT -p udp -m set --match-set china dst -m comment --comment "$TAG" -j RETURN
+
+		# 放行代理内核自身发出的其余所有 mark 255 流量 (防止代理自吞)
+		$ipt -A OUTPUT -p udp -m mark --mark 255 -m comment --comment "$TAG" -j RETURN
+
+		# fake-ip
+		if [ "$ENABLE_FAKE_IP" = "1" ]; then
+			$ipt -A OUTPUT -p udp -d 198.18.0.0/16 -m comment --comment "$TAG" -j MARK --set-mark ${FWMARK}
+		fi
+
+		# 对非 china 目标 80、443 端口的 UDP 打 mark
+		$ipt -A OUTPUT -p udp --dport 80 -m comment --comment "$TAG" -j MARK --set-mark ${FWMARK}
+		$ipt -A OUTPUT -p udp --dport 443 -m comment --comment "$TAG" -j MARK --set-mark ${FWMARK}
+	fi
+
 	if [ -z "$Interface" ]; then
 		# Global rules
 		if [ -n "$MATCH_SET" ]; then
 			$ipt -I PREROUTING 1 -p udp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_TPROXY
 		else
 			$ipt -I PREROUTING 1 -p udp $EXT_ARGS -m comment --comment "$TAG" -j SS_SPEC_TPROXY
+		fi
+		# fake-ip
+		if [ "$ENABLE_FAKE_IP" = "1" ]; then
+			if [ -n "$MATCH_SET" ]; then
+				$ipt -I PREROUTING 1 -p udp $MATCH_SET -d 198.18.0.0/16 -m comment --comment "$TAG" -j SS_SPEC_TPROXY
+			else
+				$ipt -I PREROUTING 1 -p udp -d 198.18.0.0/16 -m comment --comment "$TAG" -j SS_SPEC_TPROXY
+			fi
 		fi
 	else
 		for name in $Interface; do
@@ -1119,9 +1663,18 @@ tp_rule_iptables() {
 				else
 					$ipt -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p udp $EXT_ARGS -m comment --comment "$TAG" -j SS_SPEC_TPROXY
 				fi
+				# fake-ip
+				if [ "$ENABLE_FAKE_IP" = "1" ]; then
+					if [ -n "$MATCH_SET" ]; then
+						$ipt -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p udp $MATCH_SET -d 198.18.0.0/16 -m comment --comment "$TAG" -j SS_SPEC_TPROXY
+					else
+						$ipt -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p udp -d 198.18.0.0/16 -m comment --comment "$TAG" -j SS_SPEC_TPROXY
+					fi
+				fi
 			fi
 		done
 	fi
+
 	return $?
 }
 
@@ -1174,6 +1727,7 @@ gen_include_nft() {
 		nft delete table inet ss_spec 2>/dev/null
 		nft delete table ip ss_spec 2>/dev/null
 		nft delete table ip ss_spec_mangle 2>/dev/null
+		nft delete table ip ss_spec_filter 2>/dev/null
 
 		# Restore shadowsocks nftables rules from persistent file
 		if [ -f "/usr/share/nftables.d/ruleset-post/99-shadowsocksr.nft" ]; then
@@ -1189,7 +1743,7 @@ gen_include_nft() {
 gen_include_iptables() {
 	extract_rules() {
 		echo "*$1"
-		iptables-save -t $1 | grep SS_SPEC_ | sed -e "s/^-A \(OUTPUT\|PREROUTING\)/-I \1 1/"
+		iptables-save -t $1 | grep SS_SPEC_ | sed -e "s/^-A \(OUTPUT\|PREROUTING\|FORWARD\)/-I \1 1/"
 		echo 'COMMIT'
 	}
 	cat <<-EOF >>$FWI
@@ -1197,6 +1751,7 @@ gen_include_iptables() {
 		iptables-restore -n <<-EOT
 		$(extract_rules nat)
 		$(extract_rules mangle)
+		$(extract_rules filter)
 		EOT
 	EOF
 }
@@ -1210,7 +1765,8 @@ check_nftables_status() {
 
 	# Check if ss_spec tables exist
 	if ! $NFT list table inet ss_spec >/dev/null 2>&1 && \
-	   ! $NFT list table ip ss_spec_mangle >/dev/null 2>&1; then
+	   ! $NFT list table ip ss_spec_mangle >/dev/null 2>&1 && \
+	   ! $NFT list table ip ss_spec_filter >/dev/null 2>&1; then
 		echo "ss_spec tables missing in nftables"
 		return 1
 	fi
@@ -1251,8 +1807,8 @@ compare_rules() {
 
 	# Export current rules to temporary file
 	$NFT list ruleset | awk '
-		/^table (inet ss_spec|ip ss_spec_mangle)/ {flag=1}
-		/^table / && !/^table (inet ss_spec|ip ss_spec_mangle)/ {flag=0}
+		/^table (inet ss_spec|ip ss_spec_mangle|ip ss_spec_filter)/ {flag=1}
+		/^table / && !/^table (inet ss_spec|ip ss_spec_mangle|ip ss_spec_filter)/ {flag=0}
 		flag
 	' > "$rules_file" 2>/dev/null
 
@@ -1345,6 +1901,16 @@ persist_nftables_rules() {
 			echo ""
 			echo "# ip ss_spec_mangle table for TPROXY rules"
 			$NFT list table ip ss_spec_mangle 2>/dev/null
+		} >> "$NFTABLES_RULES_FILE"
+		HAS_RULES=1
+	fi
+
+	if $NFT list table ip ss_spec_filter >/dev/null 2>&1; then
+		loger 6 "Exporting table ip ss_spec_filter"
+		{
+			echo ""
+			echo "# ip ss_spec_filter table for TCP-only rules"
+			$NFT list table ip ss_spec_filter 2>/dev/null
 		} >> "$NFTABLES_RULES_FILE"
 		HAS_RULES=1
 	fi
@@ -1497,7 +2063,7 @@ restore_from_persistence() {
 	fi
 }
 
-while getopts ":m:s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUyfgrzAKPCRXh" arg; do
+while getopts ":m:s:l:S:L:T:i:e:E:a:B:b:w:p:G:D:F:N:M:I:oOuUyfgrzAKPCRXh" arg; do
 	case "$arg" in
 	m)
 		Interface=$OPTARG
@@ -1514,11 +2080,17 @@ while getopts ":m:s:l:S:L:i:e:a:B:b:w:p:G:D:F:N:M:I:oOuUyfgrzAKPCRXh" arg; do
 	L)
 		LOCAL_PORT=$OPTARG
 		;;
+	T)
+		ACTUAL_CORE="$OPTARG"
+		;;
 	i)
 		IGNORE_LIST=$OPTARG
 		;;
 	e)
 		EXT_ARGS=$OPTARG
+		;;
+	E)
+		ENABLE_FAKE_IP=$OPTARG
 		;;
 	a)
 		LAN_AC_IP=$OPTARG
@@ -1671,6 +2243,7 @@ if [ "$RESTORE_RULES" = "1" ]; then
 fi
 
 # Run mode change
+# NOTE: returns 0 when mode CHANGED, 1 when UNCHANGED.
 runmode_change() {
 	local mode_file="/tmp/.ssr_run_mode"
 	local new_mode=""
@@ -1714,7 +2287,14 @@ if [ -n "$local_port" ]; then
 	case "$TPROXY" in
 	1)
 		SERVER=$server
-		LOCAL_PORT=$local_port
+		if [ -z "$ACTUAL_CORE" ]; then
+			loger 4 "ACTUAL_CORE not provided, fallback to local_port"
+			LOCAL_PORT=$local_port
+		elif [ "$ACTUAL_CORE" = "mihomo" ]; then
+			LOCAL_PORT=$((local_port + 1))
+		else
+			LOCAL_PORT=$local_port
+		fi
 		;;
 	2)
 		: ${LOCAL_PORT:?"You must assign a port for the udp relay server."}
@@ -1723,6 +2303,22 @@ if [ -n "$local_port" ]; then
 
 	if [ "$USE_NFT" = "1" ]; then
 		# NFTables
+		# Detect Fake_IP Mode state change (execute first)
+		ENABLE_FAKE_IP_STATE_FILE="/tmp/.last_enable_fake_ip"
+		if [ -f "$ENABLE_FAKE_IP_STATE_FILE" ]; then
+			LAST_ENABLE_FAKE_IP=$(cat "$ENABLE_FAKE_IP_STATE_FILE")
+		else
+			LAST_ENABLE_FAKE_IP=""
+		fi
+
+		# Detect ACTUAL_CORE change
+		ACTUAL_CORE_STATE_FILE="/tmp/.last_actual_core"
+		if [ -f "$ACTUAL_CORE_STATE_FILE" ]; then
+			LAST_ACTUAL_CORE=$(cat "$ACTUAL_CORE_STATE_FILE")
+		else
+			LAST_ACTUAL_CORE=""
+		fi
+
 		# Save previous TPROXY state file
 		TPROXY_STATE_FILE="/tmp/.last_tproxy"
 		if [ -f "$TPROXY_STATE_FILE" ]; then
@@ -1812,6 +2408,20 @@ if [ -n "$local_port" ]; then
 			LAST_XHTTP_FILE_HASH=""
 		fi
 
+		# Check if Fake_IP Mode state has changed
+		ENABLE_FAKE_IP_CHANGED=0
+		if [ "$LAST_ENABLE_FAKE_IP" != "$ENABLE_FAKE_IP" ]; then
+			loger 6 "Fake_IP Mode state changed: $LAST_ENABLE_FAKE_IP -> $ENABLE_FAKE_IP"
+			ENABLE_FAKE_IP_CHANGED=1
+		fi
+
+		# Check if ACTUAL_CORE state has changed 
+		ACTUAL_CORE_CHANGED=0
+		if [ "$LAST_ACTUAL_CORE" != "$ACTUAL_CORE" ]; then
+			loger 6 "ACTUAL_CORE changed: $LAST_ACTUAL_CORE -> $ACTUAL_CORE"
+			ACTUAL_CORE_CHANGED=1
+		fi
+
 		# STEP 1: Check if TPROXY has value (1 or 2)
 		if [ "$TPROXY" = "1" ] || [ "$TPROXY" = "2" ]; then
 			TPROXY_HAS_VALUE=1
@@ -1847,10 +2457,12 @@ if [ -n "$local_port" ]; then
 			ANY_IP_LIST_CHANGED=1
 		fi
 		
-		# Check LAN_AC_IP
-		check_ip_list_changed "$LAN_AC_IP" "$LAST_LAN_AC_IP" "LAN_AC_IP"
-		if [ $? -eq 1 ]; then
+		# Check LAN_AC_IP (uses prefix-preserving normalization)
+		if [ "$(normalize_lan_ac_ip "$LAN_AC_IP")" != "$(normalize_lan_ac_ip "$LAST_LAN_AC_IP")" ]; then
+			loger 6 "LAN_AC_IP changed: '$LAST_LAN_AC_IP' -> '$LAN_AC_IP'"
 			ANY_IP_LIST_CHANGED=1
+		else
+			loger 6 "LAN_AC_IP unchanged"
 		fi
 		
 		# Check LAN_BP_IP
@@ -1907,7 +2519,11 @@ if [ -n "$local_port" ]; then
 		# 1. TPROXY changes from empty ↔ has value
 		# 2. PROXY_PORTS changes from empty ↔ has value
 		# 3. Any IP list has changed
-		if [ "$TPROXY_HAS_VALUE" != "$LAST_HAS_VALUE" ] || \
+		# 4. ENABLE_FAKE_IP state changed
+		# 5. ACTUAL_CORE changed
+		if [ "$ENABLE_FAKE_IP_CHANGED" = "1" ] || \
+		   [ "$ACTUAL_CORE_CHANGED" = "1" ] || \
+		   [ "$TPROXY_HAS_VALUE" != "$LAST_HAS_VALUE" ] || \
 		   [ "$PROXY_HAS_VALUE" != "$LAST_PROXY_HAS_VALUE" ] || \
 		   [ "$ANY_IP_LIST_CHANGED" = "1" ]; then
 			FORCE_RECREATE=1
@@ -1925,10 +2541,12 @@ if [ -n "$local_port" ]; then
 		fi
 
 		# STEP 4: Save current state
+		echo "$ENABLE_FAKE_IP" > "$ENABLE_FAKE_IP_STATE_FILE"
+		echo "$ACTUAL_CORE" > "$ACTUAL_CORE_STATE_FILE"
 		echo "$TPROXY" > "$TPROXY_STATE_FILE"
 		echo "$PROXY_PORTS" > "$PROXY_PORTS_STATE_FILE"
 		echo "$(normalize_ip_list "$WAN_BP_IP")" > "$WAN_BP_IP_STATE_FILE"
-		echo "$(normalize_ip_list "$LAN_AC_IP")" > "$LAN_AC_IP_STATE_FILE"
+		echo "$(normalize_lan_ac_ip "$LAN_AC_IP")" > "$LAN_AC_IP_STATE_FILE"
 		echo "$(normalize_ip_list "$LAN_BP_IP")" > "$LAN_BP_IP_STATE_FILE"
 		echo "$(normalize_ip_list "$WAN_FW_IP")" > "$WAN_FW_IP_STATE_FILE"
 		echo "$(normalize_ip_list "$LAN_FP_IP")" > "$LAN_FP_IP_STATE_FILE"
