@@ -2587,7 +2587,6 @@ start_server() {
 		local listenip
 		local username
 		local password
-		local auth_opts
 		local enable_mihomo
 		local mihomo_server_started
 		local xray_bin
@@ -2654,16 +2653,23 @@ start_server() {
 			fi
 			;;
 		socks5)
-			listenip='-i 0.0.0.0'
-			[ -e /proc/sys/net/ipv6 ] && listenip='-i ::'
+			listenip='0.0.0.0'
+			[ -e /proc/sys/net/ipv6 ] && listenip='::'
 			username=$(uci_get_by_name "$1" username)
 			password=$(uci_get_by_name "$1" password)
-			auth_opts=""
-			if [ -n "$username" ]; then
-				auth_opts="-u $username"
-				[ -n "$password" ] && auth_opts="$auth_opts -P $password"
+			if { [ -n "$username" ] && [ -z "$password" ]; } ||
+				{ [ -z "$username" ] && [ -n "$password" ]; }; then
+				echolog "Server:Socks5 Server$server_count 用户名和密码必须同时配置。"
+				return 1
 			fi
-			ln_start_bin "$(first_type microsocks)" microsocks "$listenip" -p "$(uci_get_by_name "$1" server_port)" -1 "$auth_opts" ssr-server$server_count
+			if [ -n "$username" ]; then
+				ln_start_bin "$(first_type microsocks)" "ssr-server-$server_count" \
+					-i "$listenip" -p "$(uci_get_by_name "$1" server_port)" \
+					-1 -u "$username" -P "$password"
+			else
+				ln_start_bin "$(first_type microsocks)" "ssr-server-$server_count" \
+					-i "$listenip" -p "$(uci_get_by_name "$1" server_port)"
+			fi
 			echolog "Server:Socks5 Server$server_count Started!"
 			;;
 		vmess|vless|trojan|shadowsocks)
