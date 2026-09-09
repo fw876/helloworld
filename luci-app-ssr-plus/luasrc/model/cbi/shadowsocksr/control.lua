@@ -1,7 +1,10 @@
 require "luci.ip"
 require "nixio.fs"
 require "luci.sys"
+local ucic = luci.model.uci.cursor()
 local m, s, o
+
+local enable_mihomo = ucic:get_first('shadowsocksr', 'server_subscribe', 'enable_mihomo') or ''
 
 m = Map("shadowsocksr")
 
@@ -116,13 +119,61 @@ o.rows = 13
 o.wrap = "off"
 o.rmempty = true
 o.cfgvalue = function(self, section)
-	return nixio.fs.readfile(denydomainconf) or " "
+	return nixio.fs.readfile(denydomainconf) or ""
 end
 o.write = function(self, section, value)
 	nixio.fs.writefile(denydomainconf, value:gsub("\r\n", "\n"))
 end
 o.remove = function(self, section, value)
 	nixio.fs.writefile(denydomainconf, "")
+end
+
+if enable_mihomo == "1" then
+	s:tab("fake_ip_filter", translate("Fake-IP Filter and Fallback Lists"))
+	local fake_ip_filter_conf = "/etc/ssrplus/fake_ip_filter.list"
+	o = s:taboption("fake_ip_filter", TextValue, "fake_ip_filter_conf", "", "<font style=color:red>" .. translate("Specifically for editing the Fake-IP filter list.") .. "</font>")
+	o.rows = 13
+	o.wrap = "off"
+	o.rmempty = true
+	o.cfgvalue = function(self, section)
+		return nixio.fs.readfile(fake_ip_filter_conf) or ""
+	end
+	o.write = function(self, section, value)
+		nixio.fs.writefile(fake_ip_filter_conf, value:gsub("\r\n", "\n"))
+	end
+	o.remove = function(self, section, value)
+		nixio.fs.writefile(fake_ip_filter_conf, "")
+	end
+
+	local fallback_ipcidr_conf = "/etc/ssrplus/fallback_ipcidr.list"
+	o = s:taboption("fake_ip_filter", TextValue, "fallback_ipcidr_conf", "", "<font style=color:red>" .. translate("Specifically for editing the Fallback IP-CIDR list.") .. "</font>")
+	o.rows = 13
+	o.wrap = "off"
+	o.rmempty = true
+	o.cfgvalue = function(self, section)
+		return nixio.fs.readfile(fallback_ipcidr_conf) or ""
+	end
+	o.write = function(self, section, value)
+		nixio.fs.writefile(fallback_ipcidr_conf, value:gsub("\r\n", "\n"))
+	end
+	o.remove = function(self, section, value)
+		nixio.fs.writefile(fallback_ipcidr_conf, "")
+	end
+
+	local fallback_domain_conf = "/etc/ssrplus/fallback_domain.list"
+	o = s:taboption("fake_ip_filter", TextValue, "fallback_domain_conf", "", "<font style=color:red>" .. translate("Specifically for editing the Fallback domain filter list.") .. "</font>")
+	o.rows = 13
+	o.wrap = "off"
+	o.rmempty = true
+	o.cfgvalue = function(self, section)
+		return nixio.fs.readfile(fallback_domain_conf) or ""
+	end
+	o.write = function(self, section, value)
+		nixio.fs.writefile(fallback_domain_conf, value:gsub("\r\n", "\n"))
+	end
+	o.remove = function(self, section, value)
+		nixio.fs.writefile(fallback_domain_conf, "")
+	end
 end
 
 if luci.sys.call('[ -f "/www/luci-static/resources/uci.js" ]') == 0 then
