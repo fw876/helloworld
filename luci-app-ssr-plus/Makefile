@@ -29,10 +29,9 @@ PKG_CONFIG_DEPENDS:= \
 LUCI_TITLE:=LuCI support for SSR-Plus (Multi-protocol Proxy)
 LUCI_PKGARCH:=all
 LUCI_DEPENDS:= \
-	+libuci-lua +lua +luci-compat +dns2tcp +dnsmasq-full \
-	+ip-full +lua-neturl +microsocks +ipt2socks +lyaml \
-	+resolveip +curl +nping +coreutils +coreutils-timeout \
-	+idn2 \
+	+libuci-lua +lua +luci-compat +coreutils +coreutils-base64 +coreutils-timeout \
+	+dns2tcp +dnsmasq-full +ip-full +lua-neturl +microsocks +ipt2socks +lyaml \
+	+resolveip +bind-dig +curl +nping +unzip +xz-utils +xz \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG:chinadns-ng \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_MosDNS:mosdns \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Http_Proxy:3proxy \
