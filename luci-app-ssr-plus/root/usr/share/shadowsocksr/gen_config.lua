@@ -636,7 +636,7 @@ Xray.outbounds = {
 			} or nil,
 			grpcSettings = (server.transport == "grpc") and {
 				-- grpc
-				serviceName = (server.serviceName and server.serviceName ~= "") and server.serviceName or nil,
+				serviceName = (server.serviceName and server.serviceName ~= "") and server.serviceName or "",
 				multiMode = (server.grpc_mode == "multi") and true or nil,
 				idle_timeout = server.idle_timeout and (tonumber(server.idle_timeout) < 10 and 10 or tonumber(server.idle_timeout)) or nil,
 				health_check_timeout = server.health_check_timeout and tonumber(server.health_check_timeout) or nil,

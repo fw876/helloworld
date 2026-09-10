@@ -1379,7 +1379,7 @@ local function processData(szType, content, cfgid)
 				result.quic_security = params.quicSecurity or "none"
 				result.quic_key = params.key
 			elseif result.transport == "grpc" then
-				result.serviceName = params.serviceName
+				result.serviceName = params.serviceName or params.servicename or params.path
 				result.grpc_mode = params.mode or "gun"
 			elseif result.transport == "tcp" or result.transport == "raw" then
 				result.tcp_guise = params.headerType or "none"
@@ -1714,7 +1714,7 @@ local function processData(szType, content, cfgid)
 			result.quic_security = params.quicSecurity or "none"
 			result.quic_key = params.key
 		elseif result.transport == "grpc" then
-			result.serviceName = params.serviceName
+			result.serviceName = params.serviceName or params.servicename or params.path
 			result.grpc_mode = params.mode or "gun"
 		elseif result.transport == "tcp" or result.transport == "raw" then
 			result.tcp_guise = params.headerType and params.headerType ~= "" and params.headerType or "none"
@@ -1852,7 +1852,7 @@ local function processData(szType, content, cfgid)
 			result.quic_security = params.quicSecurity or "none"
 			result.quic_key = params.key
 		elseif result.transport == "grpc" then
-			result.serviceName = params.serviceName
+			result.serviceName = params.serviceName or params.servicename or params.path
 			result.grpc_mode = params.mode or "gun"
 		elseif result.transport == "raw" then
 			result.tcp_guise = params.headerType or "none"
