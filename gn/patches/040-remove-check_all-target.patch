@@ -1,31 +1,15 @@
 --- a/build/gen.py
 +++ b/build/gen.py
-@@ -454,28 +454,6 @@ def WriteGenericNinja(path, static_libra
-       ] if options.starlark else []),
-   )
- 
--  ninja.Phony(
--      'check_all',
--      inputs=[
--          ninja.RunBinary(
+@@ -490,12 +490,6 @@
+       'check_all',
+       inputs=[
+           ninja.RunBinary(
 -              'check_formatter',
 -              inputs=[ninja.source_file('tools/run_formatter.sh')],
 -              implicit_inputs=ninja.directory(ninja.source_file('src'), ['target']),
 -              args='--diff',
 -          ),
 -          ninja.RunBinary(
--              'check_reference',
--              inputs=[ninja.source_file('tools/update_reference.sh')],
--              implicit_inputs=[
--                  'gn' + platform.exe_suffix,
--                  ninja.source_file('docs/reference.md'),
--              ],
--              args='--diff',
--              env=f'NOBUILD=1 NINJA_OUT_DIR={os.path.relpath(build_dir, REPO_ROOT)}',
--          ),
--      ],
--  )
--
-   with open(path, 'w') as f:
-     f.write('\n'.join(ninja_header_lines))
-     f.write(ninja_template)
+               'check_reference',
+               inputs=[ninja.source_file('tools/update_reference.sh')],
+               implicit_inputs=[
