@@ -653,17 +653,14 @@ local function build_dns_upstreams()
 	}
 end
 
-local function build_dns_section(dns_mode, user_dns, is_external_dns)
+local function build_dns_section(dns_mode, user_dns)
 	local result
 	local has_user_dns = type(user_dns) == "table" and next(user_dns)
+	dns_mode = tostring(dns_mode or "0")
 
 	if not has_user_dns then
-		if is_external_dns then
-			return { enable = false }
-		end
 		result = {
-			enable = true,
-			listen = "127.0.0.1:5335"
+			enable = true
 		}
 	else
 		result = clone_table(user_dns)
@@ -749,7 +746,7 @@ local function build_dns_section(dns_mode, user_dns, is_external_dns)
 	for k, v in pairs(upstreams) do
 		if k == "proxy-server-nameserver" then
 			result[k] = v
-		elseif result[k] == nil then
+		elseif result[k] == nil and not (k == "respect-rules" and enable_fake_ip ~= "1") then
 			result[k] = v
 		end
 	end
@@ -862,7 +859,8 @@ local function apply_sniffer_config(doc, enable_fake_ip)
 		["override-destination"] = true,
 		sniff = {
 			HTTP = { 
-				ports = { 80, 2052, 2082, 2086, 2095, "8080-8880" }
+				ports = { 80, 2052, 2082, 2086, 2095, "8080-8880" },
+				["override-destination"] = true
 			},
 			TLS = { 
 				ports = { 443, 2053, 2083, 2087, 2096, 8443 }
@@ -1603,8 +1601,6 @@ end
 local function build_single_proxy_runtime_doc(proxy, local_port, socks_port, mode)
 	local listen_port = tonumber(local_port)
 	local socks_listen = tonumber(socks_port)
-	local mode_str = tostring(dns_mode or "")
-	local is_ext_dns = (mode_str ~= "7")
 
 	local doc = {
 		["allow-lan"] = true,
@@ -1629,8 +1625,9 @@ local function build_single_proxy_runtime_doc(proxy, local_port, socks_port, mod
 			["store-selected"] = true,
 			["store-fake-ip"] = true
 		},
-		dns = build_dns_section(dns_mode, nil, is_ext_dns)
+		dns = build_dns_section(dns_mode, nil)
 	}
+	apply_sniffer_config(doc, enable_fake_ip)
 
 	if mode == "socks" then
 		doc["socks-port"] = listen_port
@@ -1641,6 +1638,23 @@ local function build_single_proxy_runtime_doc(proxy, local_port, socks_port, mod
 			doc["socks-port"] = socks_listen
 		end
 	end
+
+	if doc["socks-port"] and doc["socks-port"] > 0 then
+		local socks5_auth = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_auth", "noauth")
+		if socks5_auth == "password" then
+			local socks5_user = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_user", "")
+			local socks5_pass = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_pass", "")
+
+			if socks5_user == "" or socks5_pass == "" then
+				io.stderr:write("警告：SOCKS5 代理未完整配置用户名或密码，已自动降级为无认证模式 (noauth)！\n")
+			else
+				doc["authentication"] = {
+					string.format("%s:%s", socks5_user, socks5_pass)
+				}
+			end
+		end
+	end
+
 	return doc
 end
 
@@ -1650,8 +1664,6 @@ local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 	local tuic_ip = get_server_field(sid, "tuic_ip", "")
 	local tls_host = get_server_field(sid, "tls_host", "")
 	local ipstack_prefer = get_server_field(sid, "ipstack_prefer", "")
-	local mode_str = tostring(dns_mode or "")
-	local is_ext_dns = (mode_str ~= "7")
 
 	local proxy = {
 		name = sid,
@@ -1724,8 +1736,9 @@ local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 			["store-selected"] = true,
 			["store-fake-ip"] = true
 		},
-		dns = build_dns_section(dns_mode, nil, is_ext_dns)
+		dns = build_dns_section(dns_mode, nil)
 	}
+	apply_sniffer_config(doc, enable_fake_ip)
 
 	if mode == "socks" then
 		doc["socks-port"] = listen_port
@@ -1737,6 +1750,22 @@ local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 		end
 	end
 
+	if doc["socks-port"] and doc["socks-port"] > 0 then
+		local socks5_auth = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_auth", "noauth")
+		if socks5_auth == "password" then
+			local socks5_user = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_user", "")
+			local socks5_pass = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_pass", "")
+
+			if socks5_user == "" or socks5_pass == "" then
+				io.stderr:write("警告：SOCKS5 代理未完整配置用户名或密码，已自动降级为无认证模式 (noauth)！\n")
+			else
+				doc["authentication"] = {
+					string.format("%s:%s", socks5_user, socks5_pass)
+				}
+			end
+		end
+	end
+
 	return doc
 end
 
@@ -1745,8 +1774,7 @@ local function build_shadowsocks_runtime_doc(sid, local_port, socks_port, mode)
 	local server_port = tonumber(get_server_field(sid, "server_port", "0")) or 0
 	local method = get_server_field(sid, "encrypt_method_ss", "none")
 	local password = get_server_field(sid, "password", "")
-	local mode_str = tostring(dns_mode or "")
-	local is_ext_dns = (mode_str ~= "7")
+
 	local proxy = {
 		name = sid,
 		type = "ss",
@@ -1788,8 +1816,9 @@ local function build_shadowsocks_runtime_doc(sid, local_port, socks_port, mode)
 			["store-selected"] = true,
 			["store-fake-ip"] = true
 		},
-		dns = build_dns_section(dns_mode, nil, is_ext_dns)
+		dns = build_dns_section(dns_mode, nil)
 	}
+	apply_sniffer_config(doc, enable_fake_ip)
 
 	local listen_port = tonumber(local_port)
 	local socks_listen = tonumber(socks_port)
@@ -1800,6 +1829,22 @@ local function build_shadowsocks_runtime_doc(sid, local_port, socks_port, mode)
 		doc["tproxy-port"] = listen_port
 		if socks_listen and socks_listen > 0 then
 			doc["socks-port"] = socks_listen
+		end
+	end
+
+	if doc["socks-port"] and doc["socks-port"] > 0 then
+		local socks5_auth = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_auth", "noauth")
+		if socks5_auth == "password" then
+			local socks5_user = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_user", "")
+			local socks5_pass = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_pass", "")
+
+			if socks5_user == "" or socks5_pass == "" then
+				io.stderr:write("警告：SOCKS5 代理未完整配置用户名或密码，已自动降级为无认证模式 (noauth)！\n")
+			else
+				doc["authentication"] = {
+					string.format("%s:%s", socks5_user, socks5_pass)
+				}
+			end
 		end
 	end
 
@@ -1987,11 +2032,8 @@ local function prepare(input_path, output_path)
 	strip_runtime_conflicts(doc)
 	local filled_groups = fill_empty_proxy_groups(doc)
 	local stripped_rules = strip_incompatible_script_rules(doc)
-	
-	local dns_config = build_dns_section(dns_mode, user_dns, false)
-	if dns_config and next(dns_config) then
-		doc.dns = dns_config
-	end
+
+	doc.dns = build_dns_section(dns_mode, user_dns)
 
 	doc.rules = merge_rules_with_direct(doc.rules)
 	apply_sniffer_config(doc, enable_fake_ip)
@@ -2002,6 +2044,7 @@ local function prepare(input_path, output_path)
 	if doc["tcp-concurrent"] == nil then
 		doc["tcp-concurrent"] = true
 	end
+
 	if doc["find-process-mode"] == nil then
 		doc["find-process-mode"] = "off"
 	end
@@ -2035,21 +2078,13 @@ local function merge(raw_path, overlay_path, output_path)
 	strip_runtime_conflicts(raw_doc)
 	local filled_groups = fill_empty_proxy_groups(raw_doc)
 	local stripped_rules = strip_incompatible_script_rules(raw_doc)
-
-	if user_dns then
-		if dns_mode ~= "7" then
-			overlay_doc.dns = nil
-		end
-	end
-
 	local merged = deep_merge(raw_doc, overlay_doc)
-	if user_dns then
-		merged.dns = build_dns_section(dns_mode, user_dns, false)
-	elseif type(merged.dns) == "table" and next(merged.dns) then
-		merged.dns = build_dns_section(dns_mode, merged.dns, false)
-	else
-		merged.dns = build_dns_section(dns_mode, nil, false)
+
+	local target_dns = user_dns
+	if not target_dns and type(merged.dns) == "table" and next(merged.dns) then
+		target_dns = merged.dns
 	end
+	merged.dns = build_dns_section(dns_mode, target_dns)
 
 	merged.rules = merge_rules_with_direct(merged.rules)
 	apply_sniffer_config(merged, enable_fake_ip)
@@ -2060,6 +2095,7 @@ local function merge(raw_path, overlay_path, output_path)
 	if merged["tcp-concurrent"] == nil then
 		merged["tcp-concurrent"] = true
 	end
+
 	if merged["find-process-mode"] == nil then
 		merged["find-process-mode"] = "off"
 	end
