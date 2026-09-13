@@ -658,7 +658,7 @@ prepare_clash_runtime_config() {
 
 		if [ "$socks5_auth" = "password" ]; then
 			if [ -z "$socks5_user" ] || [ -z "$socks5_pass" ]; then
-				echolog "警告：SOCKS5 代理未完整配置用户名或密码，已自动降级为无认证模式 (noauth)。"
+				echolog "警告：SOCKS5 代理未完整配置用户名或密码，已自动降级为无认证模式 (noauth)！"
 				socks5_auth="noauth"
 			fi
 		fi

@@ -521,6 +521,23 @@ local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 		end
 	end
 
+	if doc["socks-port"] and doc["socks-port"] > 0 then
+		local socks5_auth = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_auth", "noauth")
+		if socks5_auth == "password" then
+			local socks5_user = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_user", "")
+			local socks5_pass = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_pass", "")
+
+			if socks5_user == "" or socks5_pass == "" then
+				io.stderr:write("警告：SOCKS5 代理未完整配置用户名或密码，已自动降级为无认证模式 (noauth)！\n")
+			else
+				doc["authentication"] = {
+					string.format("%s:%s", socks5_user, socks5_pass)
+				}
+			end
+		end
+	end
+
+
 	return doc
 end
 
@@ -961,6 +978,23 @@ local function build_single_proxy_runtime_doc(proxy, local_port, socks_port, mod
 			doc["socks-port"] = socks_listen
 		end
 	end
+	if doc["socks-port"] and doc["socks-port"] > 0 then
+		local socks5_auth = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_auth", "noauth")
+		if socks5_auth == "password" then
+			local socks5_user = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_user", "")
+			local socks5_pass = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_pass", "")
+
+			if socks5_user == "" or socks5_pass == "" then
+				io.stderr:write("警告：SOCKS5 代理未完整配置用户名或密码，已自动降级为无认证模式 (noauth)！\n")
+			else
+				doc["authentication"] = {
+					string.format("%s:%s", socks5_user, socks5_pass)
+				}
+			end
+		end
+	end
+
+
 	return doc
 end
 
@@ -1238,6 +1272,23 @@ local function build_shadowsocks_runtime_doc(sid, local_port, socks_port, mode)
 			doc["socks-port"] = socks_listen
 		end
 	end
+
+	if doc["socks-port"] and doc["socks-port"] > 0 then
+		local socks5_auth = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_auth", "noauth")
+		if socks5_auth == "password" then
+			local socks5_user = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_user", "")
+			local socks5_pass = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_pass", "")
+
+			if socks5_user == "" or socks5_pass == "" then
+				io.stderr:write("警告：SOCKS5 代理未完整配置用户名或密码，已自动降级为无认证模式 (noauth)！\n")
+			else
+				doc["authentication"] = {
+					string.format("%s:%s", socks5_user, socks5_pass)
+				}
+			end
+		end
+	end
+
 
 	return doc
 end
