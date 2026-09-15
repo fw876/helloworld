@@ -168,6 +168,39 @@ o.write = function()
 	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr", "servers"))
 end
 
+-- [[ Startup Internet Check ]]--
+s = m:section(TypedSection, "startup_check", translate("Startup Connectivity Check"), translate("On boot, wait until the internet is reachable before starting the service, so that node domains can be resolved when the WAN link (e.g. PPPoE) comes up late. Manual restarts are never delayed. Disable this if SSR Plus is only used as a LAN-only proxy."))
+s.anonymous = true
+
+o = s:option(Flag, "enabled", translate("Enable"))
+o.default = "1"
+o.rmempty = false
+
+o = s:option(ListValue, "method", translate("Check Method"), translate("DNS resolution matches what the service actually needs at startup; ICMP ping is faster but does not prove that DNS is ready."))
+o:value("dns", translate("DNS resolution"))
+o:value("ping", translate("ICMP ping"))
+o.default = "dns"
+o:depends("enabled", "1")
+
+o = s:option(DynamicList, "host", translate("Check Servers"), translate("DNS servers to query, or hosts to ping. The check passes as soon as any one of them responds."))
+o.datatype = "ipaddr"
+o:depends("enabled", "1")
+
+o = s:option(Value, "domain", translate("Resolve Domain"), translate("Domain name used for the DNS resolution test."))
+o.datatype = "hostname"
+o.default = "www.baidu.com"
+o:depends({enabled = "1", method = "dns"})
+
+o = s:option(Value, "retry", translate("Max Retries"))
+o.datatype = "uinteger"
+o.default = 30
+o:depends("enabled", "1")
+
+o = s:option(Value, "interval", translate("Retry Interval(second)"), translate("Maximum wait is Max Retries multiplied by Retry Interval."))
+o.datatype = "uinteger"
+o.default = 2
+o:depends("enabled", "1")
+
 -- [[ SOCKS5 Proxy ]]--
 s = m:section(TypedSection, "socks5_proxy", translate("Global SOCKS5 Proxy Server"))
 s.anonymous = true
