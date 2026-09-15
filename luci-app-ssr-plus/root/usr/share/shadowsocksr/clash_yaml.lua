@@ -696,6 +696,12 @@ local function build_dns_section(dns_mode, user_dns)
 		if not result["default-nameserver"] then
 			result["default-nameserver"] = get_fastest_dns()
 		end
+		if not result["direct-nameserver"] then
+			result["direct-nameserver"] = get_fastest_dns()
+		end
+		if result["direct-nameserver-follow-policy"] == nil then
+			result["direct-nameserver-follow-policy"] = false
+		end
 		if result["respect-rules"] == nil then
 			result["respect-rules"] = true
 		end
@@ -740,6 +746,8 @@ local function build_dns_section(dns_mode, user_dns)
 		result["respect-rules"] = nil
 		result["fallback-filter"] = nil
 		result["nameserver-policy"] = nil
+		result["direct-nameserver"] = nil
+		result["direct-nameserver-follow-policy"] = nil
 	end
 
 	local upstreams = build_dns_upstreams()
