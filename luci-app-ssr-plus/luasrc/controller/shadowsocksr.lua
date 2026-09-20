@@ -12,6 +12,9 @@ local json = require "luci.jsonc"
 local uci = require "luci.model.uci".cursor()
 local translate = i18n.translate
 
+-- ============================================================
+-- 常量
+-- ============================================================
 local CLASH_API_PORT = "16756"
 local COMPONENT_HELPER = "/usr/share/shadowsocksr/update_components.sh"
 local SERVER_DETECT_CACHE = "/tmp/ssrplus_server_detect.json"
@@ -30,8 +33,32 @@ local SUPPORTED_GEO_COMPONENTS = {
 	{ name = "v2ray_geosite", require = nil }
 }
 
+-- ============================================================
+-- 通用工具函数
+-- ============================================================
 local function trim(value)
 	return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function shell_quote(value)
+	return "'" .. tostring(value or ""):gsub("'", "'\\''") .. "'"
+end
+
+function uci_get_config(section, key)
+	if section ~= "global" then
+		return nil
+	end
+	local val = luci.sys.exec(string.format(
+		'uci -q get shadowsocksr.@global[0].%s 2>/dev/null', key))
+	val = val:gsub("%s+$", "")
+	if val == "" then
+		return nil
+	end
+	return val
+end
+
+function isdirectory(dirname)
+	return nixio.fs.stat(dirname, "type") == "dir"
 end
 
 local function parse_nonnegative_int(value)
@@ -65,6 +92,49 @@ local function normalize_client_ip(value)
 	return ""
 end
 
+local function urlencode(str)
+	if not str then return "" end
+	return tostring(str):gsub("[^%w%-_%.~]", function(c)
+		return string.format("%%%02X", string.byte(c))
+	end)
+end
+
+local function is_ipv6_address(addr)
+	addr = tostring(addr or "")
+	return addr ~= "" and addr:find(":", 1, true) ~= nil
+end
+
+local function is_local_target(addr)
+	addr = tostring(addr or ""):lower()
+	if addr == "" then
+		return false
+	end
+
+	if addr == "localhost" or addr == "::1" or addr:match("%.local$") then
+		return true
+	end
+
+	if is_ipv6_address(addr) then
+		return addr:match("^fe[89ab]") ~= nil or addr:match("^fc") ~= nil or addr:match("^fd") ~= nil
+	end
+
+	local o1, o2 = addr:match("^(%d+)%.(%d+)%.")
+	o1 = tonumber(o1)
+	o2 = tonumber(o2)
+	if not o1 or not o2 then
+		return false
+	end
+
+	return o1 == 10
+		or o1 == 127
+		or (o1 == 169 and o2 == 254)
+		or (o1 == 172 and o2 >= 16 and o2 <= 31)
+		or (o1 == 192 and o2 == 168)
+end
+
+-- ============================================================
+-- CSV 处理（Clash 客户端规则）
+-- ============================================================
 local function get_clash_client_rule_csv_path(sid)
 	sid = trim(sid)
 	if sid == "" then
@@ -167,6 +237,13 @@ local function write_clash_client_rules_csv(sid, rows)
 	return nixio.fs.writefile(csv_path, table.concat(lines, "\n") .. "\n")
 end
 
+local function read_clash_client_rules(sid)
+	return read_clash_client_rules_csv(sid)
+end
+
+-- ============================================================
+-- LAN 客户端收集
+-- ============================================================
 local function collect_lan_clients()
 	local clients = {}
 	local seen = {}
@@ -191,10 +268,9 @@ local function collect_lan_clients()
 	return clients
 end
 
-local function read_clash_client_rules(sid)
-	return read_clash_client_rules_csv(sid)
-end
-
+-- ============================================================
+-- 延迟探测
+-- ============================================================
 local function normalize_ping_ms(value, scale)
 	local num = tonumber(value)
 	if not num or num <= 0 then
@@ -247,46 +323,6 @@ local function detect_tls_handshake_ms(domain, port, path, resolve_host, server_
 	return nil
 end
 
-local function urlencode(str)
-	if not str then return "" end
-	return tostring(str):gsub("[^%w%-_%.~]", function(c)
-		return string.format("%%%02X", string.byte(c))
-	end)
-end
-
-local function is_ipv6_address(addr)
-	addr = tostring(addr or "")
-	return addr ~= "" and addr:find(":", 1, true) ~= nil
-end
-
-local function is_local_target(addr)
-	addr = tostring(addr or ""):lower()
-	if addr == "" then
-		return false
-	end
-
-	if addr == "localhost" or addr == "::1" or addr:match("%.local$") then
-		return true
-	end
-
-	if is_ipv6_address(addr) then
-		return addr:match("^fe[89ab]") ~= nil or addr:match("^fc") ~= nil or addr:match("^fd") ~= nil
-	end
-
-	local o1, o2 = addr:match("^(%d+)%.(%d+)%.")
-	o1 = tonumber(o1)
-	o2 = tonumber(o2)
-	if not o1 or not o2 then
-		return false
-	end
-
-	return o1 == 10
-		or o1 == 127
-		or (o1 == 169 and o2 == 254)
-		or (o1 == 172 and o2 >= 16 and o2 <= 31)
-		or (o1 == 192 and o2 == 168)
-end
-
 local function detect_tcp_connect_ms(domain, port)
 	if not domain or domain == "" or not port or port <= 0 then
 		return nil
@@ -312,6 +348,9 @@ local function detect_tcp_connect_ms(domain, port)
 	return nil
 end
 
+-- ============================================================
+-- Clash 相关
+-- ============================================================
 local function get_clash_secret(sid)
 	return sid .. "_ssrplus_clash"
 end
@@ -561,6 +600,9 @@ local function save_detect_cache_entry(sid, data)
 	end)
 end
 
+-- ============================================================
+-- 组件 / Geo 状态读取与写 JSON
+-- ============================================================
 local function read_component_state(component, action)
 	if not SUPPORTED_COMPONENTS[component] then
 		return nil, 400, "unsupported_component"
@@ -632,10 +674,9 @@ local function write_geo_json(data)
 	})
 end
 
-local function shell_quote(value)
-	return "'" .. tostring(value or ""):gsub("'", "'\\''") .. "'"
-end
-
+-- ============================================================
+-- 路由注册
+-- ============================================================
 function index()
 	if not nixio.fs.access("/etc/config/shadowsocksr") then
 		call("act_reset")
@@ -644,6 +685,8 @@ function index()
 	page = entry({"admin", "services", "shadowsocksr"}, alias("admin", "services", "shadowsocksr", "client"), _("ShadowSocksR Plus+"), 10)
 	page.dependent = true
 	page.acl_depends = { "luci-app-ssr-plus" }
+
+	-- 页面
 	entry({"admin", "services", "shadowsocksr", "client"}, cbi("shadowsocksr/client"), _("SSR Client"), 10).leaf = true
 	entry({"admin", "services", "shadowsocksr", "servers"}, arcombine(cbi("shadowsocksr/servers"), cbi("shadowsocksr/client-config")), _("Servers Nodes"), 20).leaf = true
 	entry({"admin", "services", "shadowsocksr", "control"}, cbi("shadowsocksr/control"), _("Access Control"), 30).leaf = true
@@ -651,31 +694,41 @@ function index()
 	entry({"admin", "services", "shadowsocksr", "server"}, arcombine(cbi("shadowsocksr/server"), cbi("shadowsocksr/server-config")), _("SSR Server"), 60).leaf = true
 	entry({"admin", "services", "shadowsocksr", "component"}, cbi("shadowsocksr/component"), _("Component Update"), 65).leaf = true
 	entry({"admin", "services", "shadowsocksr", "status"}, form("shadowsocksr/status"), _("Status"), 70).leaf = true
+	entry({"admin", "services", "shadowsocksr", "log"}, form("shadowsocksr/log"), _("Log"), 80).leaf = true
+
+	-- 状态 / 操作
 	entry({"admin", "services", "shadowsocksr", "check"}, call("check_status"))
 	entry({"admin", "services", "shadowsocksr", "refresh"}, call("refresh_data"))
 	entry({"admin", "services", "shadowsocksr", "subscribe"}, call("subscribe"))
-	entry({"admin", "services", "shadowsocksr", "component_local_status"}, call("component_local_status")).leaf = true
-	entry({"admin", "services", "shadowsocksr", "component_set_mirror"}, call("component_set_mirror")).leaf = true
-	entry({"admin", "services", "shadowsocksr", "component_status"}, call("component_status")).leaf = true
-	entry({"admin", "services", "shadowsocksr", "component_upgrade"}, call("component_upgrade")).leaf = true
-	entry({"admin", "services", "shadowsocksr", "geo_component"}, call("geo_component")).leaf = true
-	entry({"admin", "services", "shadowsocksr", "geo_local_status"}, call("geo_local_status")).leaf = true
-	entry({"admin", "services", "shadowsocksr", "geo_status"}, call("geo_status")).leaf = true
-	entry({"admin", "services", "shadowsocksr", "geo_upgrade"}, call("geo_upgrade")).leaf = true
 	entry({"admin", "services", "shadowsocksr", "checkport"}, call("check_port"))
-	entry({"admin", "services", "shadowsocksr", "log"}, form("shadowsocksr/log"), _("Log"), 80).leaf = true
 	entry({"admin", "services", "shadowsocksr", "get_log"}, call("get_log")).leaf = true
 	entry({"admin", "services", "shadowsocksr", "clear_log"}, call("clear_log")).leaf = true
 	entry({"admin", "services", "shadowsocksr", "run"}, call("act_status"))
 	entry({"admin", "services", "shadowsocksr", "ping"}, call("act_ping"))
-	entry({"admin", "services", "shadowsocksr", "save_order"}, call("save_order")).leaf = true
-	entry({"admin", "services", "shadowsocksr", "delete_node"}, call("act_delete_node")).leaf = true
-	entry({"admin", "services", "shadowsocksr", "add_subscribe_item"}, call("add_subscribe_item")).leaf = true
-	entry({"admin", "services", "shadowsocksr", "delete_subscribe_item"}, call("delete_subscribe_item")).leaf = true
-	entry({"admin", "services", "shadowsocksr", "toggle_subscribe_item_enabled"}, call("toggle_subscribe_item_enabled")).leaf = true
 	entry({"admin", "services", "shadowsocksr", "reset"}, call("act_reset"))
 	entry({"admin", "services", "shadowsocksr", "restart"}, call("act_restart"))
 	entry({"admin", "services", "shadowsocksr", "delete"}, call("act_delete"))
+	entry({"admin", "services", "shadowsocksr", "save_order"}, call("save_order")).leaf = true
+	entry({"admin", "services", "shadowsocksr", "delete_node"}, call("act_delete_node")).leaf = true
+
+	-- 订阅
+	entry({"admin", "services", "shadowsocksr", "add_subscribe_item"}, call("add_subscribe_item")).leaf = true
+	entry({"admin", "services", "shadowsocksr", "delete_subscribe_item"}, call("delete_subscribe_item")).leaf = true
+	entry({"admin", "services", "shadowsocksr", "toggle_subscribe_item_enabled"}, call("toggle_subscribe_item_enabled")).leaf = true
+
+	-- 组件
+	entry({"admin", "services", "shadowsocksr", "component_local_status"}, call("component_local_status")).leaf = true
+	entry({"admin", "services", "shadowsocksr", "component_set_mirror"}, call("component_set_mirror")).leaf = true
+	entry({"admin", "services", "shadowsocksr", "component_status"}, call("component_status")).leaf = true
+	entry({"admin", "services", "shadowsocksr", "component_upgrade"}, call("component_upgrade")).leaf = true
+
+	-- Geo
+	entry({"admin", "services", "shadowsocksr", "geo_component"}, call("geo_component")).leaf = true
+	entry({"admin", "services", "shadowsocksr", "geo_local_status"}, call("geo_local_status")).leaf = true
+	entry({"admin", "services", "shadowsocksr", "geo_status"}, call("geo_status")).leaf = true
+	entry({"admin", "services", "shadowsocksr", "geo_upgrade"}, call("geo_upgrade")).leaf = true
+
+	-- Clash
 	entry({"admin", "services", "shadowsocksr", "clash_panel"}, call("clash_panel")).leaf = true
 	entry({"admin", "services", "shadowsocksr", "clash_groups"}, call("clash_groups")).leaf = true
 	entry({"admin", "services", "shadowsocksr", "clash_switch"}, call("clash_switch")).leaf = true
@@ -684,12 +737,24 @@ function index()
 	entry({"admin", "services", "shadowsocksr", "clash_client_policies"}, call("clash_client_policies")).leaf = true
 	entry({"admin", "services", "shadowsocksr", "clash_client_rule_save"}, call("clash_client_rule_save")).leaf = true
 	entry({"admin", "services", "shadowsocksr", "clash_client_rule_clear"}, call("clash_client_rule_clear")).leaf = true
+
+	-- 证书
 	entry({"admin", "services", "shadowsocksr", "fetch_certsha256"}, call("fetch_certsha256")).leaf = true
 	entry({"admin", "services", "shadowsocksr", "fetch_certbyname"}, call("fetch_certbyname")).leaf = true
-	--[[Backup]]
+
+	-- Dashboard
+	entry({"admin", "services", "shadowsocksr", "dashboard_type"}, call("action_dashboard_type"))
+	entry({"admin", "services", "shadowsocksr", "switch_dashboard"}, call("action_switch_dashboard"))
+	entry({"admin", "services", "shadowsocksr", "delete_dashboard"}, call("action_delete_dashboard"))
+	entry({"admin", "services", "shadowsocksr", "default_dashboard"}, call("action_default_dashboard"))
+
+	-- 备份
 	entry({"admin", "services", "shadowsocksr", "backup"}, call("create_backup")).leaf = true
 end
 
+-- ============================================================
+-- 订阅
+-- ============================================================
 function subscribe()
 	nixio.fs.remove(SERVER_DETECT_CACHE)
 	local sid = luci.http.formvalue("sid") or ""
@@ -948,6 +1013,175 @@ function toggle_subscribe_item_enabled()
 	luci.http.write_json({ ret = 1, sid = sid, field = field, value = value })
 end
 
+-- ============================================================
+-- Dashboard 面板管理
+-- ============================================================
+function action_switch_dashboard()
+	local switch_name = luci.http.formvalue("name")
+	local switch_type = luci.http.formvalue("type")
+	local state = luci.sys.call(string.format(
+		'/usr/share/shadowsocksr/update_dashboard.sh "%s" "%s" >/dev/null 2>&1',
+		switch_name, switch_type))
+
+	-- 写日志
+	local f = io.open("/var/log/ssrplus.log", "a")
+	if f then
+		local result
+		if tonumber(state) == 0 then
+			result = os.date("%Y-%m-%d %H:%M:%S: ") ..
+					string.format("Control Panel【%s - %s】Download Successful!", switch_name, switch_type)
+		else
+			result = os.date("%Y-%m-%d %H:%M:%S: ") ..
+					string.format("Control Panel【%s - %s】Download Error!", switch_name, switch_type)
+		end
+		f:write(result .. "\n")
+		f:close()
+	end
+
+	if tonumber(state) == 0 then
+		local target
+		if switch_type == "Official" then
+			target = "Official"
+		else
+			target = "Meta"
+		end
+
+		if switch_name == "Dashboard" then
+			luci.sys.call(string.format(
+				'uci -q set shadowsocksr.@global[0].dashboard_type="%s"', target))
+		elseif switch_name == "Yacd" then
+			luci.sys.call(string.format(
+				'uci -q set shadowsocksr.@global[0].yacd_type="%s"', target))
+		else
+			luci.sys.call(
+				'uci -q set shadowsocksr.@global[0].dashboard_type="Official"')
+		end
+		luci.sys.call('uci -q commit shadowsocksr')
+	end
+
+	luci.http.prepare_content("application/json")
+	luci.http.write_json({
+		download_state = state;
+	})
+end
+
+function action_delete_dashboard()
+	local delete_name = luci.http.formvalue("name")
+	local delete_path = string.format("/usr/share/shadowsocksr/ui/%s", string.lower(delete_name))
+
+	local panels = {
+		"/usr/share/shadowsocksr/ui/dashboard",
+		"/usr/share/shadowsocksr/ui/yacd",
+		"/usr/share/shadowsocksr/ui/metacubexd",
+		"/usr/share/shadowsocksr/ui/zashboard"
+	}
+	local existing_panels = 0
+	for _, path in ipairs(panels) do
+		if isdirectory(path) then
+			existing_panels = existing_panels + 1
+		end
+	end
+
+	if existing_panels <= 1 then
+		luci.http.prepare_content("application/json")
+		luci.http.write_json({
+			delete_state = 0,
+			error = "Cannot delete the last remaining dashboard"
+		})
+		return
+	end
+
+	local state = luci.sys.call(string.format("rm -rf '%s' >/dev/null 2>&1", delete_path)) == 0 and 1 or 0
+	if tonumber(state) == 1 then
+		if delete_name == "Dashboard" then
+			luci.sys.call('uci -q set shadowsocksr.@global[0].dashboard_type="Official"')
+			luci.sys.call('uci -q commit shadowsocksr')
+		elseif delete_name == "Yacd" then
+			luci.sys.call('uci -q set shadowsocksr.@global[0].yacd_type="Official"')
+			luci.sys.call('uci -q commit shadowsocksr')
+		end
+
+		-- 检查 default_dashboard
+		local default_dashboard = luci.sys.exec(
+			'uci -q get shadowsocksr.@global[0].default_dashboard 2>/dev/null')
+		default_dashboard = default_dashboard:gsub("%s+$", "")
+
+		if default_dashboard == string.lower(delete_name) then
+			luci.sys.call('uci -q set shadowsocksr.@global[0].default_dashboard=""')
+			luci.sys.call('uci -q commit shadowsocksr')
+		end
+	end
+
+	luci.http.prepare_content("application/json")
+	luci.http.write_json({
+		delete_state = state;
+	})
+end
+
+function action_dashboard_type()
+	local dashboard_type = luci.sys.exec(
+		'uci -q get shadowsocksr.@global[0].dashboard_type 2>/dev/null')
+	dashboard_type = dashboard_type:gsub("%s+$", "")
+	if dashboard_type == "" then
+		dashboard_type = "Official"
+	end
+
+	local yacd_type = luci.sys.exec(
+		'uci -q get shadowsocksr.@global[0].yacd_type 2>/dev/null')
+	yacd_type = yacd_type:gsub("%s+$", "")
+	if yacd_type == "" then
+		yacd_type = "Official"
+	end
+
+	local default_dashboard = luci.sys.exec(
+		'uci -q get shadowsocksr.@global[0].default_dashboard 2>/dev/null')
+	default_dashboard = default_dashboard:gsub("%s+$", "")
+
+	if not isdirectory("/usr/share/shadowsocksr/ui/" .. default_dashboard) then
+		default_dashboard = ""
+	end
+
+	luci.http.prepare_content("application/json")
+	luci.http.write_json({
+		dashboard_type    = dashboard_type,
+		yacd_type         = yacd_type,
+		yacd              = isdirectory("/usr/share/shadowsocksr/ui/yacd"),
+		dashboard         = isdirectory("/usr/share/shadowsocksr/ui/dashboard"),
+		metacubexd        = isdirectory("/usr/share/shadowsocksr/ui/metacubexd"),
+		zashboard         = isdirectory("/usr/share/shadowsocksr/ui/zashboard"),
+		default_dashboard = default_dashboard;
+	})
+end
+
+function action_default_dashboard()
+	local default_dashboard = luci.http.formvalue("name")
+	if not default_dashboard
+		or (default_dashboard ~= "Dashboard"
+			and default_dashboard ~= "Yacd"
+			and default_dashboard ~= "Metacubexd"
+			and default_dashboard ~= "Zashboard") then
+		luci.http.status(500, "Set Failed")
+		return
+	end
+	if not isdirectory("/usr/share/shadowsocksr/ui/" .. string.lower(default_dashboard)) then
+		luci.http.status(500, "Set Failed")
+		return
+	end
+
+	luci.sys.call(string.format(
+		'uci -q set shadowsocksr.@global[0].default_dashboard="%s"',
+		string.lower(default_dashboard)))
+	luci.sys.call('uci -q commit shadowsocksr')
+
+	luci.http.prepare_content("application/json")
+	luci.http.write_json({
+		default_dashboard = default_dashboard;
+	})
+end
+
+-- ============================================================
+-- 组件更新
+-- ============================================================
 function component_status()
 	local component = luci.http.formvalue("component")
 	local data, status, err = read_component_state(component, "info")
@@ -1015,6 +1249,9 @@ function component_upgrade()
 	write_component_json(data)
 end
 
+-- ============================================================
+-- Geo 更新
+-- ============================================================
 function geo_status()
 	local component = luci.http.formvalue("component")
 	local data, status, err = read_geo_state(component, "info")
@@ -1071,10 +1308,13 @@ function geo_upgrade()
 			data.can_upgrade = info.can_upgrade
 		end
 	end
-	
+
 	write_geo_json(data)
 end
 
+-- ============================================================
+-- 状态
+-- ============================================================
 function act_status()
 	local e = {}
 	e.running = global_client_running()
@@ -1085,6 +1325,88 @@ function act_status()
 	luci.http.write_json(e)
 end
 
+function check_status()
+	local e = {}
+	local target = luci.http.formvalue("set") or ""
+	e.ret = luci.sys.call("curl -m 3 -sS -o /dev/null http://www." .. target .. ".com >/dev/null 2>&1")
+	luci.http.prepare_content("application/json")
+	luci.http.write_json(e)
+end
+
+function refresh_data()
+	local set = luci.http.formvalue("set")
+	local retstring = loadstring("return " .. luci.sys.exec("/usr/bin/lua /usr/share/shadowsocksr/update.lua " .. set))()
+	luci.http.prepare_content("application/json")
+	luci.http.write_json(retstring)
+end
+
+function check_port()
+	local retstring = "<br /><br />"
+	local s
+	local server_name = ""
+	local uci = require "luci.model.uci".cursor()
+	local use_nft = use_fw4_backend()
+
+	uci:foreach("shadowsocksr", "servers", function(s)
+		if s.type == "clash" then
+			retstring = retstring .. string.format("<font><b style='color:gray'>[%s] Clash panel node.</b></font><br />", s.alias or s[".name"])
+			return
+		end
+		if s.alias then
+			server_name = s.alias
+		elseif s.server and s.server_port then
+			server_name = s.server .. ":" .. s.server_port
+		end
+
+		-- 临时加入 set
+		local is_ipv6 = is_ipv6_address(s.server)
+		local iret = false
+		if not is_ipv6 then
+			if use_nft then
+				iret = luci.sys.call("nft add element inet ss_spec ss_spec_wan_ac { " .. s.server .. " } 2>/dev/null") == 0
+			else
+				iret = luci.sys.call("ipset add ss_spec_wan_ac " .. s.server .. " 2>/dev/null") == 0
+			end
+		end
+
+		-- TCP 测试
+		local socket = nixio.socket(is_ipv6 and "inet6" or "inet", "stream")
+		socket:setopt("socket", "rcvtimeo", 3)
+		socket:setopt("socket", "sndtimeo", 3)
+		local ret = socket:connect(s.server, s.server_port)
+		socket:close()
+
+		if ret then
+			retstring = retstring .. string.format("<font><b style='color:green'>[%s] OK.</b></font><br />", server_name)
+		else
+			retstring = retstring .. string.format("<font><b style='color:red'>[%s] Error.</b></font><br />", server_name)
+		end
+
+		-- 删除临时 set
+		if iret then
+			if use_nft then
+				luci.sys.call("nft delete element inet ss_spec ss_spec_wan_ac { " .. s.server .. " } 2>/dev/null")
+			else
+				luci.sys.call("ipset del ss_spec_wan_ac " .. s.server)
+			end
+		end
+	end)
+
+	luci.http.prepare_content("application/json")
+	luci.http.write_json({ret = retstring})
+end
+
+function get_log()
+	luci.http.write(luci.sys.exec("[ -f '/var/log/ssrplus.log' ] && cat /var/log/ssrplus.log"))
+end
+
+function clear_log()
+	luci.sys.call("echo '' > /var/log/ssrplus.log")
+end
+
+-- ============================================================
+-- Clash 面板
+-- ============================================================
 function clash_panel()
 	local sid = luci.http.formvalue("sid")
 	if uci:get("shadowsocksr", sid) ~= "servers" or uci:get("shadowsocksr", sid, "type") ~= "clash" then
@@ -1323,6 +1645,9 @@ function clash_client_rule_clear()
 	})
 end
 
+-- ============================================================
+-- 证书
+-- ============================================================
 function fetch_certsha256()
 	local function fetch_cert_sha256(host, port, sni, timeout, http3)
 		if not host then return "" end
@@ -1387,16 +1712,16 @@ function fetch_certbyname()
 		port = tonumber(port) or 443
 		sni = sni or host
 		timeout = tonumber(timeout) or 5
-        
+
 		local cmd = string.format(
 			"timeout %d openssl s_client -connect %s:%d -servername %s -showcerts </dev/null 2>/dev/null " ..
 			"| openssl x509 -noout -subject 2>/dev/null " ..
 			"| awk '{gsub(/^.*=[[:space:]]*/, \"\"); gsub(/,.*$/, \"\"); print}'",
 			timeout, host, port, sni
 		)
-        
+
 		local out = trim(luci.sys.exec(cmd))
-        
+
 		if out == "" then
 			return ""
 		end
@@ -1419,6 +1744,9 @@ function fetch_certbyname()
 	luci.http.write_json(data ~= "" and { code = 1, data = data } or { code = 0 })
 end
 
+-- ============================================================
+-- Ping / 探测
+-- ============================================================
 function act_ping()
 	local e = {}
 	local domain = luci.http.formvalue("domain")
@@ -1537,7 +1865,7 @@ function act_ping()
 			end
 		end
 	else
-		-- 3. 非 WebSocket 节点的探测逻辑 (TCP / ICMP / UDP)
+		-- 非 WebSocket 节点的探测逻辑 (TCP / ICMP / UDP)
 		local socket = nixio.socket("inet", "stream")
 		if socket then
 			socket:setopt("socket", "rcvtimeo", 3)
@@ -1587,7 +1915,7 @@ function act_ping()
 		end
 	end
 
-	-- 4. 清理防火墙规则
+	-- 清理防火墙规则
 	if iret then
 		if use_nft then
 			luci.sys.call("nft delete element inet ss_spec ss_spec_wan_ac { " .. domain .. " } 2>/dev/null")
@@ -1612,77 +1940,9 @@ function act_ping()
 	luci.http.write_json(e)
 end
 
-function check_status()
-	local e = {}
-	local target = luci.http.formvalue("set") or ""
-	e.ret = luci.sys.call("curl -m 3 -sS -o /dev/null http://www." .. target .. ".com >/dev/null 2>&1")
-	luci.http.prepare_content("application/json")
-	luci.http.write_json(e)
-end
-
-function refresh_data()
-	local set = luci.http.formvalue("set")
-	local retstring = loadstring("return " .. luci.sys.exec("/usr/bin/lua /usr/share/shadowsocksr/update.lua " .. set))()
-	luci.http.prepare_content("application/json")
-	luci.http.write_json(retstring)
-end
-
-function check_port()
-	local retstring = "<br /><br />"
-	local s
-	local server_name = ""
-	local uci = require "luci.model.uci".cursor()
-	local use_nft = use_fw4_backend()
-
-	uci:foreach("shadowsocksr", "servers", function(s)
-		if s.type == "clash" then
-			retstring = retstring .. string.format("<font><b style='color:gray'>[%s] Clash panel node.</b></font><br />", s.alias or s[".name"])
-			return
-		end
-		if s.alias then
-			server_name = s.alias
-		elseif s.server and s.server_port then
-			server_name = s.server .. ":" .. s.server_port
-		end
-
-		-- 临时加入 set
-		local is_ipv6 = is_ipv6_address(s.server)
-		local iret = false
-		if not is_ipv6 then
-			if use_nft then
-				iret = luci.sys.call("nft add element inet ss_spec ss_spec_wan_ac { " .. s.server .. " } 2>/dev/null") == 0
-			else
-				iret = luci.sys.call("ipset add ss_spec_wan_ac " .. s.server .. " 2>/dev/null") == 0
-			end
-		end
-
-		-- TCP 测试
-		local socket = nixio.socket(is_ipv6 and "inet6" or "inet", "stream")
-		socket:setopt("socket", "rcvtimeo", 3)
-		socket:setopt("socket", "sndtimeo", 3)
-		local ret = socket:connect(s.server, s.server_port)
-		socket:close()
-
-		if ret then
-			retstring = retstring .. string.format("<font><b style='color:green'>[%s] OK.</b></font><br />", server_name)
-		else
-			retstring = retstring .. string.format("<font><b style='color:red'>[%s] Error.</b></font><br />", server_name)
-		end
-
-		-- 删除临时 set
-		if iret then
-			if use_nft then
-				luci.sys.call("nft delete element inet ss_spec ss_spec_wan_ac { " .. s.server .. " } 2>/dev/null")
-			else
-				luci.sys.call("ipset del ss_spec_wan_ac " .. s.server)
-			end
-		end
-	end)
-
-	luci.http.prepare_content("application/json")
-	luci.http.write_json({ret = retstring})
-end
-
+-- ============================================================
+-- 重启 / 重置 / 删除
+-- ============================================================
 function act_reset()
 	luci.sys.call("/etc/init.d/shadowsocksr reset >/dev/null 2>&1")
 	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr"))
@@ -1698,14 +1958,9 @@ function act_delete()
 	luci.http.redirect(luci.dispatcher.build_url("admin", "services", "shadowsocksr", "servers"))
 end
 
-function get_log()
-	luci.http.write(luci.sys.exec("[ -f '/var/log/ssrplus.log' ] && cat /var/log/ssrplus.log"))
-end
-	
-function clear_log()
-	luci.sys.call("echo '' > /var/log/ssrplus.log")
-end
-
+-- ============================================================
+-- 备份
+-- ============================================================
 function create_backup()
 	local backup_files = {
 		"/etc/config/shadowsocksr",
