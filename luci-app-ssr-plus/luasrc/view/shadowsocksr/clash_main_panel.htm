@@ -2,6 +2,40 @@
 <%
 local clash_nodes = self.clash_nodes or {}
 local current_sid = self.map:get(section, "global_server") or "nil"
+
+local panel_defs = {
+	{ name = "zashboard",  label = "Zashboard",  dir = "/usr/share/shadowsocksr/ui/zashboard"  },
+	{ name = "metacubexd", label = "Metacubexd", dir = "/usr/share/shadowsocksr/ui/metacubexd" },
+	{ name = "yacd",       label = "Yacd",       dir = "/usr/share/shadowsocksr/ui/yacd"       },
+	{ name = "dashboard",  label = "Dashboard",  dir = "/usr/share/shadowsocksr/ui/dashboard"  },
+}
+
+local installed_panels = {}
+for _, def in ipairs(panel_defs) do
+	if nixio.fs.stat(def.dir, "type") == "dir" then
+		installed_panels[#installed_panels + 1] = {
+			name  = def.name,
+			label = def.label,
+			path  = "/ui/" .. def.name .. "/"
+		}
+	end
+end
+
+local default_dashboard = luci.sys.exec(
+	'uci -q get shadowsocksr.@global[0].default_dashboard 2>/dev/null'):gsub("%s+$", "")
+
+local default_panel = ""
+if default_dashboard ~= "" then
+	for _, p in ipairs(installed_panels) do
+		if p.name == default_dashboard then
+			default_panel = p.name
+			break
+		end
+	end
+end
+if default_panel == "" and #installed_panels > 0 then
+	default_panel = installed_panels[1].name
+end
 -%>
 <div id="ssr-clash-main-panel-wrap">
 	<style type="text/css">
@@ -228,7 +262,91 @@ local current_sid = self.map:get(section, "global_server") or "nil"
 			filter: brightness(1.08);
 		}
 
-		/* 手机端优化 */
+		#ssr-panel-chooser-mask {
+			display: none;
+			position: fixed;
+			inset: 0;
+			background: var(--ssr-clash-mask-bg);
+			z-index: 2100;
+		}
+
+		#ssr-panel-chooser {
+			display: none;
+			position: fixed;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			width: min(480px, calc(100vw - 32px));
+			max-height: calc(100vh - 48px);
+			overflow: auto;
+			background: var(--ssr-clash-modal-bg);
+			color: var(--ssr-clash-modal-fg);
+			border-radius: 10px;
+			box-shadow: var(--ssr-clash-modal-shadow);
+			border: 1px solid var(--ssr-clash-modal-border);
+			z-index: 2101;
+			padding: 14px 16px 16px;
+		}
+
+		#ssr-panel-chooser-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 12px;
+			margin-bottom: 12px;
+		}
+
+		#ssr-panel-chooser-title {
+			font-size: 16px;
+			font-weight: 600;
+			color: var(--ssr-clash-modal-fg);
+		}
+
+		#ssr-panel-chooser-list {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+		}
+
+		.ssr-panel-chooser-item {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 10px;
+			padding: 10px 12px;
+			border: 1px solid var(--ssr-clash-field-border);
+			border-radius: 8px;
+			background: var(--ssr-clash-field-bg);
+			color: var(--ssr-clash-field-fg);
+			cursor: pointer;
+			transition: background 0.15s, border-color 0.15s;
+		}
+
+		.ssr-panel-chooser-item:hover {
+			background: rgba(31, 111, 235, 0.10);
+			border-color: #1f6feb;
+		}
+
+		.ssr-panel-chooser-item .ssr-panel-name {
+			font-weight: 600;
+			font-size: 14px;
+		}
+
+		.ssr-panel-chooser-item .ssr-panel-url {
+			font-size: 12px;
+			color: var(--ssr-clash-modal-muted);
+			word-break: break-all;
+		}
+
+		.ssr-panel-chooser-item .ssr-panel-tag {
+			font-size: 11px;
+			padding: 2px 6px;
+			border-radius: 4px;
+			background: #1f6feb;
+			color: #fff;
+			white-space: nowrap;
+		}
+
 		#ssr-clash-main-buttons {
 			display: flex;
 			flex-wrap: wrap;
@@ -248,6 +366,14 @@ local current_sid = self.map:get(section, "global_server") or "nil"
 				transform: none;
 			}
 
+			#ssr-panel-chooser {
+				top: 8px;
+				left: 8px;
+				width: calc(100vw - 16px);
+				max-height: calc(100vh - 24px);
+				transform: none;
+			}
+
 			#ssr-clash-modal-header {
 				flex-wrap: wrap;
 				align-items: flex-start;
@@ -262,7 +388,7 @@ local current_sid = self.map:get(section, "global_server") or "nil"
 				justify-content: flex-start;
 				margin-left: 0;
 				flex-wrap: wrap;
-				gap: 8px; 
+				gap: 8px;
 			}
 
 			#ssr-clash-modal-header #ssr-clash-rules-add {
@@ -393,6 +519,103 @@ local current_sid = self.map:get(section, "global_server") or "nil"
 		-%>
 			<%=string.format("%q", sid)%>: true,
 		<% end -%>
+		};
+
+		var MIHOMO_PANEL_PORT = 16756;
+		var MIHOMO_PANEL_DEFAULT = '<%=default_panel%>';
+
+		var installedPanels = [
+		<%
+			for i, p in ipairs(installed_panels) do
+		-%>
+			{ name: '<%=p.name%>', label: '<%=p.label%>', path: '<%=p.path%>' }<%= (i < #installed_panels) and "," or "" %>
+		<% end -%>
+		];
+
+		function buildMihomoPanelUrl(path) {
+			var host = window.location.hostname;
+			if (host.indexOf(':') >= 0) {
+				host = '[' + host + ']';
+			}
+			return 'http://' + host + ':' + MIHOMO_PANEL_PORT + path;
+		}
+
+		function openPanelUrl(path) {
+			if (!path) {
+				return false;
+			}
+			window.open(buildMihomoPanelUrl(path), '_blank');
+			return false;
+		}
+
+		function showPanelChooser() {
+			var mask = document.getElementById('ssr-panel-chooser-mask');
+			var modal = document.getElementById('ssr-panel-chooser');
+			var listEl = document.getElementById('ssr-panel-chooser-list');
+			if (!mask || !modal || !listEl) {
+				return false;
+			}
+
+			listEl.innerHTML = '';
+
+			if (!installedPanels.length) {
+				var empty = document.createElement('div');
+				empty.style.color = 'var(--ssr-clash-modal-muted)';
+				empty.style.padding = '12px 0';
+				empty.textContent = '<%:No dashboard panel installed. Please install one first.%>';
+				listEl.appendChild(empty);
+			} else {
+				installedPanels.forEach(function(panel) {
+					var item = document.createElement('div');
+					item.className = 'ssr-panel-chooser-item';
+
+					var info = document.createElement('div');
+					info.style.flex = '1 1 auto';
+					info.style.minWidth = '0';
+
+					var nameEl = document.createElement('div');
+					nameEl.className = 'ssr-panel-name';
+					nameEl.textContent = panel.label;
+
+					var urlEl = document.createElement('div');
+					urlEl.className = 'ssr-panel-url';
+					urlEl.textContent = buildMihomoPanelUrl(panel.path);
+
+					info.appendChild(nameEl);
+					info.appendChild(urlEl);
+					item.appendChild(info);
+
+					if (panel.name === MIHOMO_PANEL_DEFAULT) {
+						var tag = document.createElement('span');
+						tag.className = 'ssr-panel-tag';
+						tag.textContent = '<%:Default%>';
+						item.appendChild(tag);
+					}
+
+					item.onclick = function() {
+						closePanelChooser();
+						openPanelUrl(panel.path);
+					};
+
+					listEl.appendChild(item);
+				});
+			}
+
+			mask.style.display = 'block';
+			modal.style.display = 'block';
+			return false;
+		}
+
+		function closePanelChooser() {
+			var mask = document.getElementById('ssr-panel-chooser-mask');
+			var modal = document.getElementById('ssr-panel-chooser');
+			if (mask) mask.style.display = 'none';
+			if (modal) modal.style.display = 'none';
+			return false;
+		}
+
+		window.ssrClashOpenPanelChooser = function() {
+			return showPanelChooser();
 		};
 
 		function setPanelStatus(text, color) {
@@ -718,7 +941,7 @@ local current_sid = self.map:get(section, "global_server") or "nil"
 
 				select.onchange = function() {
 					setPanelStatus('<%:Switching...%>', '#0072c3');
-						window.ssrXHR.get('<%=luci.dispatcher.build_url("admin", "services", "shadowsocksr", "clash_switch")%>', {
+					window.ssrXHR.get('<%=luci.dispatcher.build_url("admin", "services", "shadowsocksr", "clash_switch")%>', {
 						sid: currentPanelSid,
 						group: group.name,
 						name: select.value
@@ -919,7 +1142,7 @@ local current_sid = self.map:get(section, "global_server") or "nil"
 			var resetBtn = document.getElementById('ssr-clash-main-reset-defaults');
 			var panelBtn = document.getElementById('ssr-clash-main-open');
 			var btnContainer = document.getElementById('ssr-clash-main-buttons');
-			if (!select || !row || !customRulesBtn || !resetBtn || !panelBtn) {
+			if (!select || !row || !customRulesBtn || !resetBtn) {
 				return;
 			}
 
@@ -928,13 +1151,13 @@ local current_sid = self.map:get(section, "global_server") or "nil"
 				row.style.display = '';
 				customRulesBtn.setAttribute('data-sid', sid);
 				resetBtn.setAttribute('data-sid', sid);
-				panelBtn.setAttribute('data-sid', sid);
+				if (panelBtn) panelBtn.setAttribute('data-sid', sid);
 				if (btnContainer) btnContainer.style.display = 'flex';
 			} else {
 				row.style.display = 'none';
 				customRulesBtn.setAttribute('data-sid', '');
 				resetBtn.setAttribute('data-sid', '');
-				panelBtn.setAttribute('data-sid', '');
+				if (panelBtn) panelBtn.setAttribute('data-sid', '');
 				if (btnContainer) btnContainer.style.display = 'none';
 			}
 		}
@@ -980,9 +1203,7 @@ local current_sid = self.map:get(section, "global_server") or "nil"
 
 			if (panelBtn) {
 				panelBtn.onclick = function() {
-					var sid = this.getAttribute('data-sid');
-					if (!sid) return false;
-					return openPanel(sid);
+					return window.ssrClashOpenPanelChooser();
 				};
 			}
 
@@ -1060,6 +1281,15 @@ local current_sid = self.map:get(section, "global_server") or "nil"
 				modalMask.onclick = closePanel;
 			}
 
+			var chooserMask = document.getElementById('ssr-panel-chooser-mask');
+			var chooserCloseBtn = document.getElementById('ssr-panel-chooser-close');
+			if (chooserMask) {
+				chooserMask.onclick = closePanelChooser;
+			}
+			if (chooserCloseBtn) {
+				chooserCloseBtn.onclick = closePanelChooser;
+			}
+
 			updateClashPanelMain();
 		}, 0);
 	})();
@@ -1080,6 +1310,7 @@ local current_sid = self.map:get(section, "global_server") or "nil"
 			value="<%:Reset Default Proxies Rules%>"
 			title="<%:Reset Default Proxies Rules%>"
 			data-sid="<%=current_sid%>" />
+		<% if #installed_panels > 0 then %>
 		<input
 			type="button"
 			id="ssr-clash-main-open"
@@ -1087,6 +1318,16 @@ local current_sid = self.map:get(section, "global_server") or "nil"
 			value="<%:Mihomo Pannel%>"
 			title="<%:Mihomo Pannel%>"
 			data-sid="<%=current_sid%>" />
+		<% end %>
+	</div>
+
+	<div id="ssr-panel-chooser-mask"></div>
+	<div id="ssr-panel-chooser" role="dialog" aria-modal="true" aria-labelledby="ssr-panel-chooser-title">
+		<div id="ssr-panel-chooser-header">
+			<div id="ssr-panel-chooser-title"><%:Select Dashboard Panel%></div>
+			<input type="button" id="ssr-panel-chooser-close" class="btn cbi-button" value="<%:Close%>" />
+		</div>
+		<div id="ssr-panel-chooser-list"></div>
 	</div>
 
 	<div id="ssr-clash-modal-mask"></div>
