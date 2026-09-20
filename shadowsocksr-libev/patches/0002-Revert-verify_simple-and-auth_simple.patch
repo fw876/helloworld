@@ -1,6 +1,6 @@
 --- a/src/obfs/obfs.c
 +++ b/src/obfs/obfs.c
-@@ -88,7 +88,7 @@ obfs_class *new_obfs_class(const char *p
+@@ -88,10 +88,11 @@ obfs_class *new_obfs_class(const char *p
          plugin->client_decode = tls12_ticket_auth_client_decode;
  
          return plugin;
@@ -9,7 +9,19 @@
              obfs_class * plugin = (obfs_class*)malloc(sizeof(obfs_class));
              plugin->init_data = init_data;
              plugin->new_obfs = verify_simple_new_obfs;
-@@ -115,7 +115,7 @@ obfs_class *new_obfs_class(const char *p
++            plugin->get_overhead = get_overhead;
+             plugin->get_server_info = get_server_info;
+             plugin->set_server_info = set_server_info;
+             plugin->dispose = verify_simple_dispose;
+@@ -106,6 +107,7 @@ obfs_class *new_obfs_class(const char *p
+             obfs_class * plugin = (obfs_class*)malloc(sizeof(obfs_class));
+             plugin->init_data = auth_simple_init_data;
+             plugin->new_obfs = auth_simple_new_obfs;
++            plugin->get_overhead = get_overhead;
+             plugin->get_server_info = get_server_info;
+             plugin->set_server_info = set_server_info;
+             plugin->dispose = auth_simple_dispose;
+@@ -115,7 +117,7 @@ obfs_class *new_obfs_class(const char *p
              plugin->client_udp_pre_encrypt = NULL;
              plugin->client_udp_post_decrypt = NULL;
  
