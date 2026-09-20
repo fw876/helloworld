@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="">
+  <head>
+    <meta charset="UTF-8" />
+    <title>zashboard</title>
+    <meta
+      name="viewport"
+      content="user-scalable=no, width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta
+      name="description"
+      content="A dashboard using clash API"
+    />
+    <link
+      rel="apple-touch-icon"
+      href="./apple-touch-icon.png"
+    />
+    <link
+      rel="icon"
+      href="./favicon.ico"
+      sizes="48x48"
+    />
+    <link
+      id="favicon"
+      rel="icon"
+      href="./favicon.svg"
+      sizes="any"
+      type="image/svg+xml"
+    />
+    <meta
+      name="theme-color"
+      content="#FFFFFF"
+    />
+    <script type="module" crossorigin src="./assets/index-DC9m9n9t.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-aEk9Ew7B.css">
+  <link rel="manifest" href="./manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script></head>
+  <body class="h-dvh w-screen">
+    <div id="app"></div>
+    <script>
+      ;(function () {
+        const media = window.matchMedia('(prefers-color-scheme: dark)')
+        const favicon = document.getElementById('favicon')
+        const setFavicon = (isDark) => {
+          favicon.href = isDark ? './favicon-dark.svg' : './favicon.svg'
+        }
+
+        media.addEventListener('change', () => {
+          setFavicon(media.matches)
+        })
+        setFavicon(media.matches)
+      })()
+    </script>
+  </body>
+</html>
