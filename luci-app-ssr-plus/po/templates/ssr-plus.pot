@@ -100,16 +100,16 @@ msgstr ""
 msgid "Accept LAN Access"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:649
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:692
 msgid "Access Control"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1118
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1359
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe_actions_footer.htm:302
 msgid "Actions"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1098
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1339
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/server_table.htm:349
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/server_table.htm:357
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe_actions_footer.htm:256
@@ -130,11 +130,11 @@ msgstr ""
 msgid "Additional Version"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:452
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:625
 msgid "Address"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:650
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:693
 msgid "Advanced Settings"
 msgstr ""
 
@@ -164,11 +164,11 @@ msgstr ""
 msgid "All Ports"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1046
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1267
 msgid "All client proxy rules cleared and applied."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1046
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1267
 msgid "All client proxy rules cleared."
 msgstr ""
 
@@ -240,6 +240,10 @@ msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe_actions_footer.htm:142
 msgid "Are you sure you want to delete subscribe link: %s ?"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:381
+msgid "Are you sure you want to delete this panel?"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/backup_restore.htm:133
@@ -374,8 +378,8 @@ msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:173
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:326
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:480
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:515
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:653
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:688
 msgid "Check Update"
 msgstr ""
 
@@ -419,13 +423,13 @@ msgstr ""
 msgid "Clang.CN.CIDR"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:380
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:419
 msgid "Clash"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client.lua:112
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:893
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1096
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1116
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1337
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel.htm:3
 msgid "Clash Panel"
 msgstr ""
@@ -446,11 +450,11 @@ msgstr ""
 msgid "Clash/Mihomo"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1101
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1342
 msgid "Clear All Rules"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1035
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1256
 msgid "Clear all custom client proxy rules and restore empty state?"
 msgstr ""
 
@@ -469,23 +473,24 @@ msgstr ""
 msgid "Click to the page"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1115
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1356
 msgid "Client"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1001
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1222
 msgid "Client rules exported to CSV file."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1025
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1246
 msgid "Client rules imported from CSV file. Click Save to apply."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1110
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1351
 msgid "Client supports manual IP or IP/CIDR input."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1107
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1328
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1348
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe.htm:251
 msgid "Close"
 msgstr ""
@@ -500,17 +505,21 @@ msgstr ""
 msgid "Cloudflare DNS (1.1.1.1)"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:477
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:512
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:650
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:685
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:716
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:732
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:748
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:764
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/status.htm:21
 msgid "Collecting data..."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:464
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:637
 msgid "Component"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:652
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:695
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/component.lua:5
 msgid "Component Update"
 msgstr ""
@@ -553,12 +562,12 @@ msgstr ""
 msgid "Copy SSR to clipboard successfully."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:443
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:616
 msgid "Core Components"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:24
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:503
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:676
 msgid "Country MMDB"
 msgstr ""
 
@@ -586,8 +595,8 @@ msgstr ""
 msgid "Custom"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1073
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1074
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1303
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1304
 msgid "Custom Client Proxies Rules"
 msgstr ""
 
@@ -623,11 +632,11 @@ msgstr ""
 msgid "Custom YAML imported successfully: %s"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:784
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1007
 msgid "Custom client proxy rules saved and applied."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:784
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1007
 msgid "Custom client proxy rules saved."
 msgstr ""
 
@@ -658,7 +667,15 @@ msgstr ""
 msgid "DTLS 1.2"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:499
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:727
+msgid "Dashboard Panel"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:699
+msgid "Dashboard Update"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:672
 msgid "Database"
 msgstr ""
 
@@ -674,6 +691,10 @@ msgstr ""
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1566
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1578
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1592
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:591
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:398
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:401
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:437
 msgid "Default"
 msgstr ""
 
@@ -702,17 +723,17 @@ msgid ""
 "proxy protocol."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:373
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:499
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel_button.htm:41
 msgid "Defaults Cleared!"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:373
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:499
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel_button.htm:41
 msgid "Defaults Restored!"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1110
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1351
 msgid ""
 "Define per-client Mihomo proxy targets. Rules are injected as SRC-IP-CIDR "
 "entries before the original Clash rules."
@@ -722,7 +743,11 @@ msgstr ""
 msgid "Delay (ms)"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:665
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:888
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:718
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:734
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:750
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:766
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/server_table.htm:319
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe_actions_footer.htm:196
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe_actions_footer.htm:328
@@ -800,12 +825,16 @@ msgstr ""
 msgid "Downlink Capacity(Default:Mbps)"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:451
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:624
 msgid "Download Source"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:52
 msgid "Download failed"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:355
+msgid "Downloading File..."
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:971
@@ -840,7 +869,7 @@ msgstr ""
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/server-config.lua:54
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/server.lua:101
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:676
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1114
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1355
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe_actions_footer.htm:184
 msgid "Enable"
 msgstr ""
@@ -1014,7 +1043,7 @@ msgstr ""
 msgid "Expecting: %s"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1102
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1343
 msgid "Export Client Rules"
 msgstr ""
 
@@ -1026,7 +1055,7 @@ msgstr ""
 msgid "FORCE BRUTAL"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1048
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1269
 msgid "Failed to clear all client proxy rules."
 msgstr ""
 
@@ -1055,7 +1084,7 @@ msgstr ""
 msgid "Failed to query geo database information."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:786
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1009
 msgid "Failed to save custom client proxy rules."
 msgstr ""
 
@@ -1166,16 +1195,16 @@ msgstr ""
 msgid "Gecko Packet Size (min)"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:491
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:664
 msgid "Geo Database Update"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:500
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:673
 msgid "Geo Resource"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/component.lua:14
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:455
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:628
 msgid "GitHub Direct"
 msgstr ""
 
@@ -1310,7 +1339,7 @@ msgstr ""
 msgid "Httpupgrade Path"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:420
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:459
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:467
 msgid "Hysteria2"
 msgstr ""
@@ -1369,7 +1398,7 @@ msgstr ""
 msgid "Import"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1103
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1344
 msgid "Import Client Rules"
 msgstr ""
 
@@ -1572,8 +1601,8 @@ msgstr ""
 msgid "Listen only on the given interface or, if unspecified, on all"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:794
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:847
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1017
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1070
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel.htm:84
 msgid "Loading..."
 msgstr ""
@@ -1591,7 +1620,7 @@ msgstr ""
 msgid "Local addresses"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:666
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:697
 msgid "Log"
 msgstr ""
 
@@ -1646,18 +1675,22 @@ msgstr ""
 msgid "Maximum packet size the socks5 server can receive from external"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:376
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:379
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:382
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:388
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:404
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:759
+msgid "Metacubexd Panel"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:415
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:418
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:421
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:427
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:443
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:13
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:470
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:643
 msgid "Mihomo"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1087
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1088
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1318
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1319
 msgid "Mihomo Pannel"
 msgstr ""
 
@@ -1735,10 +1768,10 @@ msgstr ""
 msgid "NOT RUNNING"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:414
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:453
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:398
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:17
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:471
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:644
 msgid "NaiveProxy"
 msgstr ""
 
@@ -1790,8 +1823,12 @@ msgstr ""
 msgid "No custom YAML file was selected."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:550
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:773
 msgid "No custom client proxy rules yet."
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:565
+msgid "No dashboard panel installed. Please install one first."
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/refresh.htm:21
@@ -1806,7 +1843,7 @@ msgstr ""
 msgid "No subscription items found"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:691
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:914
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel.htm:32
 msgid "No switchable proxy groups found."
 msgstr ""
@@ -1929,7 +1966,7 @@ msgid "Only when Socks5 Auth Mode is password valid, Not mandatory."
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:28
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:504
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:677
 msgid "OpenClash GeoSite Database"
 msgstr ""
 
@@ -1953,7 +1990,7 @@ msgstr ""
 msgid "Package Manager"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:465
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:638
 msgid "Package Name"
 msgstr ""
 
@@ -1968,6 +2005,10 @@ msgstr ""
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel_button.htm:68
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel_button.htm:69
 msgid "Panel"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:705
+msgid "Panel Version Management"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:540
@@ -2016,7 +2057,7 @@ msgstr ""
 msgid "Plugin Opts"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1116
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1357
 msgid "Policy"
 msgstr ""
 
@@ -2121,22 +2162,22 @@ msgstr ""
 msgid "RST Backup"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:442
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:481
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/status.htm:7
 msgid "RUNNING"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:435
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:474
 msgid "RUNNING in %s (%s) Mode"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:439
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:478
 msgid "RUNNING in %s Mode"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:680
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:828
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:878
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:903
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1051
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1101
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel.htm:93
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:291
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe.htm:253
@@ -2156,7 +2197,7 @@ msgid "Realm URL"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:860
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:348
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:474
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel_button.htm:17
 msgid "Reapply"
 msgstr ""
@@ -2206,14 +2247,14 @@ msgstr ""
 msgid "Reload YAML"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:341
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:467
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel_button.htm:10
 msgid "Reloading YAML..."
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/server-config.lua:135
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/server-config.lua:136
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1117
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1358
 msgid "Remarks"
 msgstr ""
 
@@ -2234,14 +2275,14 @@ msgstr ""
 msgid "Reserved bytes(optional)"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1080
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1081
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1310
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1311
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel_button.htm:62
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel_button.htm:63
 msgid "Reset Default Proxies Rules"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:376
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:502
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel_button.htm:44
 msgid "Reset Defaults Failed!"
 msgstr ""
@@ -2251,7 +2292,7 @@ msgstr ""
 msgid "Reset complete"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:362
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:488
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel_button.htm:30
 msgid "Reset saved Mihomo proxy-group selections and restore YAML defaults?"
 msgstr ""
@@ -2260,7 +2301,7 @@ msgstr ""
 msgid "Reset to defaults"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:366
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:492
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel_button.htm:34
 msgid "Resetting Defaults..."
 msgstr ""
@@ -2300,7 +2341,7 @@ msgstr ""
 msgid "Running Mode"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:416
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:455
 msgid "SOCKS5"
 msgstr ""
 
@@ -2308,20 +2349,20 @@ msgstr ""
 msgid "SS URL base64 sstr format not recognized."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:647
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:690
 msgid "SSR Client"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:5
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:468
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:641
 msgid "SSR Plus+ Main Program"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:651
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:694
 msgid "SSR Server"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1106
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1347
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe_actions_footer.htm:195
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe_actions_footer.htm:327
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe_actions_footer.htm:352
@@ -2346,13 +2387,17 @@ msgstr ""
 msgid "Save failed:"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:763
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:986
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe_actions_footer.htm:81
 msgid "Saving..."
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/advanced_switch_compact.htm:105
 msgid "Second"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1327
+msgid "Select Dashboard Panel"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1744
@@ -2394,7 +2439,7 @@ msgstr ""
 msgid "Server failsafe auto swith and custom update settings"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:648
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:691
 msgid "Servers Nodes"
 msgstr ""
 
@@ -2406,6 +2451,15 @@ msgstr ""
 msgid "Session Ticket"
 msgstr ""
 
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:387
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:403
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:721
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:737
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:753
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:769
+msgid "Set to Default"
+msgstr ""
+
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:407
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:615
 msgid "Shadow-TLS"
@@ -2415,15 +2469,15 @@ msgstr ""
 msgid "Shadow-TLS ChainPoxy type"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:377
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:416
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:392
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:462
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/server-config.lua:61
 msgid "ShadowSocks"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:389
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:391
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:428
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:430
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:395
 msgid "ShadowSocks-Rust"
 msgstr ""
@@ -2432,7 +2486,7 @@ msgstr ""
 msgid "ShadowSocks-rust Version"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:644
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:685
 msgid "ShadowSocksR Plus+"
 msgstr ""
 
@@ -2440,7 +2494,7 @@ msgstr ""
 msgid "ShadowSocksR Plus+ Settings"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:418
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:457
 msgid "ShadowTLS"
 msgstr ""
 
@@ -2449,7 +2503,7 @@ msgstr ""
 msgid "Shadowsocks Password"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:385
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:424
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:389
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/server-config.lua:64
 msgid "ShadowsocksR"
@@ -2536,7 +2590,7 @@ msgstr ""
 msgid "Starting subscription update..."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:653
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:696
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:130
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:132
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:134
@@ -2622,21 +2676,39 @@ msgid ""
 "a maximum length of 3 bytes."
 msgstr ""
 
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:373
+msgid "Switch Failed"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:365
+msgid "Switch Successful"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:365
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:432
+msgid "Switch To Meta Version"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:365
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:431
+msgid "Switch To Official Version"
+msgstr ""
+
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:104
 msgid "Switch check cycly(second)"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:730
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:953
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel.htm:71
 msgid "Switch failed."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:727
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:950
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel.htm:68
 msgid "Switched successfully."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:720
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:943
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel.htm:61
 msgid "Switching..."
 msgstr ""
@@ -2690,7 +2762,7 @@ msgstr ""
 msgid "TLS is used to verify the leaf certificate name."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:383
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:422
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:404
 msgid "TUIC"
 msgstr ""
@@ -2759,8 +2831,8 @@ msgid ""
 "GitHub release page."
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:816
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:871
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1039
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:1094
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel.htm:89
 msgid "This Clash total node is not active. Apply this node first."
 msgstr ""
@@ -2814,7 +2886,7 @@ msgstr ""
 msgid "Transport Protocol"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:412
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:451
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:461
 msgid "Trojan"
 msgstr ""
@@ -2905,6 +2977,10 @@ msgstr ""
 msgid "Unsupported package manager"
 msgstr ""
 
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:372
+msgid "Unzip Error"
+msgstr ""
+
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe_actions_footer.htm:197
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe_actions_footer.htm:332
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/subscribe_actions_footer.htm:333
@@ -2915,12 +2991,26 @@ msgstr ""
 msgid "Update All Subscribe Servers"
 msgstr ""
 
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:373
+msgid "Update Failed"
+msgstr ""
+
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:511
 msgid "Update Interval(min)"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:475
 msgid "Update Mode"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:362
+msgid "Update Successful"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:362
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:425
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:427
+msgid "Update Version"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/servers.lua:482
@@ -2951,8 +3041,8 @@ msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:173
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:326
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:481
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:516
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:654
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:689
 msgid "Upgrade"
 msgstr ""
 
@@ -3058,12 +3148,12 @@ msgid "Using incorrect encryption mothod may causes service fail to start"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:33
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:505
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:678
 msgid "V2Ray GeoIP Databases"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:37
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:506
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:679
 msgid "V2Ray GeoSite Databases"
 msgstr ""
 
@@ -3175,7 +3265,7 @@ msgstr ""
 msgid "XTLS"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:406
+#: applications/luci-app-ssr-plus/luasrc/controller/shadowsocksr.lua:445
 msgid "Xray"
 msgstr ""
 
@@ -3188,22 +3278,30 @@ msgid "Xray Noise Packets"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:9
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:469
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:642
 msgid "Xray-core"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:351
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:477
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel_button.htm:20
 msgid "YAML Reload Failed!"
 msgstr ""
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:348
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:474
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel_button.htm:17
 msgid "YAML Reloaded!"
 msgstr ""
 
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:711
+msgid "Yacd Panel"
+msgstr ""
+
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:273
 msgid "Yes"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:743
+msgid "Zashboard Panel"
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:157

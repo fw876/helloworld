@@ -611,7 +611,9 @@ prepare_clash_runtime_config() {
 	local enable_fake_ip
 	local socks5_auth
 	local socks5_user
-	local socks5_pass
+	local default_dashboard
+	local yacd_type
+	local dashboard_type
 
 	cache_file="$(get_clash_cache_file "$sid")"
 	workdir="$(get_clash_workdir "$sid")"
@@ -635,11 +637,41 @@ prepare_clash_runtime_config() {
 	cp -f "$cache_file" "$raw_file"
 	filter_clash_yaml_proxies "$raw_file"
 
+	default_dashboard=$(uci_get_by_type global default_dashboard "zashboard")
+	yacd_type=$(uci_get_by_type global yacd_type "Meta")
+	dashboard_type=$(uci_get_by_type global dashboard_type "Official")
+	case "$default_dashboard" in
+		dashboard)
+			if [ "$dashboard_type" = "Official" ]; then
+				EXTERNAL_UI_URL="https://codeload.github.com/ayanamist/clash-dashboard/zip/refs/heads/gh-pages"
+			else
+				EXTERNAL_UI_URL="https://codeload.github.com/MetaCubeX/Razord-meta/zip/refs/heads/gh-pages"
+			fi
+			;;
+		yacd)
+			if [ "$yacd_type" = "Official" ]; then
+				EXTERNAL_UI_URL="https://codeload.github.com/haishanh/yacd/zip/refs/heads/gh-pages"
+			else
+				EXTERNAL_UI_URL="https://codeload.github.com/MetaCubeX/Yacd-meta/zip/refs/heads/gh-pages"
+			fi
+			;;
+		metacubexd)
+			EXTERNAL_UI_URL="https://codeload.github.com/MetaCubeX/metacubexd/zip/refs/heads/gh-pages"
+			;;
+		zashboard|*)
+			EXTERNAL_UI_URL="https://codeload.github.com/Zephyruso/zashboard/zip/refs/heads/gh-pages-cdn-fonts"
+			default_dashboard="zashboard"
+			;;
+	esac
+
 	cat >"$overlay_file" <<-EOF
 		redir-port: $local_port
 		tproxy-port: $local_port
-		external-controller: 127.0.0.1:$CLASH_API_PORT
-		secret: $clash_secret
+		external-controller: 0.0.0.0:$CLASH_API_PORT
+		secret: ""
+		external-ui: /usr/share/shadowsocksr/ui
+		external-ui-name: $default_dashboard
+		external-ui-url: $EXTERNAL_UI_URL
 		allow-lan: true
 		bind-address: 0.0.0.0
 		routing-mark: $CLASH_OUTBOUND_MARK
@@ -2476,7 +2508,7 @@ Start_Run() {
 			return 1
 		}
 		clash_workdir="$(get_clash_workdir "$GLOBAL_SERVER")"
-		ln_start_bin "$mihomo_bin" ssr-retcp -d "$clash_workdir" -f "$clash_workdir/config.yaml"
+		SAFE_PATHS="/usr/share/shadowsocksr/" ln_start_bin "$mihomo_bin" ssr-retcp -d "$clash_workdir" -f "$clash_workdir/config.yaml"
 		echolog "Main node: $($mihomo_bin -v 2>&1 | head -1 | awk '{print $1, $3}') (Clash) Started!"
 		;;
 	socks5)
@@ -2502,11 +2534,13 @@ load_config() {
 	else
 		GLOBAL_SERVER=$switch_server
 	fi
+	# 全局 socks5 注释掉后配合 advanced.lua 中取消注释 -- Server Selection 选项
 	if [ "$(uci_get_by_type socks5_proxy enabled 0)" = "1" ]; then
 		uci -q set "$NAME.@socks5_proxy[0].server=same"
 	else
 		uci -q set "$NAME.@socks5_proxy[0].server=nil"
 	fi
+	# 全局 3proxy 注释掉后配合 advanced.lua 中取消注释 -- Server Selection 选项
 	if [ "$(uci_get_by_type http_proxy enabled 0)" = "1" ]; then
 		uci -q set "$NAME.@http_proxy[0].server=same"
 	else
