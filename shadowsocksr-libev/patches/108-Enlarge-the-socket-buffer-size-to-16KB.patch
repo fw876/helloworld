@@ -1,0 +1,610 @@
+From a7291ea725b74dc64c5806385100c535a15e889e Mon Sep 17 00:00:00 2001
+From: Max Lv <max.c.lv@gmail.com>
+Date: Tue, 30 Apr 2019 09:22:54 +0800
+Subject: [PATCH] Enlarge the socket buffer size to 16KB.
+
+After five years, memory footprint is not a problem for most of
+low-end boxes and high-end routers now.
+
+It should also improve the speed on loopback and high-speed LAN
+networks.
+---
+ src/local.c    | 26 +++++++++++---------------
+ src/netutils.h |  2 ++
+ src/redir.c    | 24 ++++++++++++------------
+ src/server.c   | 24 ++++++++++--------------
+ src/tunnel.c   | 18 +++++++-----------
+ 5 files changed, 42 insertions(+), 52 deletions(-)
+
+--- a/server/netutils.h
++++ b/server/netutils.h
+@@ -60,6 +60,8 @@
+ /** byte size of ip6 address */
+ #define INET6_SIZE 16
+ 
++#define SOCKET_BUF_SIZE (16 * 1024) // 16KB
++
+ size_t get_sockaddr_len(struct sockaddr *addr);
+ ssize_t get_sockaddr(char *host, char *port,
+                      struct sockaddr_storage *storage, int block,
+--- a/server/server.c
++++ b/server/server.c
+@@ -73,10 +73,6 @@
+ #define EWOULDBLOCK EAGAIN
+ #endif
+ 
+-#ifndef BUF_SIZE
+-#define BUF_SIZE 2048
+-#endif
+-
+ #ifndef SSMAXCONN
+ #define SSMAXCONN 1024
+ #endif
+@@ -142,13 +138,13 @@ stat_update_cb(EV_P_ ev_timer *watcher,
+     struct sockaddr_un svaddr, claddr;
+     int sfd = -1;
+     size_t msgLen;
+-    char resp[BUF_SIZE];
++    char resp[SOCKET_BUF_SIZE];
+ 
+     if (verbose) {
+         LOGI("update traffic stat: tx: %" PRIu64 " rx: %" PRIu64 "", tx, rx);
+     }
+ 
+-    snprintf(resp, BUF_SIZE, "stat: {\"%s\":%" PRIu64 "}", server_port, tx + rx);
++    snprintf(resp, SOCKET_BUF_SIZE, "stat: {\"%s\":%" PRIu64 "}", server_port, tx + rx);
+     msgLen = strlen(resp) + 1;
+ 
+     ss_addr_t ip_addr = { .host = NULL, .port = NULL };
+@@ -625,14 +621,14 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+         ev_timer_again(EV_A_ & server->recv_ctx->watcher);
+     }
+ 
+-    if (len > BUF_SIZE) {
++    if (len > SOCKET_BUF_SIZE) {
+         ERROR("out of recv buffer");
+         close_and_free_remote(EV_A_ remote);
+         close_and_free_server(EV_A_ server);
+         return;
+     }
+ 
+-    ssize_t r = recv(server->fd, buf->array + len, BUF_SIZE - len, 0);
++    ssize_t r = recv(server->fd, buf->array + len, SOCKET_BUF_SIZE - len, 0);
+ 
+     if (r == 0) {
+         // connection closed
+@@ -712,7 +708,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+             }
+ 
+             if (needsendback) {
+-                size_t capacity = BUF_SIZE;
++                size_t capacity = SOCKET_BUF_SIZE;
+                 char *sendback_buf = (char*)malloc(capacity);
+                 obfs_class *obfs_plugin = server->obfs_plugin;
+                 if (obfs_plugin->server_encode) {
+@@ -725,7 +721,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+         }
+     }
+ 
+-    int err = ss_decrypt(buf, server->d_ctx, BUF_SIZE);
++    int err = ss_decrypt(buf, server->d_ctx, SOCKET_BUF_SIZE);
+ 
+     if (err) {
+         report_addr(server->fd, MALICIOUS);
+@@ -797,7 +793,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+ 
+     if (server->stage == STAGE_HANDSHAKE) {
+         size_t header_len = server->header_buf->len;
+-        if (brealloc(server->header_buf, server->buf->len + header_len, BUF_SIZE) != 0) {
++        if (brealloc(server->header_buf, server->buf->len + header_len, SOCKET_BUF_SIZE) != 0) {
+             close_and_free_remote(EV_A_ remote);
+             close_and_free_server(EV_A_ server);
+             return;
+@@ -809,7 +805,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+         int ret = is_header_complete(server->buf);
+ 
+         if (ret == 1) {
+-            brealloc(server->buf, server->header_buf->len, BUF_SIZE);
++            brealloc(server->buf, server->header_buf->len, SOCKET_BUF_SIZE);
+             memcpy(server->buf->array, server->header_buf->array, server->header_buf->len);
+             server->buf->len = server->header_buf->len;
+             bfree(server->header_buf);
+@@ -826,7 +822,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+ 
+     // handshake and transmit data
+     if (server->stage == STAGE_STREAM) {
+-        if (server->auth && !ss_check_hash(remote->buf, server->chunk, server->d_ctx, BUF_SIZE)) {
++        if (server->auth && !ss_check_hash(remote->buf, server->chunk, server->d_ctx, SOCKET_BUF_SIZE)) {
+             LOGE("hash error");
+             report_addr(server->fd, BAD);
+             close_and_free_server(EV_A_ server);
+@@ -1040,7 +1036,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+                 LOGI("connect to %s:%d", host, ntohs(port));
+         }
+ 
+-        if (server->auth && !ss_check_hash(server->buf, server->chunk, server->d_ctx, BUF_SIZE)) {
++        if (server->auth && !ss_check_hash(server->buf, server->chunk, server->d_ctx, SOCKET_BUF_SIZE)) {
+             LOGE("hash error");
+             report_addr(server->fd, BAD);
+             close_and_free_server(EV_A_ server);
+@@ -1258,7 +1254,7 @@ remote_recv_cb(EV_P_ ev_io *w, int reven
+ 
+     ev_timer_again(EV_A_ & server->recv_ctx->watcher);
+ 
+-    ssize_t r = recv(remote->fd, server->buf->array, BUF_SIZE, 0);
++    ssize_t r = recv(remote->fd, server->buf->array, SOCKET_BUF_SIZE, 0);
+ 
+     if (r == 0) {
+         // connection closed
+@@ -1300,7 +1296,7 @@ remote_recv_cb(EV_P_ ev_io *w, int reven
+         }
+     }
+ 
+-    int err = ss_encrypt(server->buf, server->e_ctx, BUF_SIZE);
++    int err = ss_encrypt(server->buf, server->e_ctx, SOCKET_BUF_SIZE);
+ 
+     if (err) {
+         LOGE("invalid password or cipher");
+@@ -1459,7 +1455,7 @@ new_remote(int fd)
+     ev_io_init(&remote->recv_ctx->io, remote_recv_cb, fd, EV_READ);
+     ev_io_init(&remote->send_ctx->io, remote_send_cb, fd, EV_WRITE);
+ 
+-    balloc(remote->buf, BUF_SIZE);
++    balloc(remote->buf, SOCKET_BUF_SIZE);
+ 
+     return remote;
+ }
+@@ -1538,8 +1534,8 @@ new_server(int fd, listen_ctx_t *listene
+     ev_timer_init(&server->recv_ctx->watcher, server_timeout_cb,
+                   request_timeout, listener->timeout);
+ 
+-    balloc(server->buf, BUF_SIZE);
+-    balloc(server->header_buf, BUF_SIZE);
++    balloc(server->buf, SOCKET_BUF_SIZE);
++    balloc(server->header_buf, SOCKET_BUF_SIZE);
+ 
+     server->chunk = (chunk_t *)malloc(sizeof(chunk_t));
+     memset(server->chunk, 0, sizeof(chunk_t));
+--- a/src/local.c
++++ b/src/local.c
+@@ -92,10 +92,6 @@
+ #define EWOULDBLOCK EAGAIN
+ #endif
+ 
+-#ifndef BUF_SIZE
+-#define BUF_SIZE 2048
+-#endif
+-
+ int verbose = 0;
+ int keep_resolving = 1;
+ 
+@@ -305,7 +301,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+         buf = remote->buf;
+     }
+ 
+-    r = recv(server->fd, buf->array + buf->len, BUF_SIZE - buf->len, 0);
++    r = recv(server->fd, buf->array + buf->len, SOCKET_BUF_SIZE - buf->len, 0);
+ 
+     if (r == 0) {
+         // connection closed
+@@ -372,7 +368,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+                         );
+                     }
+                 }
+-                int err = ss_encrypt(&server_env->cipher, remote->buf, server->e_ctx, BUF_SIZE);
++                int err = ss_encrypt(&server_env->cipher, remote->buf, server->e_ctx, SOCKET_BUF_SIZE);
+ 
+                 if (err) {
+                     LOGE("server invalid password or cipher");
+@@ -592,7 +588,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+ 
+                 buffer_t resp_to_send;
+                 buffer_t *resp_buf = &resp_to_send;
+-                balloc(resp_buf, BUF_SIZE);
++                balloc(resp_buf, SOCKET_BUF_SIZE);
+ 
+                 memcpy(resp_buf->array, &response, sizeof(struct socks5_response));
+                 memcpy(resp_buf->array + sizeof(struct socks5_response),
+@@ -624,7 +620,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+ 
+             buffer_t ss_addr_to_send;
+             buffer_t *abuf = &ss_addr_to_send;
+-            balloc(abuf, BUF_SIZE);
++            balloc(abuf, SOCKET_BUF_SIZE);
+ 
+             abuf->array[abuf->len++] = request->atyp;
+             int atyp = request->atyp;
+@@ -694,7 +690,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+                 else if (p == tls_protocol->default_port)
+                     ret = tls_protocol->parse_packet(buf->array + 3 + abuf->len,
+                                                      buf->len - 3 - abuf->len, &hostname);
+-                if (ret == -1 && buf->len < BUF_SIZE) {
++                if (ret == -1 && buf->len < SOCKET_BUF_SIZE) {
+                     server->stage = STAGE_PARSE;
+                     bfree(abuf);
+                     return;
+@@ -880,7 +876,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+                 _server_info.key = enc_get_key(&server_env->cipher);
+                 _server_info.key_len = enc_get_key_len(&server_env->cipher);
+                 _server_info.tcp_mss = 1452;
+-                _server_info.buffer_size = BUF_SIZE;
++                _server_info.buffer_size = SOCKET_BUF_SIZE;
+                 _server_info.cipher_env = &server_env->cipher;
+ 
+                 _server_info.param = server_env->obfs_param;
+@@ -909,7 +905,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+                 }
+                 // SSR end
+ 
+-                brealloc(remote->buf, buf->len + abuf->len, BUF_SIZE);
++                brealloc(remote->buf, buf->len + abuf->len, SOCKET_BUF_SIZE);
+                 memcpy(remote->buf->array, abuf->array, abuf->len);
+                 remote->buf->len = buf->len + abuf->len;
+ 
+@@ -1012,7 +1008,7 @@ remote_recv_cb(EV_P_ ev_io *w, int reven
+     stat_update_cb();
+ #endif
+ 
+-    ssize_t r = recv(remote->fd, server->buf->array, BUF_SIZE, 0);
++    ssize_t r = recv(remote->fd, server->buf->array, SOCKET_BUF_SIZE, 0);
+ 
+     if (r == 0) {
+         // connection closed
+@@ -1094,7 +1090,7 @@ remote_recv_cb(EV_P_ ev_io *w, int reven
+             }
+         }
+         if (server->buf->len > 0) {
+-            int err = ss_decrypt(&server_env->cipher, server->buf, server->d_ctx, BUF_SIZE);
++            int err = ss_decrypt(&server_env->cipher, server->buf, server->d_ctx, SOCKET_BUF_SIZE);
+             if (err) {
+                 LOGE("remote invalid password or cipher");
+                 close_and_free_remote(EV_A_ remote);
+@@ -1220,7 +1216,7 @@ new_remote(int fd, int timeout) {
+     remote->buf = ss_malloc(sizeof(buffer_t));
+     remote->recv_ctx = ss_malloc(sizeof(remote_ctx_t));
+     remote->send_ctx = ss_malloc(sizeof(remote_ctx_t));
+-    balloc(remote->buf, BUF_SIZE);
++    balloc(remote->buf, SOCKET_BUF_SIZE);
+     memset(remote->recv_ctx, 0, sizeof(remote_ctx_t));
+     memset(remote->send_ctx, 0, sizeof(remote_ctx_t));
+     remote->recv_ctx->connected = 0;
+@@ -1276,7 +1272,7 @@ new_server(int fd, listen_ctx_t *profile
+     server->recv_ctx = ss_malloc(sizeof(server_ctx_t));
+     server->send_ctx = ss_malloc(sizeof(server_ctx_t));
+     server->buf = ss_malloc(sizeof(buffer_t));
+-    balloc(server->buf, BUF_SIZE);
++    balloc(server->buf, SOCKET_BUF_SIZE);
+     memset(server->recv_ctx, 0, sizeof(server_ctx_t));
+     memset(server->send_ctx, 0, sizeof(server_ctx_t));
+     server->stage = STAGE_INIT;
+--- a/src/netutils.h
++++ b/src/netutils.h
+@@ -60,6 +60,8 @@
+ /** byte size of ip6 address */
+ #define INET6_SIZE 16
+ 
++#define SOCKET_BUF_SIZE (16 * 1024) // 16KB
++
+ size_t get_sockaddr_len(struct sockaddr *addr);
+ ssize_t get_sockaddr(char *host, char *port,
+                      struct sockaddr_storage *storage, int block,
+--- a/src/redir.c
++++ b/src/redir.c
+@@ -63,10 +63,6 @@
+ #define EWOULDBLOCK EAGAIN
+ #endif
+ 
+-#ifndef BUF_SIZE
+-#define BUF_SIZE 2048
+-#endif
+-
+ #ifndef IP6T_SO_ORIGINAL_DST
+ #define IP6T_SO_ORIGINAL_DST 80
+ #endif
+@@ -226,7 +222,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+     server_def_t *server_env = server->server_env;
+ 
+     ssize_t r = recv(server->fd, remote->buf->array + remote->buf->len,
+-                     BUF_SIZE - remote->buf->len, 0);
++                     SOCKET_BUF_SIZE - remote->buf->len, 0);
+ 
+     if (r == 0) {
+         // connection closed
+@@ -299,7 +295,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+             remote->buf->len = protocol_plugin->client_pre_encrypt(server->protocol, &remote->buf->array, remote->buf->len, &remote->buf->capacity);
+         }
+     }
+-    int err = ss_encrypt(&server_env->cipher, remote->buf, server->e_ctx, BUF_SIZE);
++    int err = ss_encrypt(&server_env->cipher, remote->buf, server->e_ctx, SOCKET_BUF_SIZE);
+ 
+     if (err) {
+         LOGE("invalid password or cipher");
+@@ -416,7 +412,7 @@ remote_recv_cb(EV_P_ ev_io *w, int reven
+ 
+     ev_timer_again(EV_A_ & remote->recv_ctx->watcher);
+ 
+-    ssize_t r = recv(remote->fd, server->buf->array, BUF_SIZE, 0);
++    ssize_t r = recv(remote->fd, server->buf->array, SOCKET_BUF_SIZE, 0);
+ 
+     if (r == 0) {
+         // connection closed
+@@ -482,7 +478,7 @@ remote_recv_cb(EV_P_ ev_io *w, int reven
+     if ( server->buf->len == 0 )
+         return;
+ 
+-    int err = ss_decrypt(&server_env->cipher, server->buf, server->d_ctx, BUF_SIZE);
++    int err = ss_decrypt(&server_env->cipher, server->buf, server->d_ctx, SOCKET_BUF_SIZE);
+     if (err) {
+         LOGE("invalid password or cipher");
+         close_and_free_remote(EV_A_ remote);
+@@ -550,7 +546,7 @@ remote_send_cb(EV_P_ ev_io *w, int reven
+             // send destaddr
+             buffer_t ss_addr_to_send;
+             buffer_t *abuf = &ss_addr_to_send;
+-            balloc(abuf, BUF_SIZE);
++            balloc(abuf, SOCKET_BUF_SIZE);
+ 
+             if (server->hostname_len > 0
+                     && validate_hostname(server->hostname, server->hostname_len)) { // HTTP/SNI
+@@ -591,12 +587,12 @@ remote_send_cb(EV_P_ ev_io *w, int reven
+             abuf->len += 2;
+ 
+             if (remote->buf->len > 0) {
+-                brealloc(remote->buf, remote->buf->len + abuf->len, BUF_SIZE);
++                brealloc(remote->buf, remote->buf->len + abuf->len, SOCKET_BUF_SIZE);
+                 memmove(remote->buf->array + abuf->len, remote->buf->array, remote->buf->len);
+                 memcpy(remote->buf->array, abuf->array, abuf->len);
+                 remote->buf->len += abuf->len;
+             } else {
+-                brealloc(remote->buf, abuf->len, BUF_SIZE);
++                brealloc(remote->buf, abuf->len, SOCKET_BUF_SIZE);
+                 memcpy(remote->buf->array, abuf->array, abuf->len);
+                 remote->buf->len = abuf->len;
+             }
+@@ -616,7 +612,7 @@ remote_send_cb(EV_P_ ev_io *w, int reven
+                 }
+             }
+ 
+-            int err = ss_encrypt(&server_env->cipher, remote->buf, server->e_ctx, BUF_SIZE);
++            int err = ss_encrypt(&server_env->cipher, remote->buf, server->e_ctx, SOCKET_BUF_SIZE);
+             if (err) {
+                 LOGE("invalid password or cipher");
+                 close_and_free_remote(EV_A_ remote);
+@@ -683,7 +679,7 @@ new_remote(int fd, int timeout)
+     remote->buf                 = ss_malloc(sizeof(buffer_t));
+     remote->recv_ctx            = ss_malloc(sizeof(remote_ctx_t));
+     remote->send_ctx            = ss_malloc(sizeof(remote_ctx_t));
+-    balloc(remote->buf, BUF_SIZE);
++    balloc(remote->buf, SOCKET_BUF_SIZE);
+     memset(remote->recv_ctx, 0, sizeof(remote_ctx_t));
+     memset(remote->send_ctx, 0, sizeof(remote_ctx_t));
+     remote->recv_ctx->connected = 0;
+@@ -741,7 +737,7 @@ new_server(int fd, listen_ctx_t* profile
+     server->recv_ctx = ss_malloc(sizeof(server_ctx_t));
+     server->send_ctx = ss_malloc(sizeof(server_ctx_t));
+     server->buf = ss_malloc(sizeof(buffer_t));
+-    balloc(server->buf, BUF_SIZE);
++    balloc(server->buf, SOCKET_BUF_SIZE);
+     memset(server->recv_ctx, 0, sizeof(server_ctx_t));
+     memset(server->send_ctx, 0, sizeof(server_ctx_t));
+     server->recv_ctx->connected = 0;
+@@ -1028,7 +1024,7 @@ accept_cb(EV_P_ ev_io *w, int revents)
+     _server_info.key = enc_get_key(&server_env->cipher);
+     _server_info.key_len = enc_get_key_len(&server_env->cipher);
+     _server_info.tcp_mss = 1452;
+-    _server_info.buffer_size = BUF_SIZE;
++    _server_info.buffer_size = SOCKET_BUF_SIZE;
+     _server_info.cipher_env = &server_env->cipher;
+ 
+     if (server_env->obfs_plugin) {
+--- a/src/server.c
++++ b/src/server.c
+@@ -71,10 +71,6 @@
+ #define EWOULDBLOCK EAGAIN
+ #endif
+ 
+-#ifndef BUF_SIZE
+-#define BUF_SIZE 2048
+-#endif
+-
+ #ifndef SSMAXCONN
+ #define SSMAXCONN 1024
+ #endif
+@@ -138,13 +134,13 @@ stat_update_cb(EV_P_ ev_timer *watcher,
+ 
+     int sfd = -1;
+     size_t msgLen;
+-    char resp[BUF_SIZE];
++    char resp[SOCKET_BUF_SIZE];
+ 
+     if (verbose) {
+         LOGI("update traffic stat: tx: %" PRIu64 " rx: %" PRIu64 "", tx, rx);
+     }
+ 
+-    snprintf(resp, BUF_SIZE, "stat: {\"%s\":%" PRIu64 "}", server_port, tx + rx);
++    snprintf(resp, SOCKET_BUF_SIZE, "stat: {\"%s\":%" PRIu64 "}", server_port, tx + rx);
+     msgLen = strlen(resp) + 1;
+ 
+     ss_addr_t ip_addr = { .host = NULL, .port = NULL };
+@@ -600,14 +596,14 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+         ev_timer_again(EV_A_ & server->recv_ctx->watcher);
+     }
+ 
+-    if (len > BUF_SIZE) {
++    if (len > SOCKET_BUF_SIZE) {
+         ERROR("out of recv buffer");
+         close_and_free_remote(EV_A_ remote);
+         close_and_free_server(EV_A_ server);
+         return;
+     }
+ 
+-    ssize_t r = recv(server->fd, buf->array + len, BUF_SIZE - len, 0);
++    ssize_t r = recv(server->fd, buf->array + len, SOCKET_BUF_SIZE - len, 0);
+ 
+     if (r == 0) {
+         // connection closed
+@@ -649,7 +645,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+         buf->len = r;
+     }
+ 
+-    int err = ss_decrypt(&cipher_env, buf, server->d_ctx, BUF_SIZE);
++    int err = ss_decrypt(&cipher_env, buf, server->d_ctx, SOCKET_BUF_SIZE);
+ 
+     if (err) {
+         report_addr(server->fd, MALICIOUS);
+@@ -678,7 +674,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+ 
+     if (server->stage == STAGE_HANDSHAKE) {
+         size_t header_len = server->header_buf->len;
+-        brealloc(server->header_buf, server->buf->len + header_len, BUF_SIZE);
++        brealloc(server->header_buf, server->buf->len + header_len, SOCKET_BUF_SIZE);
+         memcpy(server->header_buf->array + header_len,
+                server->buf->array, server->buf->len);
+         server->header_buf->len = server->buf->len + header_len;
+@@ -686,7 +682,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+         int ret = is_header_complete(server->buf);
+ 
+         if (ret == 1) {
+-            brealloc(server->buf, server->header_buf->len, BUF_SIZE);
++            brealloc(server->buf, server->header_buf->len, SOCKET_BUF_SIZE);
+             memcpy(server->buf->array, server->header_buf->array, server->header_buf->len);
+             server->buf->len = server->header_buf->len;
+             bfree(server->header_buf);
+@@ -1086,7 +1082,7 @@ remote_recv_cb(EV_P_ ev_io *w, int reven
+ 
+     ev_timer_again(EV_A_ & server->recv_ctx->watcher);
+ 
+-    ssize_t r = recv(remote->fd, server->buf->array, BUF_SIZE, 0);
++    ssize_t r = recv(remote->fd, server->buf->array, SOCKET_BUF_SIZE, 0);
+ 
+     if (r == 0) {
+         // connection closed
+@@ -1112,7 +1108,7 @@ remote_recv_cb(EV_P_ ev_io *w, int reven
+     rx += r;
+ 
+     server->buf->len = r;
+-    int err = ss_encrypt(&cipher_env, server->buf, server->e_ctx, BUF_SIZE);
++    int err = ss_encrypt(&cipher_env, server->buf, server->e_ctx, SOCKET_BUF_SIZE);
+ 
+     if (err) {
+         LOGE("invalid password or cipher");
+@@ -1249,7 +1245,7 @@ new_remote(int fd)
+     remote->recv_ctx            = ss_malloc(sizeof(remote_ctx_t));
+     remote->send_ctx            = ss_malloc(sizeof(remote_ctx_t));
+     remote->buf                 = ss_malloc(sizeof(buffer_t));
+-    balloc(remote->buf, BUF_SIZE);
++    balloc(remote->buf, SOCKET_BUF_SIZE);
+     memset(remote->recv_ctx, 0, sizeof(remote_ctx_t));
+     memset(remote->send_ctx, 0, sizeof(remote_ctx_t));
+     remote->fd                  = fd;
+@@ -1313,8 +1309,8 @@ new_server(int fd, listen_ctx_t *listene
+     server->header_buf          = ss_malloc(sizeof(buffer_t));
+     memset(server->recv_ctx, 0, sizeof(server_ctx_t));
+     memset(server->send_ctx, 0, sizeof(server_ctx_t));
+-    balloc(server->buf, BUF_SIZE);
+-    balloc(server->header_buf, BUF_SIZE);
++    balloc(server->buf, SOCKET_BUF_SIZE);
++    balloc(server->header_buf, SOCKET_BUF_SIZE);
+     server->fd                  = fd;
+     server->recv_ctx->server    = server;
+     server->recv_ctx->connected = 0;
+--- a/src/tunnel.c
++++ b/src/tunnel.c
+@@ -67,10 +67,6 @@
+ #define EWOULDBLOCK EAGAIN
+ #endif
+ 
+-#ifndef BUF_SIZE
+-#define BUF_SIZE 2048
+-#endif
+-
+ #include "includeobfs.h" // I don't want to modify makefile
+ 
+ static void accept_cb(EV_P_ ev_io *w, int revents);
+@@ -180,7 +176,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+         return;
+     }
+ 
+-    ssize_t r = recv(server->fd, remote->buf->array, BUF_SIZE, 0);
++    ssize_t r = recv(server->fd, remote->buf->array, SOCKET_BUF_SIZE, 0);
+ 
+     if (r == 0) {
+         // connection closed
+@@ -209,7 +205,7 @@ server_recv_cb(EV_P_ ev_io *w, int reven
+             remote->buf->len = protocol_plugin->client_pre_encrypt(server->protocol, &remote->buf->array, remote->buf->len, &remote->buf->capacity);
+         }
+     }
+-    int err = ss_encrypt(&cipher_env, remote->buf, server->e_ctx, BUF_SIZE);
++    int err = ss_encrypt(&cipher_env, remote->buf, server->e_ctx, SOCKET_BUF_SIZE);
+ 
+     if (err) {
+         LOGE("server invalid password or cipher");
+@@ -325,7 +321,7 @@ remote_recv_cb(EV_P_ ev_io *w, int reven
+     remote_t *remote              = remote_recv_ctx->remote;
+     server_t *server              = remote->server;
+ 
+-    ssize_t r = recv(remote->fd, server->buf->array, BUF_SIZE, 0);
++    ssize_t r = recv(remote->fd, server->buf->array, SOCKET_BUF_SIZE, 0);
+ 
+     if (r == 0) {
+         // connection closed
+@@ -391,7 +387,7 @@ remote_recv_cb(EV_P_ ev_io *w, int reven
+     if ( server->buf->len == 0 )
+         return;
+ 
+-    int err = ss_decrypt(&cipher_env, server->buf, server->d_ctx, BUF_SIZE);
++    int err = ss_decrypt(&cipher_env, server->buf, server->d_ctx, SOCKET_BUF_SIZE);
+ 
+     if (err) {
+         LOGE("invalid password or cipher");
+@@ -456,7 +452,7 @@ remote_send_cb(EV_P_ ev_io *w, int reven
+ 
+             buffer_t ss_addr_to_send;
+             buffer_t *abuf = &ss_addr_to_send;
+-            balloc(abuf, BUF_SIZE);
++            balloc(abuf, SOCKET_BUF_SIZE);
+ 
+             ss_addr_t *sa = &server->destaddr;
+             struct cork_ip ip;
+@@ -503,12 +499,12 @@ remote_send_cb(EV_P_ ev_io *w, int reven
+             abuf->len += 2;
+ 
+             if (remote->buf->len > 0) {
+-                brealloc(remote->buf, remote->buf->len + abuf->len, BUF_SIZE);
++                brealloc(remote->buf, remote->buf->len + abuf->len, SOCKET_BUF_SIZE);
+                 memmove(remote->buf->array + abuf->len, remote->buf->array, remote->buf->len);
+                 memcpy(remote->buf->array, abuf->array, abuf->len);
+                 remote->buf->len += abuf->len;
+             } else {
+-                brealloc(remote->buf, abuf->len, BUF_SIZE);
++                brealloc(remote->buf, abuf->len, SOCKET_BUF_SIZE);
+                 memcpy(remote->buf->array, abuf->array, abuf->len);
+                 remote->buf->len = abuf->len;
+             }
+@@ -528,7 +524,7 @@ remote_send_cb(EV_P_ ev_io *w, int reven
+                 }
+             }
+ 
+-            int err = ss_encrypt(&cipher_env, remote->buf, server->e_ctx, BUF_SIZE);
++            int err = ss_encrypt(&cipher_env, remote->buf, server->e_ctx, SOCKET_BUF_SIZE);
+             if (err) {
+                 LOGE("invalid password or cipher");
+                 close_and_free_remote(EV_A_ remote);
+@@ -610,7 +606,7 @@ new_remote(int fd, int timeout)
+     remote->buf                 = ss_malloc(sizeof(buffer_t));
+     remote->recv_ctx            = ss_malloc(sizeof(remote_ctx_t));
+     remote->send_ctx            = ss_malloc(sizeof(remote_ctx_t));
+-    balloc(remote->buf, BUF_SIZE);
++    balloc(remote->buf, SOCKET_BUF_SIZE);
+     memset(remote->recv_ctx, 0, sizeof(remote_ctx_t));
+     memset(remote->send_ctx, 0, sizeof(remote_ctx_t));
+     remote->fd                  = fd;
+@@ -665,7 +661,7 @@ new_server(int fd, int method)
+     server->buf                 = ss_malloc(sizeof(buffer_t));
+     server->recv_ctx            = ss_malloc(sizeof(server_ctx_t));
+     server->send_ctx            = ss_malloc(sizeof(server_ctx_t));
+-    balloc(server->buf, BUF_SIZE);
++    balloc(server->buf, SOCKET_BUF_SIZE);
+     memset(server->recv_ctx, 0, sizeof(server_ctx_t));
+     memset(server->send_ctx, 0, sizeof(server_ctx_t));
+     server->fd                  = fd;
