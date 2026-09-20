@@ -1,0 +1,31 @@
+From 38e83d6b5d4648fb87ae6680c8fa159df54c73ce Mon Sep 17 00:00:00 2001
+From: Max Lv <max.c.lv@gmail.com>
+Date: Tue, 30 Apr 2019 09:34:31 +0800
+Subject: [PATCH] Make sure socket buffer size no larger than max chunk size
+
+---
+ src/netutils.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/server/netutils.h
++++ b/server/netutils.h
+@@ -60,7 +60,7 @@
+ /** byte size of ip6 address */
+ #define INET6_SIZE 16
+ 
+-#define SOCKET_BUF_SIZE (16 * 1024) // 16KB
++#define SOCKET_BUF_SIZE (16 * 1024 - 1) // 16383 Byte, equals to the max chunk size
+ 
+ size_t get_sockaddr_len(struct sockaddr *addr);
+ ssize_t get_sockaddr(char *host, char *port,
+--- a/src/netutils.h
++++ b/src/netutils.h
+@@ -60,7 +60,7 @@
+ /** byte size of ip6 address */
+ #define INET6_SIZE 16
+ 
+-#define SOCKET_BUF_SIZE (16 * 1024) // 16KB
++#define SOCKET_BUF_SIZE (16 * 1024 - 1) // 16383 Byte, equals to the max chunk size
+ 
+ size_t get_sockaddr_len(struct sockaddr *addr);
+ ssize_t get_sockaddr(char *host, char *port,
