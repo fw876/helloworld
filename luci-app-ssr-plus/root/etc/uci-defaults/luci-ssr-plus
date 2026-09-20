@@ -84,6 +84,18 @@ if [ -s "/etc/config/shadowsocksr" ]; then
         uci -q set shadowsocksr.@global[0].component_mirror='direct'
     fi
 
+    if ! uci -q get shadowsocksr.@global[0].yacd_type > /dev/null; then
+        uci -q set shadowsocksr.@global[0].yacd_type='Meta'
+    fi
+
+    if ! uci -q get shadowsocksr.@global[0].dashboard_type > /dev/null; then
+        uci -q set shadowsocksr.@global[0].dashboard_type='Official'
+    fi
+
+    if ! uci -q get shadowsocksr.@global[0].default_dashboard > /dev/null; then
+        uci -q set shadowsocksr.@global[0].default_dashboard='zashboard'
+    fi
+
     if ! uci -q get shadowsocksr.@global[0].filter_aaaa > /dev/null; then
         legacy_filter_aaaa="$(uci -q get shadowsocksr.@global[0].mosdns_ipv6)"
         uci -q set shadowsocksr.@global[0].filter_aaaa="${legacy_filter_aaaa:-1}"
