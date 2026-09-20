@@ -345,18 +345,110 @@
 		queryLocalGeoInfo();
 	}
 
-	function selectedGeoComponent() {
-		var selector = document.getElementById('geo-selector');
-		return selector ? selector.value : 'country_mmdb';
+	function makeDashboardBtn(label, fn, args) {
+		var argStr = args.map(function(a){ return "'" + a + "'"; }).join(', ');
+		return '<input type="button" class="btn cbi-button cbi-button-apply" value="' + label + '" onclick="return ' + fn + '(this, ' + argStr + ')"/>';
 	}
 
-	function geoHelp(component) {
-		return geoMeta[component] ? geoMeta[component].help : '';
+	window.switch_dashboard = window.switch_dashboard || function(btn, n, type) {
+		btn.disabled = true;
+		btn.value = '<%:Downloading File...%>';
+		XHR.get('<%=luci.dispatcher.build_url("admin", "services", "shadowsocksr", "switch_dashboard")%>', {name: n, type: type}, function(x, status) {
+			if (!x || x.status != 200) return;
+			if (status.download_state == "0") {
+				var isUpdate = (n == "Metacubexd" || n == "Zashboard");
+				var nextLabel, nextType;
+				if (isUpdate) {
+					nextLabel = '<%:Update Successful%> - ' + '<%:Update Version%>';
+					nextType  = 'Official';
+				} else {
+					nextLabel = '<%:Switch Successful%> - ' + (type == "Meta" ? '<%:Switch To Official Version%>' : '<%:Switch To Meta Version%>');
+					nextType  = type == "Meta" ? 'Official' : 'Meta';
+				}
+				document.getElementById('switch_dashboard_'  + n).innerHTML = makeDashboardBtn(nextLabel, 'switch_dashboard', [n, nextType]);
+				document.getElementById('default_dashboard_' + n).firstElementChild.disabled = false;
+				document.getElementById('delete_dashboard_'  + n).firstElementChild.disabled = false;
+			} else {
+				btn.value = status.download_state == "2" ? '<%:Unzip Error%>'
+						  : (n == "Metacubexd" || n == "Zashboard") ? '<%:Update Failed%>' : '<%:Switch Failed%>';
+			}
+			btn.disabled = false;
+		});
+		return false;
+	};
+
+	window.delete_dashboard = window.delete_dashboard || function(btn, n) {
+		if (!confirm("<%:Are you sure you want to delete this panel?%>")) return false;
+		btn.disabled = true;
+		XHR.get('<%=luci.dispatcher.build_url("admin", "services", "shadowsocksr", "delete_dashboard")%>', {name: n}, function(x, status) {
+			if (!x || x.status != 200) { btn.disabled = false; return; }
+			if (status.delete_state == "1") {
+				var defBtn = document.getElementById('default_dashboard_' + n).firstElementChild;
+				if (defBtn.disabled) defBtn.value = '<%:Set to Default%>';
+				defBtn.disabled = true;
+			} else btn.disabled = false;
+		});
+		return false;
+	};
+
+	window.default_dashboard = window.default_dashboard || function(btn, n) {
+		btn.disabled = true;
+		XHR.get('<%=luci.dispatcher.build_url("admin", "services", "shadowsocksr", "default_dashboard")%>', {name: n}, function(x, status) {
+			if (!x || x.status != 200) { btn.disabled = false; return; }
+			btn.value = '<%:Default%>';
+			document.querySelectorAll('[id^="default_dashboard_"]').forEach(function(el) {
+				var b = el.firstElementChild;
+				if (b && b !== btn && b.value === '<%:Default%>') {
+					b.disabled = false;
+					b.value = '<%:Set to Default%>';
+				}
+			});
+		});
+		return false;
+	};
+
+	function initDashboardPanels() {
+		['Dashboard', 'Yacd', 'Metacubexd', 'Zashboard'].forEach(function(name) {
+			var switchEl  = document.getElementById('switch_dashboard_'  + name);
+			var defaultEl = document.getElementById('default_dashboard_' + name);
+			var deleteEl  = document.getElementById('delete_dashboard_'  + name);
+
+			if (!switchEl || !defaultEl || !deleteEl) {
+				return;
+			}
+
+			XHR.get('<%=luci.dispatcher.build_url("admin", "services", "shadowsocksr", "dashboard_type")%>', null, function(x, status) {
+				if (!x || x.status != 200) return;
+
+				var switchLabel;
+				if (name == "Metacubexd") {
+					switchLabel = ['<%:Update Version%>', 'Official'];
+				} else if (name == "Zashboard") {
+					switchLabel = ['<%:Update Version%>', 'Official'];
+				} else {
+					var isMeta = (name == "Dashboard" ? status.dashboard_type : status.yacd_type) == "Meta";
+					switchLabel = isMeta
+						? ['<%:Switch To Official Version%>', 'Official']
+						: ['<%:Switch To Meta Version%>',    'Meta'];
+				}
+				switchEl.innerHTML = makeDashboardBtn(switchLabel[0], 'switch_dashboard', [name, switchLabel[1]]);
+
+				if (status.default_dashboard == name.toLowerCase()) {
+					defaultEl.innerHTML = makeDashboardBtn('<%:Default%>', 'default_dashboard', [name]);
+					defaultEl.firstElementChild.disabled = true;
+				}
+				if (!status[name.toLowerCase()]) {
+					defaultEl.firstElementChild.disabled = true;
+					deleteEl.firstElementChild.disabled  = true;
+				}
+			});
+		});
 	}
 
 	window.setTimeout(function() {
 		onComponentChange();
-		loadGeoComponent()
+		loadGeoComponent();
+		initDashboardPanels();
 	}, 0);
 //]]>
 </script>
@@ -367,6 +459,7 @@
 		gap: 10px;
 		flex-wrap: wrap;
 		margin-top: 10px;
+		align-items: center;
 	}
 
 	.component-upgrade-card {
@@ -383,8 +476,8 @@
 	}
 
 	.component-selector {
-		min-width: 180px;
 		width: 100%;
+		min-width: 180px;
 	}
 
 	.component-layout {
@@ -427,6 +520,59 @@
 		color: #444;
 	}
 
+	.dashboard-update-grid {
+		display: grid;
+		grid-template-columns: 320px 1fr;
+		gap: 8px 24px;
+		align-items: center;
+	}
+
+	.dashboard-update-grid-label {
+		display: flex;
+		align-items: center;
+		min-height: 42px;
+	}
+
+	.dashboard-update-grid-label .component-select-label strong {
+		font-size: 18px;
+		font-weight: normal;
+		color: #444;
+	}
+
+	.dashboard-update-grid-label-first {
+		min-height: 52px;
+	}
+
+	.dashboard-update-grid-label-first .component-select-label strong {
+		font-size: 13px;
+		font-weight: bold;
+	}
+
+	.dashboard-update-grid-actions {
+		min-height: 42px;
+	}
+
+	.dashboard-update-grid-actions .ssr-clash-dashboard-actions {
+		display: flex;
+		gap: 10px;
+		flex-wrap: wrap;
+		align-items: center;
+	}
+
+	.dashboard-update-grid-actions .ssr-clash-dashboard-actions .cbi-button {
+		width: 140px;
+		margin: 0;
+		white-space: nowrap;
+	}
+
+	html[data-darkmode="true"] .dashboard-update-grid-label .component-select-label {
+		color: #aaa;
+	}
+
+	html[data-darkmode="true"] .dashboard-update-grid-label .component-select-label strong {
+		color: #e0e0e0;
+	}
+
 	@media (max-width: 900px) {
 		.component-layout {
 			flex-direction: column;
@@ -435,6 +581,33 @@
 		.component-left {
 			width: 100%;
 			min-width: 0;
+		}
+
+		.dashboard-update-grid {
+			grid-template-columns: 1fr;
+			gap: 4px;
+		}
+
+		.dashboard-update-grid-label {
+			min-height: auto;
+			margin: 12px 0 4px;
+		}
+
+		.dashboard-update-grid-label-first {
+			min-height: auto;
+		}
+
+		.dashboard-update-grid-actions {
+			min-height: auto;
+			margin-bottom: 8px;
+		}
+
+		.dashboard-update-grid-actions .ssr-clash-dashboard-actions .cbi-button {
+			width: 100%;
+		}
+
+		.dashboard-update-grid-actions-empty {
+			display: none;
 		}
 	}
 </style>
@@ -516,6 +689,86 @@
 						<input type="button" class="btn cbi-button cbi-button-apply" id="geo-upgrade" value="<%:Upgrade%>" onclick="queryGeoInfo(this, true)" />
 					</div>
 					<div class="component-upgrade-result" id="geo-action"></div>
+				</div>
+			</div>
+		</div>
+	</div>
+</fieldset>
+
+<fieldset class="cbi-section">
+	<legend><%:Dashboard Update%></legend>
+	<div class="cbi-value">
+		<div class="cbi-value-field component-upgrade-card">
+			<div class="dashboard-update-grid">
+				<div class="dashboard-update-grid-label dashboard-update-grid-label-first">
+					<div class="component-select-label">
+						<strong><%:Panel Version Management%></strong>
+					</div>
+				</div>
+				<div class="dashboard-update-grid-actions dashboard-update-grid-actions-empty"></div>
+				<div class="dashboard-update-grid-label">
+					<div class="component-select-label">
+						<strong><%:Yacd Panel%></strong>
+					</div>
+				</div>
+				<div class="dashboard-update-grid-actions">
+					<div class="ssr-clash-dashboard-actions">
+						<div id="switch_dashboard_Yacd"><%:Collecting data...%></div>
+						<div id="delete_dashboard_Yacd">
+							<input type="button" class="btn cbi-button cbi-button-reset" value="<%:Delete%>" onclick="return delete_dashboard(this, 'Yacd')"/>
+						</div>
+						<div id="default_dashboard_Yacd">
+							<input type="button" class="btn cbi-button cbi-button-apply" value="<%:Set to Default%>" onclick="return default_dashboard(this, 'Yacd')"/>
+						</div>
+					</div>
+				</div>
+				<div class="dashboard-update-grid-label">
+					<div class="component-select-label">
+						<strong><%:Dashboard Panel%></strong>
+					</div>
+				</div>
+				<div class="dashboard-update-grid-actions">
+					<div class="ssr-clash-dashboard-actions">
+						<div id="switch_dashboard_Dashboard"><%:Collecting data...%></div>
+						<div id="delete_dashboard_Dashboard">
+							<input type="button" class="btn cbi-button cbi-button-reset" value="<%:Delete%>" onclick="return delete_dashboard(this, 'Dashboard')"/>
+						</div>
+						<div id="default_dashboard_Dashboard">
+							<input type="button" class="btn cbi-button cbi-button-apply" value="<%:Set to Default%>" onclick="return default_dashboard(this, 'Dashboard')"/>
+						</div>
+					</div>
+				</div>
+				<div class="dashboard-update-grid-label">
+					<div class="component-select-label">
+						<strong><%:Zashboard Panel%></strong>
+					</div>
+				</div>
+				<div class="dashboard-update-grid-actions">
+					<div class="ssr-clash-dashboard-actions">
+						<div id="switch_dashboard_Zashboard"><%:Collecting data...%></div>
+						<div id="delete_dashboard_Zashboard">
+							<input type="button" class="btn cbi-button cbi-button-reset" value="<%:Delete%>" onclick="return delete_dashboard(this, 'Zashboard')"/>
+						</div>
+						<div id="default_dashboard_Zashboard">
+							<input type="button" class="btn cbi-button cbi-button-apply" value="<%:Set to Default%>" onclick="return default_dashboard(this, 'Zashboard')"/>
+						</div>
+					</div>
+				</div>
+				<div class="dashboard-update-grid-label">
+					<div class="component-select-label">
+						<strong><%:Metacubexd Panel%></strong>
+					</div>
+				</div>
+				<div class="dashboard-update-grid-actions">
+					<div class="ssr-clash-dashboard-actions">
+						<div id="switch_dashboard_Metacubexd"><%:Collecting data...%></div>
+						<div id="delete_dashboard_Metacubexd">
+							<input type="button" class="btn cbi-button cbi-button-reset" value="<%:Delete%>" onclick="return delete_dashboard(this, 'Metacubexd')"/>
+						</div>
+						<div id="default_dashboard_Metacubexd">
+							<input type="button" class="btn cbi-button cbi-button-apply" value="<%:Set to Default%>" onclick="return default_dashboard(this, 'Metacubexd')"/>
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>
