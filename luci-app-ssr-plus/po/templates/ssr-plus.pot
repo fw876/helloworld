@@ -3269,6 +3269,15 @@ msgstr ""
 msgid "custom_tcpcongestion"
 msgstr ""
 
+msgid "Inbound TCP congestion control"
+msgstr ""
+
+msgid "System default"
+msgstr ""
+
+msgid "Algorithm for Xray transparent-proxy and SOCKS client connections. Independent of the outbound setting. Only algorithms currently available in the kernel are listed."
+msgstr ""
+
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1494
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1660
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1673

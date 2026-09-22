@@ -1,0 +1,27 @@
+name: Inbound TCP congestion tests
+
+on:
+  push:
+    paths:
+      - 'luci-app-ssr-plus/**'
+      - '.github/workflows/test-inbound-congestion.yml'
+  pull_request:
+    paths:
+      - 'luci-app-ssr-plus/**'
+      - '.github/workflows/test-inbound-congestion.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y lua5.1 gettext
+      - run: |
+          luac5.1 -p luci-app-ssr-plus/root/usr/share/shadowsocksr/gen_config.lua
+          luac5.1 -p luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua
+          lua5.1 luci-app-ssr-plus/tests/test_inbound_tcpcongestion.lua
+          lua5.1 luci-app-ssr-plus/tests/test_inbound_tcpcongestion_ui.lua
+          msgfmt --check -o /dev/null luci-app-ssr-plus/po/zh_Hans/ssr-plus.po

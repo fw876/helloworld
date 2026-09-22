@@ -69,6 +69,26 @@ local b64decode = nixio.bin.b64decode
 local b64encode = nixio.bin.b64encode
 local effective_node_local_port = tonumber(server.local_port) or tonumber(default_node_local_port) or 1234
 
+-- Client-facing TCP sockets are independent of the outbound connection.
+-- Keep the system default unless an available kernel algorithm is selected.
+local inbound_stream_settings
+if server.type == "v2ray" and proto:find("tcp") and server.inbound_tcpcongestion and server.inbound_tcpcongestion ~= "" then
+	local available = io.open("/proc/sys/net/ipv4/tcp_available_congestion_control", "r")
+	if available then
+		local algorithms = available:read("*a")
+		available:close()
+		for algorithm in algorithms:gmatch("%S+") do
+			if algorithm == server.inbound_tcpcongestion then
+				inbound_stream_settings = {sockopt = {tcpcongestion = algorithm}}
+				break
+			end
+		end
+	end
+	if not inbound_stream_settings then
+		io.stderr:write("SSR Plus: selected inbound TCP congestion control is unavailable; using the system default\n")
+	end
+end
+
 if server.type == "ss-rust" then
 	server.type = "ss"
 end
@@ -593,6 +613,7 @@ if local_port ~= "0" then
 			port = tonumber(local_port),
 			protocol = "dokodemo-door",
 			settings = {network = proto, followRedirect = true},
+			streamSettings = inbound_stream_settings,
 			sniffing = {
 				enabled = true,
 				destOverride = {"http", "tls", "quic"},
@@ -641,6 +662,7 @@ if proto and proto:find("tcp") and socks_port ~= "0" then
 		-- socks
 		protocol = "socks",
 		port = tonumber(socks_port),
+		streamSettings = inbound_stream_settings,
 		settings = {
 			auth = socks_server.socks5_auth or "noauth",
 			udp = true,

@@ -1728,6 +1728,19 @@ o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o:depends({type = "v2ray", v2ray_protocol = "http"})
 
+-- Client-facing TCP sockets (independent of the outbound algorithm).
+if is_finded("xray") and not (has_mihomo and uci:get_first("shadowsocksr", "server_subscribe", "enable_mihomo") == "1") then
+	o = s:option(ListValue, "inbound_tcpcongestion", translate("Inbound TCP congestion control"),
+		translate("Algorithm for Xray transparent-proxy and SOCKS client connections. Independent of the outbound setting. Only algorithms currently available in the kernel are listed."))
+	o.rmempty = true
+	o.default = ""
+	o:value("", translate("System default"))
+	for algorithm in (nixio.fs.readfile("/proc/sys/net/ipv4/tcp_available_congestion_control") or ""):gmatch("%S+") do
+		o:value(algorithm, algorithm)
+	end
+	o:depends("type", "v2ray")
+end
+
 -- [[ HYSTERIA2_tcpcongestion 连接服务器节点的 TCP 拥塞控制算法 ]]--
 o = s:option(ListValue, "hy2_tcpcongestion", translate("custom_tcpcongestion"))
 o.rmempty = true

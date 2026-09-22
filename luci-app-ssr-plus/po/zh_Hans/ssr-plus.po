@@ -3300,6 +3300,15 @@ msgstr ""
 msgid "custom_tcpcongestion"
 msgstr "连接服务器节点的 TCP 拥塞控制算法"
 
+msgid "Inbound TCP congestion control"
+msgstr "入站 TCP 拥塞控制"
+
+msgid "System default"
+msgstr "系统默认"
+
+msgid "Algorithm for Xray transparent-proxy and SOCKS client connections. Independent of the outbound setting. Only algorithms currently available in the kernel are listed."
+msgstr "用于 Xray 透明代理和 SOCKS 客户端连接的算法，与出站设置相互独立。仅列出内核当前可用的算法。"
+
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1494
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1660
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1673
