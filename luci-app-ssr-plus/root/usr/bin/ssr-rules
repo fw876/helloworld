@@ -648,6 +648,8 @@ ac_rule() {
 
 ac_rule_nft() {
 	local MATCH_SET=""
+	local UDP_NAT_PORTS=""
+	[ -n "$TPROXY" ] || [ "$UDP443_POLICY" != "reject" ] || UDP_NAT_PORTS="udp dport != 443"
 
 	if [ -n "$LAN_AC_IP" ]; then
 		# Create LAN access control set if needed
@@ -687,10 +689,10 @@ ac_rule_nft() {
 		if [ -z "$Interface" ]; then
 			if [ -n "$MATCH_SET" ]; then
 				$NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
-				[ -n "$TPROXY" ] || $NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+				[ -n "$TPROXY" ] || $NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto udp $UDP_NAT_PORTS redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
 			else
 				$NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
-				[ -n "$TPROXY" ] || $NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+				[ -n "$TPROXY" ] || $NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 meta l4proto udp $UDP_NAT_PORTS redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
 			fi
 		else
 			for name in $Interface; do
@@ -699,10 +701,10 @@ ac_rule_nft() {
 				if [ -n "$IFNAME" ]; then
 					if [ -n "$MATCH_SET" ]; then
 						$NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
-						[ -n "$TPROXY" ] || $NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+						[ -n "$TPROXY" ] || $NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto udp $UDP_NAT_PORTS redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
 					else
 						$NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
-						[ -n "$TPROXY" ] || $NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+						[ -n "$TPROXY" ] || $NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 meta l4proto udp $UDP_NAT_PORTS redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
 					fi
 				fi
 			done
@@ -724,7 +726,7 @@ ac_rule_nft() {
 	#fi
 
 	# Block UDP port 443 when TPROXY not Enable
-	if [ -z "$TPROXY" ] && [ "$DISABLE_UDP_RULES" != "1" ]; then
+	if [ -z "$TPROXY" ] && [ "$DISABLE_UDP_RULES" != "1" ] && [ "$UDP443_POLICY" != "reject" ]; then
 		# Add UDP 443 block rule
 		if [ -z "$Interface" ]; then
 			if [ -n "$MATCH_SET" ]; then
@@ -850,6 +852,8 @@ ac_rule_nft() {
 
 ac_rule_iptables() {
 	local MATCH_SET=""
+	local UDP_NAT_PORTS=""
+	[ -n "$TPROXY" ] || [ "$UDP443_POLICY" != "reject" ] || UDP_NAT_PORTS="! --dport 443"
 	if [ -n "$LAN_AC_IP" ]; then
 		case "${LAN_AC_IP%${LAN_AC_IP#?}}" in
 		w | W)
@@ -897,7 +901,7 @@ ac_rule_iptables() {
 	fi
 
 	# Block UDP port 443 when TPROXY not Enable
-	if [ -z "$TPROXY" ] && [ "$DISABLE_UDP_RULES" != "1" ]; then
+	if [ -z "$TPROXY" ] && [ "$DISABLE_UDP_RULES" != "1" ] && [ "$UDP443_POLICY" != "reject" ]; then
 		# Add UDP 443 block rule
 		if [ -z "$Interface" ]; then
 			# Global rules
@@ -927,10 +931,10 @@ ac_rule_iptables() {
 		if [ -z "$Interface" ]; then
 			if [ -n "$MATCH_SET" ]; then
 				$IPT -I PREROUTING 1 -p tcp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
-				[ -n "$TPROXY" ] || $IPT -I PREROUTING 2 -p udp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+				[ -n "$TPROXY" ] || $IPT -I PREROUTING 2 -p udp -d 198.18.0.0/16 $MATCH_SET $UDP_NAT_PORTS -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
 			else
 				$IPT -I PREROUTING 1 -p tcp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
-				[ -n "$TPROXY" ] || $IPT -I PREROUTING 2 -p udp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+				[ -n "$TPROXY" ] || $IPT -I PREROUTING 2 -p udp -d 198.18.0.0/16 $UDP_NAT_PORTS -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
 			fi
 		else
 			for name in $Interface; do
@@ -939,10 +943,10 @@ ac_rule_iptables() {
 				if [ -n "$IFNAME" ]; then
 					if [ -n "$MATCH_SET" ]; then
 						$IPT -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p tcp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
-						[ -n "$TPROXY" ] || $IPT -I PREROUTING 2 ${IFNAME:+-i $IFNAME} -p udp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+						[ -n "$TPROXY" ] || $IPT -I PREROUTING 2 ${IFNAME:+-i $IFNAME} -p udp -d 198.18.0.0/16 $MATCH_SET $UDP_NAT_PORTS -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
 					else
 						$IPT -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p tcp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
-						[ -n "$TPROXY" ] || $IPT -I PREROUTING 2 ${IFNAME:+-i $IFNAME} -p udp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+						[ -n "$TPROXY" ] || $IPT -I PREROUTING 2 ${IFNAME:+-i $IFNAME} -p udp -d 198.18.0.0/16 $UDP_NAT_PORTS -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
 					fi
 				fi
 			done
@@ -988,10 +992,10 @@ ac_rule_iptables() {
 }
 
 tp_rule() {
-	[ -n "$TPROXY" ] || return 0
+	[ -n "$TPROXY" ] || [ "$UDP443_POLICY" = "reject" ] || return 0
 
 	# Apply sysctl settings for TPROXY
-	set_tproxy_sysctl
+	[ -z "$TPROXY" ] || set_tproxy_sysctl
 
 	if [ "$USE_NFT" = "1" ]; then
 		tp_rule_nft
@@ -1013,8 +1017,10 @@ quic_reject_nft() {
 	$NFT add chain ip ss_spec_mangle ss_spec_udp_proxy || return 1
 	$NFT add rule ip ss_spec_mangle ss_spec_udp_proxy udp dport 443 \
 		meta mark set "$QUIC_FWMARK" counter accept || return 1
-	$NFT add rule ip ss_spec_mangle ss_spec_udp_proxy \
-		meta l4proto udp counter tproxy ip to :"$LOCAL_PORT" meta mark set "$FWMARK"
+	if [ -n "$TPROXY" ]; then
+		$NFT add rule ip ss_spec_mangle ss_spec_udp_proxy \
+			meta l4proto udp counter tproxy ip to :"$LOCAL_PORT" meta mark set "$FWMARK"
+	fi
 }
 
 quic_reject_iptables() {
@@ -1030,16 +1036,18 @@ quic_reject_iptables() {
 	$ipt -N SS_SPEC_UDP_PROXY || return 1
 	$ipt -A SS_SPEC_UDP_PROXY -p udp --dport 443 -j MARK --set-mark "$QUIC_FWMARK" || return 1
 	$ipt -A SS_SPEC_UDP_PROXY -p udp --dport 443 -j ACCEPT || return 1
-	$ipt -A SS_SPEC_UDP_PROXY -p udp -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark "$FWMARK"
+	if [ -n "$TPROXY" ]; then
+		$ipt -A SS_SPEC_UDP_PROXY -p udp -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark "$FWMARK"
+	fi
 }
 
 tp_rule_nft() {
 	# set up routing table for tproxy
-	if ! ip rule show | grep -Eq "fwmark ${FWMARK}.*lookup 999"; then
+	if [ -n "$TPROXY" ] && ! ip rule show | grep -Eq "fwmark ${FWMARK}.*lookup 999"; then
 		ip rule add fwmark ${FWMARK} table 999 priority 999 2>/dev/null
 	fi
 
-	if ! ip route show table 999 | grep -Eq "^local.*dev lo"; then
+	if [ -n "$TPROXY" ] && ! ip route show table 999 | grep -Eq "^local.*dev lo"; then
 		ip route add local 0.0.0.0/0 dev lo table 999 2>/dev/null
 	fi
 
@@ -1235,11 +1243,11 @@ tp_rule_nft() {
 
 tp_rule_iptables() {
 	# set up routing table for tproxy
-	if ! ip rule show | grep -Eq "fwmark ${FWMARK}.*lookup 999"; then
+	if [ -n "$TPROXY" ] && ! ip rule show | grep -Eq "fwmark ${FWMARK}.*lookup 999"; then
 		ip rule add fwmark ${FWMARK} table 999 priority 999 2>/dev/null
 	fi
 
-	if ! ip route show table 999 | grep -Eq "^local.*dev lo"; then
+	if [ -n "$TPROXY" ] && ! ip route show table 999 | grep -Eq "^local.*dev lo"; then
 		ip route add local 0.0.0.0/0 dev lo table 999 2>/dev/null
 	fi
 	$ipt -N SS_SPEC_TPROXY 2>/dev/null

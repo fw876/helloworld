@@ -360,6 +360,7 @@ prepare_tuic_runtime_config() {
 		echolog "TUIC 节点运行配置生成失败：$sid"
 		return 1
 	fi
+	/usr/bin/lua "$CLASH_YAML_HELPER" guard_udp443 "$runtime_file" >/dev/null || return 1
 
 	# Reuse existing local geodata files so Mihomo does not have to fetch them.
 	link_mihomo_geodata "$workdir"
@@ -385,6 +386,7 @@ prepare_ss_mihomo_runtime_config() {
 		echolog "Shadowsocks 单节点 Mihomo 运行配置生成失败：$sid"
 		return 1
 	fi
+	/usr/bin/lua "$CLASH_YAML_HELPER" guard_udp443 "$runtime_file" >/dev/null || return 1
 
 	link_mihomo_geodata "$workdir"
 }
@@ -426,6 +428,7 @@ prepare_v2ray_mihomo_runtime_config() {
 		echolog "V2Ray/Xray 单节点 Mihomo 运行配置生成失败：$sid"
 		return 1
 	fi
+	/usr/bin/lua "$CLASH_YAML_HELPER" guard_udp443 "$runtime_file" >/dev/null || return 1
 
 	link_mihomo_geodata "$workdir"
 }
@@ -714,6 +717,7 @@ prepare_clash_runtime_config() {
 	if [ "$client_rules" -gt 0 ] 2>/dev/null; then
 		echolog "Clash YAML 自定义客户端代理规则已注入：$client_rules 条。"
 	fi
+	/usr/bin/lua "$CLASH_YAML_HELPER" guard_udp443 "$runtime_file" >/dev/null || return 1
 
 	# Persist Mihomo's store-selected cache across service restarts.
 	if [ -f "$workdir/cache.db" ] && [ ! -L "$workdir/cache.db" ]; then
@@ -2937,6 +2941,11 @@ start_xhttp_addr() {
 }
 
 udp443_action() {
+	# A TCP-only node has no UDP listener; keep selected QUIC off the WAN.
+	if [ "${ARG_UDP_RULES:-}" = "-y" ]; then
+		echo reject
+		return
+	fi
 	# The generated default outbound is authoritative, including core fallback,
 	# omitted/inapplicable flow settings and Mux allow/skip semantics.
 	# Missing/unknown configs retain normal proxying, never a guessed rejection.

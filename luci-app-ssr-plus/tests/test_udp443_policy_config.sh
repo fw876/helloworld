@@ -50,6 +50,9 @@ reject|{"protocol":"vless","settings":{"flow":"xtls-rprx-vision-udp443"},"mux":{
 proxy|{"protocol":"vless","settings":{"flow":"xtls-rprx-vision-udp443"},"mux":{"enabled":true,"xudpProxyUDP443":"allow","concurrency":-1,"xudpConcurrency":-1}}
 CASES
 test "$(udp443_action '')" = proxy
+ARG_UDP_RULES=-y
+test "$(udp443_action '')" = reject
+ARG_UDP_RULES=
 test "$(udp443_action "$test_dir/missing.json")" = proxy
 printf 'invalid json\n' > "$test_dir/config.json"
 test "$(udp443_action "$test_dir/config.json")" = proxy

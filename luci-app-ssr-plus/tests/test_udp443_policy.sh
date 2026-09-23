@@ -18,7 +18,7 @@ if [ "${1:-}" != --inside ]; then
 			done
 		done
 		unshare --net "$script" --inside "$backend" reject gfw gfw-unmatched
-		for scenario in no-relay no-relay-disabled fake-ip-no-relay fake-ip-no-relay-443; do
+		for scenario in no-relay no-relay-disabled no-relay-direct no-relay-china no-relay-bypass no-relay-lan-exclude no-relay-interface-exclude no-relay-excluded-port no-relay-other-udp fake-ip-no-relay fake-ip-no-relay-443 fake-ip-no-relay-ac-exclude fake-ip-no-relay-excluded-port; do
 			unshare --net "$script" --inside "$backend" reject router "$scenario"
 		done
 	done
@@ -101,15 +101,24 @@ case "$scenario" in
 	fake-ip-split-port) local_port=12346; port=8443; expected=proxy ;;
 	fake-ip-tcp) protocol=tcp; expected=reject ;; # TCP NAT reaches the closed local TCP port.
 	fake-ip-no-relay) TPROXY=; port=8443; expected=proxy ;;
-	fake-ip-no-relay-443) TPROXY=; DISABLE_UDP_RULES=1; expected=proxy ;;
+	fake-ip-no-relay-443) TPROXY=; DISABLE_UDP_RULES=1; expected=reject ;;
+	fake-ip-no-relay-ac-exclude) TPROXY=; DISABLE_UDP_RULES=1; LAN_AC_IP=b203.0.113.2; expected=direct ;;
+	fake-ip-no-relay-excluded-port) TPROXY=; DISABLE_UDP_RULES=1; PROXY_PORTS='-m multiport --dports 8443'; EXT_ARGS=$PROXY_PORTS; expected=reject ;;
 	excluded-port) PROXY_PORTS='-m multiport --dports 8443'; expected=direct ;;
 	dns) port=53; expected=direct ;;
 	other-udp) port=8443; expected=proxy ;;
 	tcp) protocol=tcp; expected=direct ;;
 	lan-ac-exclude) LAN_AC_IP=w203.0.113.99; expected=direct ;;
 	interface-exclude) Interface=other; expected=direct ;;
-	no-relay) TPROXY=; expected=timeout ;;
-	no-relay-disabled) TPROXY=; DISABLE_UDP_RULES=1; expected=direct ;;
+	no-relay) TPROXY=; expected=reject ;;
+	no-relay-disabled) TPROXY=; DISABLE_UDP_RULES=1; expected=reject ;;
+	no-relay-direct) TPROXY=; expected=direct ;;
+	no-relay-china) TPROXY=; expected=direct ;;
+	no-relay-bypass) TPROXY=; expected=direct ;;
+	no-relay-lan-exclude) TPROXY=; LAN_AC_IP=b203.0.113.2; expected=direct ;;
+	no-relay-interface-exclude) TPROXY=; Interface=other; expected=direct ;;
+	no-relay-excluded-port) TPROXY=; PROXY_PORTS='-m multiport --dports 8443'; expected=direct ;;
+	no-relay-other-udp) TPROXY=; port=8443; expected=direct ;;
 	direct|china|bypass-client|gfw-unmatched|cleanup) expected=direct ;;
 esac
 # Exercise actual NAT setup as well as TPROXY: the old fake-IP REDIRECT
@@ -134,9 +143,9 @@ add_member() {
 	fi
 }
 case "$scenario" in
-	direct) add_member whitelist "$dest" ;;
-	china) add_member china "$dest" ;;
-	bypass-client) add_member bplan 203.0.113.2 ;;
+	direct|no-relay-direct) add_member whitelist "$dest" ;;
+	china|no-relay-china) add_member china "$dest" ;;
+	bypass-client|no-relay-bypass) add_member bplan 203.0.113.2 ;;
 	forced-client) add_member fplan 203.0.113.2 ;;
 	game) add_member gmlan 203.0.113.2 ;;
 esac

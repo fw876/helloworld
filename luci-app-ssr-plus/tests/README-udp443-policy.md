@@ -10,7 +10,8 @@ the existing per-node **Flow** and **Mux / UDP 443** settings:
 
 | Effective configuration | Proxy-selected UDP/443 |
 | --- | --- |
-| Non-Xray core, or Xray without a known blocking setting | Proxy normally. |
+| Native SS/SSR/TUIC relay, or Xray without a known blocking setting | Proxy normally. |
+| TCP-only node without a UDP relay | Reject proxy-selected UDP/443; retain direct/China/bypass routes. |
 | Enabled Mux with `xudpProxyUDP443=reject` (also Xray's omitted/empty default) | Reject with ICMP port-unreachable. |
 | Plain `xtls-rprx-vision`, without a permitted active Mux/XUDP path | Reject with ICMP port-unreachable. |
 | `xtls-rprx-vision-udp443`, without a rejecting Mux policy | Proxy normally. |
@@ -21,7 +22,19 @@ This mirrors [Xray's Mux dispatch](https://github.com/XTLS/Xray-core/blob/v26.7.
 and [VLESS Vision UDP handling](https://github.com/XTLS/Xray-core/blob/v26.7.11/proxy/vless/outbound/outbound.go).
 Unknown or unreadable configs do not trigger guessed rejection. Switching cores
 resets the recorded config; separate UDP launches use their own generated config.
-The action is passed to `ssr-rules` using internal `-Q proxy|reject`.
+The action is passed to `ssr-rules` using internal `-Q proxy|reject`. The
+TCP-only case uses the same selection chain without installing a UDP TPROXY
+listener or local-routing rule; non-443 UDP remains on its original path.
+
+Mihomo profiles need a per-rule decision because a group member can change
+while the service runs. During YAML preparation, each proxy-targeting rule
+gets an adjacent UDP/443 `REJECT` rule with the same match. Mihomo skips an
+unsupported UDP proxy and reaches this guard. A capable proxy consumes the
+original match, and explicit `DIRECT` rules are unchanged. This also covers
+client policy rules and sub-rules. SSR's generated single-node Mihomo configs
+get the same guard. Unknown/malformed rule targets are left to Mihomo's native
+validation; a profile in global mode bypasses its rule list and is not covered
+by these guards. See [Mihomo's documented UDP rule behavior](https://wiki.metacubex.one/en/config/rules/).
 
 This matches the UDP port, not packet-level QUIC detection. Other protocols on
 UDP/443 are affected too. It does not enable UDP for TCP-only nodes, alter IPv6,
@@ -36,7 +49,8 @@ bypassing rejection; it could also redirect to the TCP relay's port when the
 UDP relay uses a different one. Fake-IP still enters the core regardless of
 proxy-port restrictions, while retaining interface and LAN access controls.
 Ordinary DNS bypass remains intact; fake-IP UDP/53 follows fake-IP interception.
-Without TPROXY, fake-IP UDP NAT remains as before. Fake-IP TCP NAT and
+Without TPROXY, fake-IP UDP NAT still handles other ports; UDP/443 is excluded
+when rejection is active, preserving its original port for the filter hook. Fake-IP TCP NAT and
 router-originated OUTPUT handling are unchanged.
 
 The rejection action is selected at the same points as TPROXY, avoiding a second,
@@ -54,8 +68,10 @@ and derived-action changes invalidate the cached ruleset.
 
 ```sh
 lua luci-app-ssr-plus/tests/test_udp443_generator.lua
+lua5.1 luci-app-ssr-plus/tests/test_udp443_mihomo.lua
 bash luci-app-ssr-plus/tests/test_udp443_policy_config.sh
 sudo luci-app-ssr-plus/tests/test_udp443_policy.sh
+bash luci-app-ssr-plus/tests/test_udp443_mihomo_runtime.sh /path/to/mihomo
 ```
 
 The config test needs bash and jq. The integration test needs Linux, bash,
@@ -72,7 +88,10 @@ Fake-IP cases include all global/interface and LAN allow/block branches, exclude
 ports, distinct TCP/UDP relay ports, UDP/53 and preserved TCP NAT. A transparent
 UDP listener distinguishes actual relay from a silent drop. An unrelated filter
 mark rule must survive cleanup. CI exercises both iptables implementations plus
-native nftables. Lua tests exercise the real UCI-to-Xray generator with existing
+native nftables. A pinned Mihomo binary is tested in a separate network
+namespace: UDP uses a capable selected member, rejects after a switch to an
+incapable member, and honors a direct rule. Lua tests exercise the real
+UCI-to-Xray generator with existing
 Flow/Mux fields for shared and separate UDP configs. Config tests cover Vision/Mux
 combinations, non-Xray defaults, startup wiring contracts, and cache transitions. They are not a live
 core-launch or hardware end-to-end test.
