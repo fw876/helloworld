@@ -5,7 +5,7 @@ script=$(readlink -f "$0")
 binary=$(readlink -f "${1:?Mihomo binary required}")
 profile=$(readlink -f "${2:-$(dirname "$0")/udp443-mihomo.yaml}")
 if [ "${3:-}" != --inside ]; then
-	exec sudo unshare --net "$script" "$binary" "$profile" --inside
+	exec sudo unshare --net bash "$script" "$binary" "$profile" --inside
 fi
 test_dir=$(mktemp -d)
 proxy_pid=
