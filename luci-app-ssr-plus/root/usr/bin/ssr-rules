@@ -51,11 +51,8 @@ ENABLE_FAKE_IP=0
 FWMARK="0x53535250"
 # Keep rejection traffic out of the TPROXY local-routing table.
 QUIC_FWMARK="0x51554943"
-UDP443_POLICY=$(uci -q get 'shadowsocksr.@global[0].udp443_policy')
-case "$UDP443_POLICY" in
-	proxy|reject) ;;
-	*) UDP443_POLICY=legacy ;;
-esac
+# Derived by the service from the running UDP core configuration, not a UCI knob.
+UDP443_POLICY=proxy
 
 if [ "$USE_NFT" = "1" ]; then
 	# NFTables persistence directory
@@ -92,6 +89,7 @@ usage() {
 		    -I <ip_list_file>       a file content is bypassed shunt ip list
 		    -e <extra_options>      extra options for iptables
 		    -E <0|1>				enable_fake_ip status
+		    -Q <proxy|reject>       UDP/443 action derived from the selected UDP core
 		    -o                      apply the rules to the OUTPUT chain
 		    -O                      apply the global rules to the OUTPUT chain
 		    -u                      enable udprelay mode, TPROXY is required
@@ -683,15 +681,16 @@ ac_rule_nft() {
 	fi
 	$NFT flush chain inet ss_spec ss_spec_prerouting 2>/dev/null
 
-	# Fake-IP 重定向处理 (引入 Interface 匹配，防止 WAN 口越权)
+	# Fake-IP keeps its interface/LAN scope. With TPROXY enabled, mangle owns
+	# UDP: NAT REDIRECT would change dport before the filter rejection hook.
 	if [ "$ENABLE_FAKE_IP" = "1" ]; then
 		if [ -z "$Interface" ]; then
 			if [ -n "$MATCH_SET" ]; then
 				$NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
-				$NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+				[ -n "$TPROXY" ] || $NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
 			else
 				$NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
-				$NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+				[ -n "$TPROXY" ] || $NFT add rule inet ss_spec ss_spec_prerouting ip daddr 198.18.0.0/16 meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
 			fi
 		else
 			for name in $Interface; do
@@ -700,10 +699,10 @@ ac_rule_nft() {
 				if [ -n "$IFNAME" ]; then
 					if [ -n "$MATCH_SET" ]; then
 						$NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
-						$NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+						[ -n "$TPROXY" ] || $NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 $MATCH_SET meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
 					else
 						$NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 meta l4proto tcp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
-						$NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
+						[ -n "$TPROXY" ] || $NFT add rule inet ss_spec ss_spec_prerouting meta iifname "$IFNAME" ip daddr 198.18.0.0/16 meta l4proto udp redirect to :$local_port comment "\"$TAG\"" 2>/dev/null
 					fi
 				fi
 			done
@@ -922,15 +921,16 @@ ac_rule_iptables() {
 		fi
 	fi
 
-	# 拦截 Fake-IP 流量 (198.18.0.0/16)，受 Interface 和 LAN_AC 控制
+	# Keep fake-IP TCP NAT; UDP NAT is only needed without TPROXY. Otherwise
+	# REDIRECT would rewrite dport 443 and bypass filter-stage rejection.
 	if [ "$ENABLE_FAKE_IP" = "1" ]; then
 		if [ -z "$Interface" ]; then
 			if [ -n "$MATCH_SET" ]; then
 				$IPT -I PREROUTING 1 -p tcp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
-				$IPT -I PREROUTING 2 -p udp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+				[ -n "$TPROXY" ] || $IPT -I PREROUTING 2 -p udp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
 			else
 				$IPT -I PREROUTING 1 -p tcp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
-				$IPT -I PREROUTING 2 -p udp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+				[ -n "$TPROXY" ] || $IPT -I PREROUTING 2 -p udp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
 			fi
 		else
 			for name in $Interface; do
@@ -939,10 +939,10 @@ ac_rule_iptables() {
 				if [ -n "$IFNAME" ]; then
 					if [ -n "$MATCH_SET" ]; then
 						$IPT -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p tcp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
-						$IPT -I PREROUTING 2 ${IFNAME:+-i $IFNAME} -p udp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+						[ -n "$TPROXY" ] || $IPT -I PREROUTING 2 ${IFNAME:+-i $IFNAME} -p udp -d 198.18.0.0/16 $MATCH_SET -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
 					else
 						$IPT -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p tcp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
-						$IPT -I PREROUTING 2 ${IFNAME:+-i $IFNAME} -p udp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
+						[ -n "$TPROXY" ] || $IPT -I PREROUTING 2 ${IFNAME:+-i $IFNAME} -p udp -d 198.18.0.0/16 -j REDIRECT --to-ports "$local_port" -m comment --comment "$TAG"
 					fi
 				fi
 			done
@@ -1178,7 +1178,6 @@ tp_rule_nft() {
 		# 80 端口规则：非国内 IP 的 80 端口，走 TPROXY
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 80 counter drop comment "\"$TAG\"" 2>/dev/null
 		# 443 端口规则：非国内 IP 的 443 端口，走 TPROXY
-		[ "$UDP443_POLICY" != "legacy" ] || $NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 443 counter drop comment "\"$TAG\"" 2>/dev/null
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip saddr @gmlan ip daddr != @china $UDP_ACTION 2>/dev/null
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip daddr != @ss_spec_wan_ac $UDP_ACTION 2>/dev/null
 		;;
@@ -1190,7 +1189,6 @@ tp_rule_nft() {
 		# 80 端口规则：非国内 IP 的 80 端口，走 TPROXY
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 80 counter drop comment "\"$TAG\"" 2>/dev/null
 		# 443 端口规则：非国内 IP 的 443 端口，走 TPROXY
-		[ "$UDP443_POLICY" != "legacy" ] || $NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp udp dport 443 counter drop comment "\"$TAG\"" 2>/dev/null
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp $EXT_ARGS ip daddr @gfwlist $UDP_ACTION 2>/dev/null
 		$NFT add rule ip ss_spec_mangle ss_spec_tproxy meta l4proto udp ip saddr @gmlan ip daddr != @china $UDP_ACTION 2>/dev/null
 		;;
@@ -1208,6 +1206,8 @@ tp_rule_nft() {
 
 	# add prerouting jump (idempotent)
 	if [ -z "$Interface" ]; then
+		# Fake-IP must reach the core even when its port is not in PROXY_PORTS.
+		[ "$ENABLE_FAKE_IP" != "1" ] || $NFT add rule ip ss_spec_mangle prerouting meta l4proto udp ip daddr 198.18.0.0/16 $MATCH_SET jump ss_spec_tproxy comment "\"$TAG\"" 2>/dev/null
 		# Global rules
 		if [ -n "$MATCH_SET" ]; then
 			$NFT add rule ip ss_spec_mangle prerouting meta l4proto udp $EXT_ARGS $MATCH_SET jump ss_spec_tproxy comment "\"$TAG\"" 2>/dev/null
@@ -1220,6 +1220,7 @@ tp_rule_nft() {
 			IFNAME=$(uci -P /var/state get network."$name".ifname 2>/dev/null)
 			[ -z "$IFNAME" ] && IFNAME=$(uci -P /var/state get network."$name".device 2>/dev/null)
 			if [ -n "$IFNAME" ]; then
+				[ "$ENABLE_FAKE_IP" != "1" ] || $NFT add rule ip ss_spec_mangle prerouting meta iifname "$IFNAME" meta l4proto udp ip daddr 198.18.0.0/16 $MATCH_SET jump ss_spec_tproxy comment "\"$TAG\"" 2>/dev/null
 				if [ -n "$MATCH_SET" ]; then
 					$NFT add rule ip ss_spec_mangle prerouting meta iifname "$IFNAME" meta l4proto udp $EXT_ARGS $MATCH_SET jump ss_spec_tproxy comment "\"$TAG\"" 2>/dev/null
 				else
@@ -1248,8 +1249,6 @@ tp_rule_iptables() {
 		quic_reject_iptables || return 1
 		UDP_TARGET="SS_SPEC_UDP_PROXY"
 	fi
-
-	$ipt -A SS_SPEC_TPROXY -p udp --dport 53 -j RETURN
 
 	local MATCH_SET=""
 	if [ -n "$LAN_AC_IP" ]; then
@@ -1281,6 +1280,7 @@ tp_rule_iptables() {
 	if [ "$ENABLE_FAKE_IP" = "1" ]; then
 		$ipt -A SS_SPEC_TPROXY -p udp $MATCH_SET -d 198.18.0.0/16 -j $UDP_TARGET
 	fi
+	$ipt -A SS_SPEC_TPROXY -p udp --dport 53 -j RETURN
 
 	[ -n "$SERVER" ] && $ipt -A SS_SPEC_TPROXY -p udp ! --dport 53 -d "$SERVER" -j RETURN
 	[ -n "$SERVER" ] && [ "$server" != "$SERVER" ] && ipset -! add whitelist "$SERVER"
@@ -1304,7 +1304,6 @@ tp_rule_iptables() {
 		# 80 端口规则：非国内 IP 的 80 端口，走 TPROXY
 		$ipt -A SS_SPEC_TPROXY -p udp --dport 80 -j DROP
 		# 443 端口规则：非国内 IP 的 443 端口，走 TPROXY
-		[ "$UDP443_POLICY" != "legacy" ] || $ipt -A SS_SPEC_TPROXY -p udp --dport 443 -j DROP
 		# 保留海外 QUIC 代理
 		# $ipt -A SS_SPEC_TPROXY -p udp --dport 80 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
 		# $ipt -A SS_SPEC_TPROXY -p udp --dport 443 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
@@ -1318,7 +1317,6 @@ tp_rule_iptables() {
 		# 80 端口规则：非国内 IP 的 80 端口，走 TPROXY
 		$ipt -A SS_SPEC_TPROXY -p udp --dport 80 -j DROP
 		# 443 端口规则：非国内 IP 的 443 端口，走 TPROXY
-		[ "$UDP443_POLICY" != "legacy" ] || $ipt -A SS_SPEC_TPROXY -p udp --dport 443 -j DROP
 		# 保留海外 QUIC 代理
 		# $ipt -A SS_SPEC_TPROXY -p udp --dport 80 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
 		# $ipt -A SS_SPEC_TPROXY -p udp --dport 443 -j TPROXY --on-port "$LOCAL_PORT" --tproxy-mark ${FWMARK}
@@ -1330,6 +1328,7 @@ tp_rule_iptables() {
 		;;
 	esac
 	if [ -z "$Interface" ]; then
+		[ "$ENABLE_FAKE_IP" != "1" ] || $ipt -I PREROUTING 1 -p udp -d 198.18.0.0/16 $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_TPROXY
 		# Global rules
 		if [ -n "$MATCH_SET" ]; then
 			$ipt -I PREROUTING 1 -p udp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_TPROXY
@@ -1341,6 +1340,7 @@ tp_rule_iptables() {
 			local IFNAME=$(uci -P /var/state get network."$name".ifname 2>/dev/null)
 			[ -z "$IFNAME" ] && IFNAME=$(uci -P /var/state get network."$name".device 2>/dev/null)
 			if [ -n "$IFNAME" ]; then
+				[ "$ENABLE_FAKE_IP" != "1" ] || $ipt -I PREROUTING 1 -i "$IFNAME" -p udp -d 198.18.0.0/16 $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_TPROXY
 				if [ -n "$MATCH_SET" ]; then
 					$ipt -I PREROUTING 1 ${IFNAME:+-i $IFNAME} -p udp $EXT_ARGS $MATCH_SET -m comment --comment "$TAG" -j SS_SPEC_TPROXY
 				else
@@ -1704,7 +1704,7 @@ restore_from_persistence() {
 	fi
 }
 
-while getopts ":m:s:l:S:L:i:e:E:a:B:b:w:p:G:D:F:N:M:I:oOuUyfgrzAKPCRXh" arg; do
+while getopts ":m:s:l:S:L:i:e:E:Q:a:B:b:w:p:G:D:F:N:M:I:oOuUyfgrzAKPCRXh" arg; do
 	case "$arg" in
 	m)
 		Interface=$OPTARG
@@ -1729,6 +1729,12 @@ while getopts ":m:s:l:S:L:i:e:E:a:B:b:w:p:G:D:F:N:M:I:oOuUyfgrzAKPCRXh" arg; do
 		;;
 	E)
 		ENABLE_FAKE_IP=$OPTARG
+		;;
+	Q)
+		case "$OPTARG" in
+			proxy|reject) UDP443_POLICY=$OPTARG ;;
+			*) usage 2 ;;
+		esac
 		;;
 	a)
 		LAN_AC_IP=$OPTARG

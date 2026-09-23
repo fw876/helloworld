@@ -22,12 +22,11 @@ jobs:
         iptables: [legacy, nft]
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y lua5.1 gettext iptables ipset nftables
+      - run: sudo apt-get update && sudo apt-get install -y lua5.1 jq iptables ipset nftables
       - run: sudo update-alternatives --set iptables /usr/sbin/iptables-${{ matrix.iptables }}
       - run: |
           sh -n luci-app-ssr-plus/root/usr/bin/ssr-rules
-          luac5.1 -p luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua
-          lua5.1 luci-app-ssr-plus/tests/test_udp443_policy_ui.lua
+          sh -n luci-app-ssr-plus/root/etc/init.d/shadowsocksr
+          lua5.1 luci-app-ssr-plus/tests/test_udp443_generator.lua
           bash luci-app-ssr-plus/tests/test_udp443_policy_config.sh
-          msgfmt --check -o /dev/null luci-app-ssr-plus/po/zh_Hans/ssr-plus.po
           sudo luci-app-ssr-plus/tests/test_udp443_policy.sh

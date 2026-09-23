@@ -123,15 +123,6 @@ o.datatype = "port"
 o.default = 1234
 o.rmempty = false
 
--- Firewall policy, separate from the node's Xray flow and Mux settings.
-o = s:option(ListValue, "udp443_policy", translate("Proxied UDP/443 policy"),
-	translate("Applies to IPv4 traffic selected for transparent UDP relay. Direct destinations remain exempt. Requires a UDP-capable node. Proxy does not override the node's UDP/443 restrictions, including Xray Vision and Mux settings."))
-o.default = "legacy"
-o.rmempty = true
-o:value("legacy", translate("Legacy behavior"))
-o:value("reject", translate("Reject (fast TCP fallback)"))
-o:value("proxy", translate("Proxy (requires UDP/443 support)"))
-
 o = s:option(Value, "gfwlist_url", translate("gfwlist Update url"))
 o:value("https://fastly.jsdelivr.net/gh/YW5vbnltb3Vz/domain-list-community@release/gfwlist.txt", translate("v2fly/domain-list-community"))
 o:value("https://fastly.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/gfw.txt", translate("Loyalsoldier/v2ray-rules-dat"))

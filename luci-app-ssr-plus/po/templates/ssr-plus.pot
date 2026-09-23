@@ -1,21 +1,6 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=UTF-8"
 
-msgid "Proxied UDP/443 policy"
-msgstr ""
-
-msgid "Legacy behavior"
-msgstr ""
-
-msgid "Reject (fast TCP fallback)"
-msgstr ""
-
-msgid "Proxy (requires UDP/443 support)"
-msgstr ""
-
-msgid "Applies to IPv4 traffic selected for transparent UDP relay. Direct destinations remain exempt. Requires a UDP-capable node. Proxy does not override the node's UDP/443 restrictions, including Xray Vision and Mux settings."
-msgstr ""
-
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:251
 msgid ""
 "\"1-3\" is for segmentation at TCP layer, applying to the beginning 1 to 3 "
