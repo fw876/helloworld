@@ -23,6 +23,7 @@ rules:
   - DOMAIN-SUFFIX,local.example,DIRECT
   - DOMAIN-SUFFIX,foreign.example,PROXY
   - AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-SUFFIX,foreign.example)),REJECT
+  - DOMAIN-SUFFIX,foreign.example,DIRECT
   - AND,((DOMAIN,other.example),(DST-PORT,443)),PROXY
   - AND,((NETWORK,UDP),(DST-PORT,443),(AND,((DOMAIN,other.example),(DST-PORT,443)))),REJECT
   - IP-CIDR,198.18.0.0/16,udp-off,no-resolve

@@ -25,6 +25,7 @@ document = {
 	rules = {
 		"DOMAIN-SUFFIX,local.example,DIRECT",
 		"DOMAIN-SUFFIX,foreign.example,PROXY",
+		"DOMAIN-SUFFIX,foreign.example,DIRECT",
 		"AND,((DOMAIN,other.example),(DST-PORT,443)),PROXY",
 		"IP-CIDR,198.18.0.0/16,udp-off,no-resolve",
 		"IP-CIDR,203.0.113.0/24,PROXY,src",
@@ -45,6 +46,7 @@ local expected = {
 	"DOMAIN-SUFFIX,local.example,DIRECT",
 	"DOMAIN-SUFFIX,foreign.example,PROXY",
 	"AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-SUFFIX,foreign.example)),REJECT",
+	"DOMAIN-SUFFIX,foreign.example,DIRECT",
 	"AND,((DOMAIN,other.example),(DST-PORT,443)),PROXY",
 	"AND,((NETWORK,UDP),(DST-PORT,443),(AND,((DOMAIN,other.example),(DST-PORT,443)))),REJECT",
 	"IP-CIDR,198.18.0.0/16,udp-off,no-resolve",
