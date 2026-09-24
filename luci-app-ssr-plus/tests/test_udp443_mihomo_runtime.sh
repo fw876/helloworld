@@ -45,10 +45,14 @@ PY
 }
 send_udp foreign.example
 grep -Eq 'dial PROXY .*foreign\.example:443' "$test_dir/mihomo.log"
+send_udp tail.example
+grep -Eq 'dial PROXY .*tail\.example:443' "$test_dir/mihomo.log"
 curl -fsS --max-time 2 -X PUT -H 'Content-Type: application/json' -d '{"name":"udp-off"}' \
 	http://127.0.0.1:9090/proxies/PROXY >/dev/null
 send_udp foreign.example
 grep -Eq 'foreign\.example:443.*using REJECT' "$test_dir/mihomo.log"
+send_udp tail.example
+grep -Eq 'tail\.example:443.*using REJECT' "$test_dir/mihomo.log"
 send_udp local.example
 grep -Eq 'dial DIRECT .*local\.example:443|local\.example:443.*using DIRECT' "$test_dir/mihomo.log"
 echo 'PASS: Mihomo sends UDP via a capable member, rejects after switching to an incapable member, and keeps direct rules'

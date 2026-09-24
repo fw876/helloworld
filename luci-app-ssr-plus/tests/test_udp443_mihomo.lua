@@ -20,7 +20,7 @@ local exit = os.exit
 os.exit = function(status) assert(status == 0, "postprocessor failed") end
 
 document = {
-	proxies = {{name = "udp-on"}, {name = "udp-off"}},
+	proxies = {{name = "udp-on", udp = true}, {name = "udp-off", udp = false}},
 	["proxy-groups"] = {{name = "PROXY", type = "select", proxies = {"udp-on", "udp-off"}}},
 	rules = {
 		"DOMAIN-SUFFIX,local.example,DIRECT",
@@ -30,18 +30,21 @@ document = {
 		"IP-CIDR,198.18.0.0/16,udp-off,no-resolve",
 		"IP-CIDR,203.0.113.0/24,PROXY,src",
 		"SUB-RULE,(NETWORK,UDP),nested",
+		"DOMAIN,tail1.example,PROXY",
+		"DOMAIN,tail2.example,PROXY",
+		"DOMAIN,tail3.example,PROXY",
 		"MATCH,PROXY"
 	},
 	["sub-rules"] = {nested = {"DOMAIN,local.example,DIRECT", "MATCH,udp-off"}}
 }
 
-local function run()
+local function run(expect_write)
 	written = nil
 	arg = {"guard_udp443", "fixture.yaml"}
 	assert(loadfile(helper))()
-	assert(written == document)
+	assert((written == document) == expect_write)
 end
-run()
+run(true)
 local expected = {
 	"DOMAIN-SUFFIX,local.example,DIRECT",
 	"DOMAIN-SUFFIX,foreign.example,PROXY",
@@ -54,6 +57,9 @@ local expected = {
 	"IP-CIDR,203.0.113.0/24,PROXY,src",
 	"AND,((NETWORK,UDP),(DST-PORT,443),(IP-CIDR,203.0.113.0/24,src)),REJECT",
 	"SUB-RULE,(NETWORK,UDP),nested",
+	"DOMAIN,tail1.example,PROXY",
+	"DOMAIN,tail2.example,PROXY",
+	"DOMAIN,tail3.example,PROXY",
 	"MATCH,PROXY",
 	"AND,((NETWORK,UDP),(DST-PORT,443)),REJECT"
 }
@@ -62,7 +68,20 @@ for i, rule in ipairs(expected) do assert(document.rules[i] == rule, i .. ": " .
 assert(document["sub-rules"].nested[1] == "DOMAIN,local.example,DIRECT")
 assert(document["sub-rules"].nested[2] == "MATCH,udp-off")
 assert(document["sub-rules"].nested[3] == "AND,((NETWORK,UDP),(DST-PORT,443)),REJECT")
-run()
+run(false)
 assert(#document.rules == #expected, "postprocessor must be idempotent")
+
+-- A static selector containing only UDP-capable members needs no guard and
+-- must not cause a wholesale YAML reserialization of a large profile.
+document = {
+	proxies = {{name = "udp-on", udp = true}},
+	["proxy-groups"] = {{name = "CAPABLE", proxies = {"udp-on"}}},
+	rules = {"DOMAIN-SUFFIX,fast.example,CAPABLE", "MATCH,CAPABLE"}
+}
+written = nil
+arg = {"guard_udp443", "fixture.yaml"}
+assert(loadfile(helper))()
+assert(written == nil)
+assert(#document.rules == 2)
 os.exit = exit
-print("PASS: Mihomo proxy rules gain local UDP/443 fallback; direct rules and selector choice are preserved")
+print("PASS: Mihomo guards only possible UDP-incompatible routes; direct rules and selector choice are preserved")

@@ -26,15 +26,18 @@ The action is passed to `ssr-rules` using internal `-Q proxy|reject`. The
 TCP-only case uses the same selection chain without installing a UDP TPROXY
 listener or local-routing rule; non-443 UDP remains on its original path.
 
-Mihomo profiles need a per-rule decision because a group member can change
-while the service runs. During YAML preparation, each proxy-targeting rule
-gets an adjacent UDP/443 `REJECT` rule with the same match. Mihomo skips an
-unsupported UDP proxy and reaches this guard. A capable proxy consumes the
-original match, and explicit `DIRECT` rules are unchanged. This also covers
-client policy rules and sub-rules. SSR's generated single-node Mihomo configs
-get the same guard. Unknown/malformed rule targets are left to Mihomo's native
-validation; a profile in global mode bypasses its rule list and is not covered
-by these guards. See [Mihomo's documented UDP rule behavior](https://wiki.metacubex.one/en/config/rules/).
+Mihomo profiles need a rule-order decision because a group member can change
+while the service runs. During YAML preparation, proxy-targeting rules get an
+adjacent UDP/443 `REJECT` match where later rules could send unsupported UDP
+directly. An uninterrupted tail of rules targeting the same selector as the
+final `MATCH` shares one terminal guard; a selector that can only choose
+explicitly UDP-capable members needs none. Mihomo skips an unsupported UDP
+proxy and reaches the guard. A capable proxy consumes the original match;
+explicit `DIRECT` rules are unchanged. This also covers client policy rules
+and sub-rules. When no guard is needed, the YAML is left untouched instead of
+being serialized again. Unknown/malformed rule targets are left to Mihomo's
+native validation; a profile in global mode bypasses its rule list and is not
+covered by these guards. See [Mihomo's documented UDP rule behavior](https://wiki.metacubex.one/en/config/rules/).
 
 This matches the UDP port, not packet-level QUIC detection. Other protocols on
 UDP/443 are affected too. It does not enable UDP for TCP-only nodes, alter IPv6,
@@ -90,7 +93,9 @@ UDP listener distinguishes actual relay from a silent drop. An unrelated filter
 mark rule must survive cleanup. CI exercises both iptables implementations plus
 native nftables. A pinned Mihomo binary is tested in a separate network
 namespace: UDP uses a capable selected member, rejects after a switch to an
-incapable member, and honors a direct rule. Lua tests exercise the real
+incapable member, including through the shared terminal guard, and honors a
+direct rule. A synthetic 583 KiB profile checks generated size as a regression
+gate; it is not the maintainer's private profile. Lua tests exercise the real
 UCI-to-Xray generator with existing
 Flow/Mux fields for shared and separate UDP configs. Config tests cover Vision/Mux
 combinations, non-Xray defaults, startup wiring contracts, and cache transitions. They are not a live

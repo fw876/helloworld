@@ -29,6 +29,7 @@ jobs:
           sh -n luci-app-ssr-plus/root/etc/init.d/shadowsocksr
           lua5.1 luci-app-ssr-plus/tests/test_udp443_generator.lua
           lua5.1 luci-app-ssr-plus/tests/test_udp443_mihomo.lua
+          lua5.1 luci-app-ssr-plus/tests/test_udp443_mihomo_size.lua
           bash luci-app-ssr-plus/tests/test_udp443_policy_config.sh
           sudo luci-app-ssr-plus/tests/test_udp443_policy.sh
       - name: Exercise Mihomo selector switching in a network namespace
