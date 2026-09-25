@@ -2189,6 +2189,140 @@ local function append_client_policy_rules(runtime_path, sid)
 	return true
 end
 
+-- A proxy rule with a selected UDP-incapable member is skipped by Mihomo.
+-- Put an equivalent UDP/443 reject match before any later DIRECT route can
+-- receive traffic originally selected for that proxy.
+-- This remains correct when a selector changes its member without a restart.
+local function split_rule_fields(rule)
+	local fields, depth, start = {}, 0, 1
+	for pos = 1, #rule do
+		local char = rule:sub(pos, pos)
+		if char == "(" then
+			depth = depth + 1
+		elseif char == ")" then
+			depth = depth - 1
+			if depth < 0 then return nil end
+		elseif char == "," and depth == 0 then
+			fields[#fields + 1] = rule:sub(start, pos - 1):match("^%s*(.-)%s*$")
+			start = pos + 1
+		end
+	end
+	if depth ~= 0 then return nil end
+	fields[#fields + 1] = rule:sub(start):match("^%s*(.-)%s*$")
+	return fields
+end
+
+local function udp443_reject_guard(rule, targets, udp_capable)
+	local fields = split_rule_fields(rule)
+	if not fields or fields[1] == "SUB-RULE" then return nil end
+	local target_index = #fields
+	local options = {}
+	while fields[target_index] == "no-resolve" or fields[target_index] == "src" do
+		table.insert(options, 1, fields[target_index])
+		target_index = target_index - 1
+	end
+	local target = fields[target_index]
+	if not targets[target] then return nil end
+	if udp_capable(target) then return nil, target, fields[1] == "MATCH" end
+	if fields[1] == "MATCH" then
+		return "AND,((NETWORK,UDP),(DST-PORT,443)),REJECT", target, true
+	end
+	if target_index < 3 then return nil end
+	local matcher = table.concat(fields, ",", 1, target_index - 1)
+	if #options > 0 then matcher = matcher .. "," .. table.concat(options, ",") end
+	return "AND,((NETWORK,UDP),(DST-PORT,443),(" .. matcher .. ")),REJECT", target, false
+end
+
+local function append_udp443_reject_guards(runtime_path)
+	local doc, err = load_yaml(runtime_path)
+	if not doc then
+		io.stderr:write(err or "parse_failed", "\n")
+		return false
+	end
+	local targets = { PROXY = true }
+	local proxies, groups = {}, {}
+	for _, proxy in ipairs(doc.proxies or {}) do
+		if type(proxy) == "table" and proxy.name then
+			targets[proxy.name] = true
+			proxies[proxy.name] = proxy
+		end
+	end
+	for _, group in ipairs(doc["proxy-groups"] or {}) do
+		if type(group) == "table" and group.name then
+			targets[group.name] = true
+			groups[group.name] = group
+		end
+	end
+	-- Omit guards only when every possible statically selected member
+	-- explicitly advertises UDP. Providers and dynamic inclusion stay guarded.
+	local function udp_capable(name, visiting)
+		if name == "DIRECT" then return true end
+		local proxy = proxies[name]
+		if proxy then return proxy.udp == true end
+		local group = groups[name]
+		if not group or group["disable-udp"] or group.use or
+			group["include-all"] or group["include-all-proxies"] or
+			group["include-all-providers"] or
+			type(group.proxies) ~= "table" or #group.proxies == 0 then
+			return false
+		end
+		visiting = visiting or {}
+		if visiting[name] then return false end
+		visiting[name] = true
+		for _, member in ipairs(group.proxies) do
+			if not udp_capable(member, visiting) then
+				visiting[name] = nil
+				return false
+			end
+		end
+		visiting[name] = nil
+		return true
+	end
+	local count = 0
+	local function guard_rules(rules)
+		local result = {}
+		local omit = {}
+		local terminal = #rules
+		if terminal > 1 and rules[terminal] == udp443_reject_guard(tostring(rules[terminal - 1]), targets, udp_capable) then
+			terminal = terminal - 1
+		end
+		local _, terminal_target, is_match = udp443_reject_guard(tostring(rules[terminal] or ""), targets, udp_capable)
+		if is_match and terminal_target then
+			-- A final MATCH to the same selector catches all preceding matches
+			-- in this uninterrupted run. If UDP is unsupported, its single
+			-- final guard catches the fall-through; no match text is duplicated.
+			for index = terminal - 1, 1, -1 do
+				local _, target = udp443_reject_guard(tostring(rules[index]), targets, udp_capable)
+				if target ~= terminal_target then break end
+				omit[index] = true
+			end
+		end
+		for index, rule in ipairs(rules) do
+			result[#result + 1] = rule
+			local guard = udp443_reject_guard(tostring(rule), targets, udp_capable)
+			if guard and not omit[index] and rules[index + 1] ~= guard then
+				result[#result + 1] = guard
+				count = count + 1
+			end
+		end
+		return result
+	end
+	if type(doc.rules) == "table" then doc.rules = guard_rules(doc.rules) end
+	for name, rules in pairs(doc["sub-rules"] or {}) do
+		if type(rules) == "table" then doc["sub-rules"][name] = guard_rules(rules) end
+	end
+	if count == 0 then
+		io.stdout:write("udp443_guards=0\n")
+		return true
+	end
+	if not dump_yaml(runtime_path, doc) then
+		io.stderr:write("dump_failed\n")
+		return false
+	end
+	io.stdout:write(string.format("udp443_guards=%d\n", count))
+	return true
+end
+
 -- ==================== 命令行入口 ====================
 -- ==================== Command-line Entry Point ====================
 
@@ -2203,6 +2337,8 @@ elseif action == "merge" then
 	os.exit(merge(arg[2], arg[3], arg[4]) and 0 or 1)
 elseif action == "append_client_policy_rules" then
 	os.exit(append_client_policy_rules(arg[2], arg[3]) and 0 or 1)
+elseif action == "guard_udp443" then
+	os.exit(append_udp443_reject_guards(arg[2]) and 0 or 1)
 elseif action == "tuic" then
 	os.exit(generate_tuic_runtime(arg[2], arg[3], arg[4], arg[5], arg[6]) and 0 or 1)
 elseif action == "ss" then
@@ -2214,6 +2350,6 @@ elseif action == "ss_server" then
 elseif action == "v2ray_server" then
 	os.exit(generate_mihomo_listener(arg[2], arg[3]) and 0 or 1)
 else
-	io.stderr:write("usage: clash_yaml.lua validate <yaml> | filter <yaml> <words> | prepare <input> <output> | merge <raw> <overlay> <output> | append_client_policy_rules <runtime_yaml> <sid> | tuic <sid> <output> <local_port> [socks_port] [mode] | ss <sid> <output> <local_port> [socks_port] [mode] | v2ray <sid> <output> <local_port> [socks_port] [mode] | ss_server <sid> <output> | v2ray_server <sid> <output>\n")
+	io.stderr:write("usage: clash_yaml.lua validate <yaml> | filter <yaml> <words> | prepare <input> <output> | merge <raw> <overlay> <output> | append_client_policy_rules <runtime_yaml> <sid> | guard_udp443 <runtime_yaml> | tuic <sid> <output> <local_port> [socks_port] [mode] | ss <sid> <output> <local_port> [socks_port] [mode] | v2ray <sid> <output> <local_port> [socks_port] [mode] | ss_server <sid> <output> | v2ray_server <sid> <output>\n")
 	os.exit(1)
 end

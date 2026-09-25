@@ -1,0 +1,43 @@
+name: UDP 443 policy tests
+
+on:
+  push:
+    paths:
+      - 'luci-app-ssr-plus/**'
+      - '.github/workflows/test-udp443-policy.yml'
+  pull_request:
+    paths:
+      - 'luci-app-ssr-plus/**'
+      - '.github/workflows/test-udp443-policy.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        iptables: [legacy, nft]
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y lua5.1 jq iptables ipset nftables
+      - run: sudo update-alternatives --set iptables /usr/sbin/iptables-${{ matrix.iptables }}
+      - run: |
+          sh -n luci-app-ssr-plus/root/usr/bin/ssr-rules
+          sh -n luci-app-ssr-plus/root/etc/init.d/shadowsocksr
+          lua5.1 luci-app-ssr-plus/tests/test_udp443_generator.lua
+          lua5.1 luci-app-ssr-plus/tests/test_udp443_mihomo.lua
+          lua5.1 luci-app-ssr-plus/tests/test_udp443_mihomo_size.lua
+          bash luci-app-ssr-plus/tests/test_udp443_policy_config.sh
+          sudo luci-app-ssr-plus/tests/test_udp443_policy.sh
+      - name: Exercise Mihomo selector switching in a network namespace
+        run: |
+          ssr_mihomo_archive="$RUNNER_TEMP/mihomo.gz"
+          ssr_mihomo_binary="$RUNNER_TEMP/mihomo"
+          curl -fsSL --retry 3 https://github.com/MetaCubeX/mihomo/releases/download/v1.19.31/mihomo-linux-amd64-v1.19.31.gz -o "$ssr_mihomo_archive"
+          echo "d5e74bbddbdfff49a1aef7775bf5911da59f0d7196ed509a0ac914b3653dd5f1  $ssr_mihomo_archive" | sha256sum -c -
+          gzip -dc "$ssr_mihomo_archive" > "$ssr_mihomo_binary"
+          chmod 700 "$ssr_mihomo_binary"
+          bash luci-app-ssr-plus/tests/test_udp443_mihomo_runtime.sh "$ssr_mihomo_binary"

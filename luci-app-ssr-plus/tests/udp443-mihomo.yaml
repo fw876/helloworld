@@ -1,0 +1,35 @@
+mode: rule
+log-level: debug
+mixed-port: 7890
+external-controller: 127.0.0.1:9090
+proxies:
+  - name: udp-on
+    type: socks5
+    server: 192.0.2.1
+    port: 1080
+    udp: true
+  - name: udp-off
+    type: socks5
+    server: 192.0.2.2
+    port: 1080
+    udp: false
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+      - udp-on
+      - udp-off
+rules:
+  - DOMAIN-SUFFIX,local.example,DIRECT
+  - DOMAIN-SUFFIX,foreign.example,PROXY
+  - AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-SUFFIX,foreign.example)),REJECT
+  - DOMAIN-SUFFIX,foreign.example,DIRECT
+  - AND,((DOMAIN,other.example),(DST-PORT,443)),PROXY
+  - AND,((NETWORK,UDP),(DST-PORT,443),(AND,((DOMAIN,other.example),(DST-PORT,443)))),REJECT
+  - IP-CIDR,198.18.0.0/16,udp-off,no-resolve
+  - AND,((NETWORK,UDP),(DST-PORT,443),(IP-CIDR,198.18.0.0/16,no-resolve)),REJECT
+  - IP-CIDR,203.0.113.0/24,PROXY,src
+  - AND,((NETWORK,UDP),(DST-PORT,443),(IP-CIDR,203.0.113.0/24,src)),REJECT
+  - DOMAIN-SUFFIX,tail.example,PROXY
+  - MATCH,PROXY
+  - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT

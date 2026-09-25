@@ -360,6 +360,7 @@ prepare_tuic_runtime_config() {
 		echolog "TUIC 节点运行配置生成失败：$sid"
 		return 1
 	fi
+	/usr/bin/lua "$CLASH_YAML_HELPER" guard_udp443 "$runtime_file" >/dev/null || return 1
 
 	# Reuse existing local geodata files so Mihomo does not have to fetch them.
 	link_mihomo_geodata "$workdir"
@@ -385,6 +386,7 @@ prepare_ss_mihomo_runtime_config() {
 		echolog "Shadowsocks 单节点 Mihomo 运行配置生成失败：$sid"
 		return 1
 	fi
+	/usr/bin/lua "$CLASH_YAML_HELPER" guard_udp443 "$runtime_file" >/dev/null || return 1
 
 	link_mihomo_geodata "$workdir"
 }
@@ -426,6 +428,7 @@ prepare_v2ray_mihomo_runtime_config() {
 		echolog "V2Ray/Xray 单节点 Mihomo 运行配置生成失败：$sid"
 		return 1
 	fi
+	/usr/bin/lua "$CLASH_YAML_HELPER" guard_udp443 "$runtime_file" >/dev/null || return 1
 
 	link_mihomo_geodata "$workdir"
 }
@@ -714,6 +717,7 @@ prepare_clash_runtime_config() {
 	if [ "$client_rules" -gt 0 ] 2>/dev/null; then
 		echolog "Clash YAML 自定义客户端代理规则已注入：$client_rules 条。"
 	fi
+	/usr/bin/lua "$CLASH_YAML_HELPER" guard_udp443 "$runtime_file" >/dev/null || return 1
 
 	# Persist Mihomo's store-selected cache across service restarts.
 	if [ -f "$workdir/cache.db" ] && [ ! -L "$workdir/cache.db" ]; then
@@ -1795,6 +1799,7 @@ start_udp() {
 			if [ -n "$xray_bin" ]; then
 				gen_config_file "$UDP_RELAY_SERVER" "$type" 2 "$tmp_udp_port"
 				ln_start_bin "$(first_type xray)" v2ray run -c "$udp_config_file"
+				UDP_XRAY_CONFIG=$udp_config_file
 				echolog "UDP TPROXY Relay:$($(first_type xray) version | head -1) Started!"
 			else
 				# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
@@ -1841,6 +1846,7 @@ start_udp() {
 				xray_bin="$(first_type xray)"
 				if [ -n "$xray_bin" ]; then
 					ln_start_bin "$(first_type xray)" v2ray run -c "$udp_config_file"
+					UDP_XRAY_CONFIG=$udp_config_file
 					echolog "UDP TPROXY Relay:shadow-tls chain-to $($(first_type xray) --version) Started!"
 				else
 					# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
@@ -2378,6 +2384,7 @@ Start_Run() {
 			if [ -n "$xray_bin" ]; then
 				gen_config_file "$GLOBAL_SERVER" "$type" 1 "$tcp_port" "$socks_port"
 				ln_start_bin "$(first_type xray)" v2ray run -c "$tcp_config_file"
+				case "$mode" in *udp*) UDP_XRAY_CONFIG=$tcp_config_file ;; esac
 				echolog "Main node:$($(first_type xray) version | head -1) Started!"
 			else
 				# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
@@ -2437,6 +2444,7 @@ Start_Run() {
 				xray_bin="$(first_type xray)"
 				if [ -n "$xray_bin" ]; then
 					ln_start_bin "$(first_type xray)" v2ray run -c "$tcp_config_file"
+					case "$mode" in *udp*) UDP_XRAY_CONFIG=$tcp_config_file ;; esac
 					echolog "Main node:shadow-tls chain-to $($(first_type xray) --version) Started!"
 				else
 					# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
@@ -2496,6 +2504,8 @@ Start_Run() {
 
 load_config() {
 	local udp_mode
+	# Set only by the actual UDP Xray launch path, never by a saved preference.
+	UDP_XRAY_CONFIG=""
 
 	if [ -z "$switch_server" ]; then
 		GLOBAL_SERVER=$(uci_get_by_type global global_server nil)
@@ -2930,6 +2940,33 @@ start_xhttp_addr() {
 	fi
 }
 
+udp443_action() {
+	# A TCP-only node has no UDP listener; keep selected QUIC off the WAN.
+	if [ "${ARG_UDP_RULES:-}" = "-y" ]; then
+		echo reject
+		return
+	fi
+	# The generated default outbound is authoritative, including core fallback,
+	# omitted/inapplicable flow settings and Mux allow/skip semantics.
+	# Missing/unknown configs retain normal proxying, never a guessed rejection.
+	if [ -n "$1" ] && jq -e '
+		.outbounds[0] as $o |
+		($o.mux // {}) as $m |
+		(if ($m.xudpProxyUDP443 // "") == "" then "reject" else $m.xudpProxyUDP443 end) as $udp443 |
+		if $m.enabled == true and $udp443 == "reject" then true
+		elif $m.enabled == true and $udp443 == "allow" and
+			(($m.xudpConcurrency // 0) > 0 or
+			 (($m.xudpConcurrency // 0) == 0 and ($m.concurrency // 0) >= 0)) then false
+		else $o.protocol == "vless" and
+			(($o.settings.flow // $o.settings.vnext[0].users[0].flow // "") == "xtls-rprx-vision")
+		end
+	' "$1" >/dev/null 2>&1; then
+		echo reject
+	else
+		echo proxy
+	fi
+}
+
 start_rules() {
 	local server
 	local local_port
@@ -3013,6 +3050,7 @@ start_rules() {
 		-m "$(uci_get_by_type access_control Interface)" \
 		-D "$proxyport" \
 		-E "$enable_fake_ip" \
+		-Q "$(udp443_action "$UDP_XRAY_CONFIG")" \
 		"$(get_arg_out)" "$(gfwmode)" "$ARG_UDP" "$ARG_UDP_RULES" "$ARG_A"
 
 	return $?
