@@ -70,6 +70,7 @@ local_enable=0
 http_enable=0
 kcp_enable_flag=0
 pdnsd_enable_flag=0
+ACTUAL_CORE=""
 
 USE_TABLES=""
 HAS_NFT=0
@@ -637,7 +638,7 @@ prepare_clash_runtime_config() {
 
 	cat >"$overlay_file" <<-EOF
 		redir-port: $local_port
-		tproxy-port: $local_port
+		tproxy-port: $((local_port + 1))
 		external-controller: 127.0.0.1:$CLASH_API_PORT
 		secret: $clash_secret
 		allow-lan: true
@@ -2334,6 +2335,7 @@ Start_Run() {
 			for i in $(seq 1 "$threads"); do
 				ln_start_bin "$ss_program" "${type}-redir" -c "$tcp_config_file"
 			done
+			ACTUAL_CORE="${type}-redir"
 			echolog "Main node:$(get_name "$type") $threads Threads Started!"
 		elif [ "$global_server_type" = "ss" ] || { [ "$global_server_type" = "ss-rust" ] && use_mihomo_for_ss_rust_client; }; then
 			mihomo_bin="$(first_type mihomo)"
@@ -2348,6 +2350,7 @@ Start_Run() {
 			prepare_ss_mihomo_runtime_config "$GLOBAL_SERVER" "$tcp_port" "$ss_socks_port" "$GLOBAL_SERVER" "redir" || return 1
 			ss_workdir="$(get_ss_mihomo_workdir "$GLOBAL_SERVER")"
 			ln_start_bin "$mihomo_bin" ssr-retcp -d "$ss_workdir" -f "$ss_workdir/config.yaml"
+			ACTUAL_CORE="mihomo"
 			if [ "$global_server_type" = "ss-rust" ]; then
 				echolog "Main node:$(get_name "${type}")-Rust 内核不存在，已回退到 Mihomo ($(get_name "${type}")-Rust) 启动。"
 			else
@@ -2362,6 +2365,7 @@ Start_Run() {
 				rm -rf "$TMP_PATH/bin/${type}-redir"
 			fi
 			ln_start_bin "$ss_program" "${type}-redir" -c "$tcp_config_file"
+			ACTUAL_CORE="sslocal"
 			echolog "Main node:$(get_name "${type}")-Rust Started!"
 		fi
 		;;
@@ -2369,6 +2373,7 @@ Start_Run() {
 		enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
 		if [ "$enable_mihomo" = "1" ] && start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "$GLOBAL_SERVER" "redir" "ssr-retcp" "Main node"; then
 			:
+			ACTUAL_CORE="mihomo"
 		elif [ "$(uci_get_by_name "$GLOBAL_SERVER" v2ray_protocol)" = "snell" ]; then
 			echolog "Main node:Snell 需要 Mihomo 内核，且当前 Mihomo 启动失败。"
 			return 1
@@ -2378,10 +2383,12 @@ Start_Run() {
 			if [ -n "$xray_bin" ]; then
 				gen_config_file "$GLOBAL_SERVER" "$type" 1 "$tcp_port" "$socks_port"
 				ln_start_bin "$(first_type xray)" v2ray run -c "$tcp_config_file"
+				ACTUAL_CORE="xray"
 				echolog "Main node:$($(first_type xray) version | head -1) Started!"
 			else
 				# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
 				if start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "$GLOBAL_SERVER" "redir" "ssr-retcp" "Main node"; then
+					ACTUAL_CORE="mihomo"
 					echolog "Main node:Xray 内核不存在，已回退到 Mihomo 内核启动。"
 				else
 					echolog "Main node:Xray 和 Mihomo 内核均不存在，无法启动。"
@@ -2395,11 +2402,13 @@ Start_Run() {
 		for i in $(seq 1 "$threads"); do
 			ln_start_bin "$(first_type "$type")" "$type" --config "$tcp_config_file"
 		done
+		ACTUAL_CORE="trojan"
 		echolog "Main node:$($(first_type "$type") --version 2>&1 | head -1) , $threads Threads Started!"
 		;;
 	naiveproxy)
 		gen_config_file "$GLOBAL_SERVER" "$type" 1 "$tcp_port"
 		ln_start_bin "$(first_type naive)" naive "$tcp_config_file"
+		ACTUAL_CORE="naive"
 		echolog "Main node:$($(first_type naive) --version 2>&1 | head -1) , $threads Threads Started!"
 		;;
 	tuic)
@@ -2415,6 +2424,7 @@ Start_Run() {
 		prepare_tuic_runtime_config "$GLOBAL_SERVER" "$tcp_port" "$tuic_socks_port" "$GLOBAL_SERVER" "redir" || return 1
 		tuic_workdir="$(get_tuic_workdir "$GLOBAL_SERVER")"
 		ln_start_bin "$mihomo_bin" ssr-retcp -d "$tuic_workdir" -f "$tuic_workdir/config.yaml"
+		ACTUAL_CORE="mihomo"
 		echolog "Main node:Mihomo (TUIC) Started!"
 		;;
 	shadowtls)
@@ -2432,15 +2442,18 @@ Start_Run() {
 			ln_start_bin "$(first_type shadow-tls)" shadow-tls config --config "$chain_config_file"
 			if [ "$enable_mihomo" = "1" ] && start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "${GLOBAL_SERVER}-shadowtls" "redir" "shadowtls-vmess" "Main node:shadow-tls chain-to"; then
 				:
+				ACTUAL_CORE="mihomo"
 			else
 				# enable_mihomo=0 或 Mihomo 启动失败 → 尝试 Xray
 				xray_bin="$(first_type xray)"
 				if [ -n "$xray_bin" ]; then
 					ln_start_bin "$(first_type xray)" v2ray run -c "$tcp_config_file"
+					ACTUAL_CORE="xray"
 					echolog "Main node:shadow-tls chain-to $($(first_type xray) --version) Started!"
 				else
 					# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
 					if start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "${GLOBAL_SERVER}-shadowtls" "redir" "shadowtls-vmess" "Main node:shadow-tls chain-to"; then
+						ACTUAL_CORE="mihomo"
 						echolog "Main node:shadow-tls chain-to Xray 内核不存在，已回退到 Mihomo 内核启动。"
 					else
 						echolog "Main node:shadow-tls chain-to Xray 和 Mihomo 内核均不存在，无法启动。"
@@ -2452,6 +2465,7 @@ Start_Run() {
 		sslocal)
 			ln_start_bin "$(first_type shadow-tls)" shadow-tls config --config "$chain_config_file"
 			ln_start_bin "$(first_type sslocal)" sslocal -c "$tcp_config_file"
+			ACTUAL_CORE="sslocal"
 			echolog "Main node:shadow-tls chain-to $($(first_type sslocal) --version) Started!"
 			;;
 		esac
@@ -2477,12 +2491,15 @@ Start_Run() {
 		}
 		clash_workdir="$(get_clash_workdir "$GLOBAL_SERVER")"
 		ln_start_bin "$mihomo_bin" ssr-retcp -d "$clash_workdir" -f "$clash_workdir/config.yaml"
+		ACTUAL_CORE="mihomo"
 		echolog "Main node: $($mihomo_bin -v 2>&1 | head -1 | awk '{print $1, $3}') (Clash) Started!"
 		;;
 	socks5)
 		if start_socks5_redir_with_ipt2socks "$GLOBAL_SERVER" "$tcp_port" "$threads"; then
 			:
+			ACTUAL_CORE="ipt2socks"
 		elif start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "$GLOBAL_SERVER" "redir" "ssr-retcp" "Main node"; then
+			ACTUAL_CORE="mihomo"
 			echolog "Main node:Socks5 缺少 ipt2socks，已回退到 Mihomo。"
 		else
 			echolog "Main node:Socks5 缺少 ipt2socks，且 Mihomo 不可用。"
@@ -3001,6 +3018,7 @@ start_rules() {
 	/usr/bin/ssr-rules \
 		-s "$server" \
 		-l "$local_port" \
+		-T "$ACTUAL_CORE" \
 		-S "$udp_server" \
 		-L "$udp_local_port" \
 		-a "$ac_ips" \
