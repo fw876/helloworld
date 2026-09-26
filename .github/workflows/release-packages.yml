@@ -118,10 +118,10 @@ jobs:
           src-git routing https://git.openwrt.org/feed/routing.git;${FEED_BRANCH}
           EOF
           ./scripts/feeds update -a
-          if [ -n "${GO_FEED_BRANCH:-}" ]; then
-            git -C feeds/packages fetch --depth=1 origin "$GO_FEED_BRANCH"
-            git -C feeds/packages checkout FETCH_HEAD -- lang/golang
-          fi
+          # Use the latest Go toolchain for both IPK and APK builds.
+          git -C feeds/packages fetch --depth=1 origin master
+          rm -rf feeds/packages/lang/golang
+          git -C feeds/packages restore --source=FETCH_HEAD --staged --worktree -- lang/golang
           rm -rf feeds/packages/net/xray-core
           ./scripts/feeds update -i packages
           ./scripts/feeds install -a
