@@ -1,6 +1,13 @@
+Subject: [PATCH] gn: support older standard libraries without std::expected
+
+Provide a Result fallback including constrained value conversion, so lambda
+returns can construct Result<std::function<...>> in one conversion.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
 --- a/src/gn/err.h
 +++ b/src/gn/err.h
-@@ -5,10 +5,15 @@
+@@ -5,10 +5,16 @@
  #ifndef TOOLS_GN_ERR_H_
  #define TOOLS_GN_ERR_H_
  
@@ -12,12 +19,13 @@
 +#endif
  #include <memory>
  #include <string>
++#include <type_traits>
  #include <utility>
 +#include <variant>
  #include <vector>
  
  #include "gn/label.h"
-@@ -142,6 +147,7 @@ inline Err Ok() {
+@@ -142,6 +148,7 @@ inline Err Ok() {
  // std::expected does not allow implicit conversions because you can have
  // std::expected<T, T>. Since that isn't a problem for us, we add the
  // implicit conversions.
@@ -25,7 +33,7 @@
  template <typename T>
  class Result : public std::expected<T, Err> {
    static_assert(!std::is_void_v<T>, "Use Err instead of Result<void>");
-@@ -187,6 +193,137 @@ class Result : public std::expected<T, E
+@@ -187,6 +194,146 @@ class Result : public std::expected<T, E
      return this->error().message();
    }
  };
@@ -44,6 +52,15 @@
 +  Result(const T& value) : storage_(value) {}
 +
 +  Result(T&& value) : storage_(std::move(value)) {}
++
++  // Match std::expected's converting constructor without requiring two
++  // user-defined conversions (for example, lambda -> std::function -> Result).
++  template <typename U>
++    requires(!std::is_same_v<std::remove_cvref_t<U>, Result> &&
++             !std::is_same_v<std::remove_cvref_t<U>, Err> &&
++             std::is_constructible_v<T, U&&>)
++  explicit(!std::is_convertible_v<U&&, T>) Result(U&& value)
++      : storage_(std::in_place_type<T>, std::forward<U>(value)) {}
 +
 +  // Implicit conversion from Err (always creates an error state).
 +  Result(Err err) : storage_(std::move(err)) {
@@ -163,7 +180,7 @@
  
  namespace internal {
  
-@@ -198,6 +335,7 @@ inline Err GetError(Err&& err) {
+@@ -198,6 +345,7 @@ inline Err GetError(Err&& err) {
    return std::move(err);
  }
  
@@ -171,7 +188,7 @@
  template <typename T, typename E>
  inline E GetError(const std::expected<T, E>& exp) {
    return exp.error();
-@@ -207,6 +345,17 @@ template <typename T, typename E>
+@@ -207,6 +355,17 @@ template <typename T, typename E>
  inline E GetError(std::expected<T, E>&& exp) {
    return std::move(exp).error();
  }
