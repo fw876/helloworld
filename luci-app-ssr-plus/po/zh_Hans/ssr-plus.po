@@ -3400,6 +3400,69 @@ msgstr "UDP 最大并发连接数"
 msgid "xudpProxyUDP443"
 msgstr "对被代理的 UDP/443 流量处理方式"
 
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:171
+msgid "Startup Connectivity Check"
+msgstr "启动前连通性检查"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:171
+msgid ""
+"On boot, wait until the internet is reachable before starting the service, "
+"so that node domains can be resolved when the WAN link (e.g. PPPoE) comes up "
+"late. Manual restarts are never delayed. Disable this if SSR Plus is only "
+"used as a LAN-only proxy."
+msgstr ""
+"开机时等待互联网可达后再启动服务，避免 WAN 链路（如 PPPoE）拨号较慢时节点域名"
+"解析失败。手动重启不会被延迟。若 SSR Plus 仅用作纯内网代理，可关闭此项。"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:178
+msgid "Check Method"
+msgstr "检查方式"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:178
+msgid ""
+"DNS resolution matches what the service actually needs at startup; ICMP ping "
+"is faster but does not prove that DNS is ready."
+msgstr ""
+"DNS 解析对应服务启动时真正依赖的条件；ICMP ping 更快，但无法证明 DNS 已就绪。"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:179
+msgid "DNS resolution"
+msgstr "DNS 解析"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:180
+msgid "ICMP ping"
+msgstr "ICMP Ping"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:184
+msgid "Check Servers"
+msgstr "检查服务器"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:184
+msgid ""
+"DNS servers to query, or hosts to ping. The check passes as soon as any one "
+"of them responds."
+msgstr "用于查询的 DNS 服务器或 Ping 目标地址。任意一个响应即视为通过。"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:188
+msgid "Resolve Domain"
+msgstr "解析测试域名"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:188
+msgid "Domain name used for the DNS resolution test."
+msgstr "用于 DNS 解析测试的域名。"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:193
+msgid "Max Retries"
+msgstr "最大重试次数"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:198
+msgid "Retry Interval(second)"
+msgstr "重试间隔（秒）"
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:198
+msgid "Maximum wait is Max Retries multiplied by Retry Interval."
+msgstr "最长等待时间为最大重试次数乘以重试间隔。"
+
 #~ msgid "CHECK AND UPDATE"
 #~ msgstr "检查并更新"
 

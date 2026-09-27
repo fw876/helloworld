@@ -3370,3 +3370,63 @@ msgstr ""
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1678
 msgid "xudpProxyUDP443"
 msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:171
+msgid "Startup Connectivity Check"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:171
+msgid ""
+"On boot, wait until the internet is reachable before starting the service, "
+"so that node domains can be resolved when the WAN link (e.g. PPPoE) comes up "
+"late. Manual restarts are never delayed. Disable this if SSR Plus is only "
+"used as a LAN-only proxy."
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:178
+msgid "Check Method"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:178
+msgid ""
+"DNS resolution matches what the service actually needs at startup; ICMP ping "
+"is faster but does not prove that DNS is ready."
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:179
+msgid "DNS resolution"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:180
+msgid "ICMP ping"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:184
+msgid "Check Servers"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:184
+msgid ""
+"DNS servers to query, or hosts to ping. The check passes as soon as any one "
+"of them responds."
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:188
+msgid "Resolve Domain"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:188
+msgid "Domain name used for the DNS resolution test."
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:193
+msgid "Max Retries"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:198
+msgid "Retry Interval(second)"
+msgstr ""
+
+#: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:198
+msgid "Maximum wait is Max Retries multiplied by Retry Interval."
+msgstr ""
