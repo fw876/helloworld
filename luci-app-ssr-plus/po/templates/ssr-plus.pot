@@ -2673,9 +2673,8 @@ msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:14
 msgid ""
-"The online upgrade only tracks the latest stable Mihomo release and "
-"downloads the matching linux archive for the current ARCH from the official "
-"GitHub release page."
+"The online upgrade downloads and installs the matching Mihomo IPK or APK "
+"package for this system from fw876/helloworld releases."
 msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:18

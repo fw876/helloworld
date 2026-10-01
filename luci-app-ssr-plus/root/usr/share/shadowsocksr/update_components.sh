@@ -3,9 +3,7 @@
 set -u
 
 XRAY_RELEASE_PAGE="https://github.com/fw876/helloworld/releases/latest"
-MIHOMO_RELEASE_PAGE="https://github.com/MetaCubeX/mihomo/releases/latest"
 XRAY_BINARY="/usr/bin/xray"
-MIHOMO_BINARY="/usr/bin/mihomo"
 
 # Geo 数据文件 URL
 GEOIP_REPO="Loyalsoldier/geoip"
@@ -191,7 +189,22 @@ get_xray_current_version() {
 }
 
 get_mihomo_current_version() {
-	local binary
+	local pm version binary
+
+	pm="$(detect_package_manager 2>/dev/null || true)"
+	case "$pm" in
+		apk)
+			version="$(apk list -I mihomo 2>/dev/null | sed -n 's/^mihomo-\([^[:space:]]*\).*$/\1/p' | sed -n '1p')"
+			;;
+		opkg)
+			version="$(opkg status mihomo 2>/dev/null | sed -n 's/^Version:[[:space:]]*//p' | sed -n '1p')"
+			;;
+	esac
+
+	if [ -n "${version:-}" ]; then
+		printf '%s' "$version"
+		return 0
+	fi
 
 	binary="$(find_mihomo_binary)" || return 1
 	"$binary" -v 2>/dev/null | sed -n 's/.* v\([0-9][0-9.]*\).*/\1/p' | sed -n '1p'
@@ -223,20 +236,6 @@ get_naiveproxy_current_version() {
 
 require_cmd() {
 	command -v "$1" >/dev/null 2>&1
-}
-
-select_gzip_cmd() {
-	if require_cmd gzip; then
-		printf '%s' 'gzip -dc'
-		return 0
-	fi
-
-	if busybox gzip >/dev/null 2>&1; then
-		printf '%s' 'busybox gzip -dc'
-		return 0
-	fi
-
-	return 1
 }
 
 select_wget_cmd() {
@@ -1066,77 +1065,64 @@ get_xray_latest_info() {
 	return 0
 }
 
-get_mihomo_latest_tag() {
-	local location tag
+select_mihomo_asset() {
+	local asset_list="$1"
+	local pm="$2"
+	local arch="$3"
+	local candidate
 
-	location="$(effective_url "$MIHOMO_RELEASE_PAGE")" || return 1
-	tag="$(printf '%s' "$location" | sed -n 's#.*/tag/\(v[0-9][^/]*\)$#\1#p' | sed -n '1p')"
-	[ -n "$tag" ] || return 1
-	printf '%s' "$tag"
-}
-
-map_mihomo_asset() {
-	local arch="$1"
-	local version="$2"
-
-	case "$arch" in
-		x86_64*|amd64*)
-			printf 'mihomo-linux-amd64-compatible-v%s.gz' "$version"
+	case "$pm" in
+		apk)
+			candidate="$(printf '%s\n' "$asset_list" | grep -E '^mihomo-[^[:space:]]+\.apk$' | grep -F "_${arch}.apk" | sed -n '1p')"
 			;;
-		i386*|i486*|i586*|i686*|x86*)
-			printf 'mihomo-linux-386-v%s.gz' "$version"
-			;;
-		aarch64*|arm64*)
-			printf 'mihomo-linux-arm64-v%s.gz' "$version"
-			;;
-		*armv7*|*cortex-a*|*neon*|*vfpv3*|*vfpv4*)
-			printf 'mihomo-linux-armv7-v%s.gz' "$version"
-			;;
-		*armv6*|*arm1176*)
-			printf 'mihomo-linux-armv6-v%s.gz' "$version"
-			;;
-		*armv5*|*arm926*|*xscale*)
-			printf 'mihomo-linux-armv5-v%s.gz' "$version"
-			;;
-		mips64el*|mips64le*)
-			printf 'mihomo-linux-mips64le-v%s.gz' "$version"
-			;;
-		mips64*)
-			printf 'mihomo-linux-mips64-v%s.gz' "$version"
-			;;
-		mipsel*|mips32el*|mips32le*)
-			printf 'mihomo-linux-mipsle-softfloat-v%s.gz' "$version"
-			;;
-		mips*)
-			printf 'mihomo-linux-mips-softfloat-v%s.gz' "$version"
-			;;
-		riscv64*)
-			printf 'mihomo-linux-riscv64-v%s.gz' "$version"
-			;;
-		loongarch64*|loong64*)
-			printf 'mihomo-linux-loong64-abi1-v%s.gz' "$version"
-			;;
-		powerpc64le*|ppc64le*)
-			printf 'mihomo-linux-ppc64le-v%s.gz' "$version"
-			;;
-		s390x*)
-			printf 'mihomo-linux-s390x-v%s.gz' "$version"
+		opkg)
+			candidate="$(printf '%s\n' "$asset_list" | grep -E '^mihomo_[^[:space:]]+\.ipk$' | grep -F "_${arch}.ipk" | sed -n '1p')"
 			;;
 		*)
 			return 1
 			;;
-	 esac
+	esac
+
+	[ -n "$candidate" ] || return 1
+	printf '%s' "$candidate"
+}
+
+mihomo_asset_version() {
+	local asset="$1"
+	local arch="$2"
+	local version
+
+	case "$asset" in
+		mihomo_*_"$arch".ipk)
+			version="${asset#mihomo_}"
+			version="${version%_${arch}.ipk}"
+			;;
+		mihomo-*_"$arch".apk)
+			version="${asset#mihomo-}"
+			version="${version%_${arch}.apk}"
+			;;
+		*)
+			return 1
+			;;
+	esac
+
+	[ -n "$version" ] || return 1
+	printf '%s' "$version"
 }
 
 get_mihomo_latest_info() {
-	local arch tag version asset url
+	local pm arch tag version asset asset_list release_html url
 
+	pm="$(detect_package_manager)" || return 2
 	arch="$(get_openwrt_arch)"
-	tag="$(get_mihomo_latest_tag)" || return 3
-	version="$(trim_version "$tag")"
-	asset="$(map_mihomo_asset "$arch" "$version")" || return 2
-	url="$(mirror_wrap_url "https://github.com/MetaCubeX/mihomo/releases/download/$tag/$asset")"
+	tag="$(get_helloworld_latest_tag)" || return 3
+	release_html="$(fetch_text "https://github.com/fw876/helloworld/releases/expanded_assets/$tag")" || return 3
+	asset_list="$(printf '%s\n' "$release_html" | sed -n 's#.*href="/fw876/helloworld/releases/download/[^/]*/\([^"]*\)".*#\1#p')"
+	asset="$(select_mihomo_asset "$asset_list" "$pm" "$arch")" || return 4
+	version="$(mihomo_asset_version "$asset" "$arch")" || return 4
+	url="$(mirror_wrap_url "https://github.com/fw876/helloworld/releases/download/$tag/$asset")"
 
+	log_kv package_manager "$pm"
 	log_kv arch "$arch"
 	log_kv asset "$asset"
 	log_kv latest_version "$version"
@@ -1490,16 +1476,15 @@ xray_info() {
 }
 
 mihomo_info() {
-	local current installed latest_output latest_rc latest_version arch asset can_upgrade
+	local pm current installed latest_output latest_rc latest_version arch asset can_upgrade
 
 	installed=0
 	current=""
+	pm="$(detect_package_manager 2>/dev/null || true)"
 	arch="$(get_openwrt_arch)"
+	asset=""
 	if current="$(get_mihomo_current_version)" && [ -n "$current" ]; then
 		installed=1
-		asset="$(map_mihomo_asset "$arch" "$current" 2>/dev/null || true)"
-	else
-		asset=""
 	fi
 
 	latest_output="$(get_mihomo_latest_info 2>/dev/null)"
@@ -1508,13 +1493,14 @@ mihomo_info() {
 	log_kv component mihomo
 	log_kv installed "$installed"
 	log_kv current_version "$current"
+	log_kv package_manager "$pm"
 	log_kv arch "$arch"
 	log_kv asset "$asset"
 
 	if [ $latest_rc -ne 0 ]; then
 		log_kv can_upgrade 0
 		case "$latest_rc" in
-			2) log_kv error 'unsupported_arch' ;;
+			2) log_kv error 'unsupported_package_manager' ;;
 			3) log_kv error 'fetch_failed' ;;
 			4) log_kv error 'asset_not_found' ;;
 			*) log_kv error 'unknown_error' ;;
@@ -1523,6 +1509,7 @@ mihomo_info() {
 	fi
 
 	latest_version="$(printf '%s\n' "$latest_output" | sed -n 's/^latest_version=//p' | sed -n '1p')"
+	pm="$(printf '%s\n' "$latest_output" | sed -n 's/^package_manager=//p' | sed -n '1p')"
 	arch="$(printf '%s\n' "$latest_output" | sed -n 's/^arch=//p' | sed -n '1p')"
 	asset="$(printf '%s\n' "$latest_output" | sed -n 's/^asset=//p' | sed -n '1p')"
 	can_upgrade=0
@@ -1606,24 +1593,23 @@ xray_local_info() {
 }
 
 mihomo_local_info() {
-	local current installed arch asset
+	local pm current installed arch
 
 	installed=0
 	current=""
+	pm="$(detect_package_manager 2>/dev/null || true)"
 	arch="$(get_openwrt_arch)"
 	if current="$(get_mihomo_current_version)" && [ -n "$current" ]; then
 		installed=1
-		asset="$(map_mihomo_asset "$arch" "$current" 2>/dev/null || true)"
-	else
-		asset=""
 	fi
 
 	log_kv component mihomo
 	log_kv installed "$installed"
 	log_kv current_version "$current"
 	log_kv latest_version ''
+	log_kv package_manager "$pm"
 	log_kv arch "$arch"
-	log_kv asset "$asset"
+	log_kv asset ''
 	log_kv can_upgrade 0
 	log_kv error ''
 }
@@ -1725,14 +1711,14 @@ xray_upgrade() {
 }
 
 mihomo_upgrade() {
-	local latest_output latest_rc latest_version download_url tmp_dir gz_file gzip_cmd backup_file current_before current_after target_binary extracted_binary
+	local latest_output latest_rc latest_version download_url package_manager asset tmp_dir package_file current_before current_after
 
 	latest_output="$(get_mihomo_latest_info 2>/dev/null)"
 	latest_rc=$?
 	if [ $latest_rc -ne 0 ]; then
 		log_kv success 0
 		case "$latest_rc" in
-			2) log_kv message 'Unsupported ARCH' ;;
+			2) log_kv message 'Unsupported package manager' ;;
 			3) log_kv message 'Failed to fetch release metadata' ;;
 			4) log_kv message 'Matching release asset not found' ;;
 			*) log_kv message 'Unknown error' ;;
@@ -1740,14 +1726,10 @@ mihomo_upgrade() {
 		return 0
 	fi
 
-	if ! gzip_cmd="$(select_gzip_cmd)"; then
-		log_kv success 0
-		log_kv message 'Missing gzip support'
-		return 0
-	fi
-
 	latest_version="$(printf '%s\n' "$latest_output" | sed -n 's/^latest_version=//p' | sed -n '1p')"
 	download_url="$(printf '%s\n' "$latest_output" | sed -n 's/^download_url=//p' | sed -n '1p')"
+	package_manager="$(printf '%s\n' "$latest_output" | sed -n 's/^package_manager=//p' | sed -n '1p')"
+	asset="$(printf '%s\n' "$latest_output" | sed -n 's/^asset=//p' | sed -n '1p')"
 	current_before="$(get_mihomo_current_version 2>/dev/null || true)"
 	if [ -n "$current_before" ] && ! version_gt "$latest_version" "$current_before"; then
 		log_kv success 1
@@ -1758,9 +1740,6 @@ mihomo_upgrade() {
 		return 0
 	fi
 
-	target_binary="$(find_mihomo_binary 2>/dev/null || true)"
-	[ -n "$target_binary" ] || target_binary="$MIHOMO_BINARY"
-
 	tmp_dir="$(mktemp -d /tmp/ssrplus-mihomo.XXXXXX)"
 	if [ -z "$tmp_dir" ] || [ ! -d "$tmp_dir" ]; then
 		log_kv success 0
@@ -1768,58 +1747,25 @@ mihomo_upgrade() {
 		return 0
 	fi
 
-	gz_file="$tmp_dir/mihomo.gz"
-	backup_file="$tmp_dir/mihomo.backup"
-	extracted_binary="$tmp_dir/mihomo"
-
+	package_file="$tmp_dir/$asset"
 	trap "rm -rf '$tmp_dir'" EXIT INT TERM
 
-	if ! download_file "$download_url" "$gz_file"; then
+	if ! download_file "$download_url" "$package_file"; then
 		log_kv success 0
 		log_kv message 'Download failed'
 		return 0
 	fi
 
-	if ! sh -c "$gzip_cmd \"$gz_file\" > \"$extracted_binary\""; then
-		log_kv success 0
-		log_kv message 'Extract failed'
-		return 0
-	fi
-
-	if [ ! -s "$extracted_binary" ]; then
-		log_kv success 0
-		log_kv message 'mihomo binary not found in archive'
-		return 0
-	fi
-
-	mkdir -p "$(dirname "$target_binary")" || true
-	chmod 0755 "$extracted_binary" || true
-	if [ -x "$target_binary" ]; then
-		cp -fp "$target_binary" "$backup_file" 2>/dev/null || true
-	fi
-
-	if ! cp -f "$extracted_binary" "$target_binary"; then
-		if [ -f "$backup_file" ]; then
-			cp -f "$backup_file" "$target_binary" 2>/dev/null || true
-		fi
+	if [ ! -s "$package_file" ] || ! mainprogram_install_package "$package_manager" "$package_file"; then
 		log_kv success 0
 		log_kv message 'Install failed'
 		return 0
 	fi
 
-	chmod 0755 "$target_binary" || true
-	if [ "$target_binary" != "$MIHOMO_BINARY" ] && [ ! -x "$MIHOMO_BINARY" ]; then
-		ln -sf "$target_binary" "$MIHOMO_BINARY" 2>/dev/null || true
-	fi
-
 	current_after="$(get_mihomo_current_version 2>/dev/null || true)"
 	if [ -z "$current_after" ]; then
-		if [ -f "$backup_file" ]; then
-			cp -f "$backup_file" "$target_binary" 2>/dev/null || true
-			chmod 0755 "$target_binary" || true
-		fi
 		log_kv success 0
-		log_kv message 'Installed binary failed to run'
+		log_kv message 'Installed package check failed'
 		return 0
 	fi
 
@@ -1831,6 +1777,9 @@ mihomo_upgrade() {
 	log_kv previous_version "$current_before"
 	log_kv current_version "$current_after"
 	log_kv latest_version "$latest_version"
+	log_kv package_manager "$package_manager"
+	log_kv arch "$(get_openwrt_arch)"
+	log_kv asset "$asset"
 	log_kv message 'Upgrade completed'
 	return 0
 }

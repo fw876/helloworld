@@ -197,7 +197,7 @@ jobs:
             package_name="$(basename "$package_file")"
             if [ "${PACKAGE_EXT}" = "apk" ]; then
               case "$package_name" in
-                xray-core-*.apk|naiveproxy-*.apk)
+                xray-core-*.apk|mihomo-*.apk|naiveproxy-*.apk)
                   package_name="${package_name%.apk}_${SDK_ARCH}.apk"
                   ;;
               esac
