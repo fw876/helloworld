@@ -85,10 +85,10 @@ done
 # 此处直接使用 cat 因为有 sed '/#/d' 删除了 数据
 if [ "$nft_support" = "1" ]; then
 	sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e "s/.*/server=\/&\/127.0.0.1#$dns_port\nnftset=\/&\/inet#ss_spec#blacklist/" /etc/ssrplus/black.list > "$TMP_DNSMASQ_PATH/blacklist_forward.conf"
-	sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e "s/.*/server=\/&\/127.0.0.1\nnftset=\/&\/inet#ss_spec#whitelist/" /etc/ssrplus/white.list > "$TMP_DNSMASQ_PATH/whitelist_forward.conf"
+	sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e "s/.*/nftset=\/&\/4#inet#ss_spec#whitelist/" /etc/ssrplus/white.list > "$TMP_DNSMASQ_PATH/whitelist_forward.conf"
 elif [ "$nft_support" = "0" ]; then
 	sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e "s/.*/server=\/&\/127.0.0.1#$dns_port\nipset=\/&\/blacklist/" /etc/ssrplus/black.list > "$TMP_DNSMASQ_PATH/blacklist_forward.conf"
-	sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e "s/.*/server=\/&\/127.0.0.1\nipset=\/&\/whitelist/" /etc/ssrplus/white.list > "$TMP_DNSMASQ_PATH/whitelist_forward.conf"
+	sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e "s/.*/ipset=\/&\/whitelist/" /etc/ssrplus/white.list > "$TMP_DNSMASQ_PATH/whitelist_forward.conf"
 fi
 
 sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e "s/.*/address=\/&\//" /etc/ssrplus/deny.list > "$TMP_DNSMASQ_PATH/denylist.conf"
