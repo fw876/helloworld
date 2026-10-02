@@ -3369,3 +3369,6 @@ msgstr ""
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1678
 msgid "xudpProxyUDP443"
 msgstr ""
+
+msgid "Enable hardware TLS encryption/decryption acceleration"
+msgstr ""

@@ -85,6 +85,10 @@ end
 o.default = "nil"
 o.rmempty = false
 
+o = s:option(Flag, "nss_tls", translate("Enable hardware TLS encryption/decryption acceleration"))
+o.default = o.disabled
+o.rmempty = false
+
 o = s:option(DummyValue, "_clash_panel", translate("Clash Panel"))
 o.template = "shadowsocksr/clash_main_panel"
 o.clash_nodes = clash_nodes

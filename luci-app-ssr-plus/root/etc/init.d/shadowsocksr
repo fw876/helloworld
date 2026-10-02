@@ -1044,6 +1044,12 @@ start_socks5_redir_with_ipt2socks() {
 ln_start_bin() {
 	local file_func="${1}"
 	local ln_name="${2}"
+	local nss_tls=0
+	if [ "${file_func##*/}" = "xray" ] &&
+		[ "$(uci_get_by_type global nss_tls 0)" = "1" ] &&
+		[ -c /dev/nss-crypto-dmabuf ]; then
+		nss_tls=1
+	fi
 	shift 2
 	if [ "${file_func%%/*}" != "${file_func}" ]; then
 		local ln_path="${TMP_BIN_PATH}/${ln_name}"
@@ -1065,7 +1071,13 @@ ln_start_bin() {
 		_exit 2
 	}
 	ulimit -n 1000000
-	${file_func:-echolog "  - ${ln_name}"} "$@" >/dev/null 2>&1 &
+	if [ "$nss_tls" = "1" ]; then
+		XRAY_NSS_TLS=dmabuf XRAY_NSS_READ_BORROW=1 XRAY_NSS_TX_DIRECT=1 \
+			XRAY_NSS_DMA_BATCH=16 XRAY_NSS_BORROW_NOTIFY=channel \
+			"$file_func" "$@" >/dev/null 2>&1 &
+	else
+		${file_func:-echolog "  - ${ln_name}"} "$@" >/dev/null 2>&1 &
+	fi
 }
 
 check_run_environment() {

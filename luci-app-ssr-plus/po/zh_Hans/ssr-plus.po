@@ -3861,3 +3861,6 @@ msgstr "对被代理的 UDP/443 流量处理方式"
 
 #~ msgid "Include Mihomo (Clash Support)"
 #~ msgstr "包含 Mihomo（Clash 支持）"
+
+msgid "Enable hardware TLS encryption/decryption acceleration"
+msgstr "启用硬件 TLS 加解密加速"
