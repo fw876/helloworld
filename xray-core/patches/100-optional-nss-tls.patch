@@ -1,0 +1,3675 @@
+Subject: [PATCH] tls: add optional NSS AES-GCM and registered-buffer batching
+
+Keep CPU TLS as the default. Provide cryptodev and optional persistent CMA
+backends for Go TLS and uTLS, with borrowed RX batches and direct ready TCP
+input. Isolated overlays leave the shared Go SDK and module cache untouched.
+Include regression tests for authentication, ownership and concurrent close.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/_nss/README.md
++++ b/_nss/README.md
+@@ -0,0 +1,46 @@
++# Optional NSS TLS backend
++
++These files are build inputs for overlay.py, not a Go package. The overlay
++patches an isolated copy of uTLS and selected Go/Xray files without modifying
++the shared Go SDK or module cache. NSS is built only when XRAY_CORE_NSS_TLS=y
++on IPQ60xx/IPQ807x; ordinary CPU TLS remains the runtime default.
++
++Runtime selection:
++
++- XRAY_NSS_TLS=cryptodev: NSS CryptoAPI via /dev/crypto.
++- XRAY_NSS_TLS=dmabuf: optional /dev/nss-crypto-dmabuf registered CMA path.
++- XRAY_NSS_TLS=cpu-batch: CPU AES-GCM control using the same batch pipeline.
++- XRAY_NSS_TLS=cpu (or unset): ordinary CPU TLS.
++
++The DMA-BUF path requires the matching optional kernel driver and private CMA
++pool; rebuild the kernel and all modules together. It is experimental and has
++AX5/IPQ6000 runtime validation; IPQ807x has build validation only.
++
++For the tested throughput path, also set XRAY_NSS_READ_BORROW=1 and
++XRAY_NSS_TX_DIRECT=1. Borrowing passes authenticated mapped output to Xray and
++releases a batch when its last Buffer is released. Consumers must release the
++previous batch before requesting another batch on the same TLS connection.
++Close cancels waiting reads but retains memory still held by a consumer.
++The optional XRAY_NSS_BORROW_NOTIFY=cond replaces per-batch channels; channels
++remain the default. XRAY_NSS_READ_BATCH=1 selects the older copying RX batch
++path and is superseded by READ_BORROW. All these paths remain opt-in.
++
++Direct TX reads already-ready plain TCP data into mapped TLS input slots and
++batches encryption and socket writes. It never waits on the input socket while
++holding the TLS output lock. Unsupported/transforming wrappers and not-ready
++reads fall back to ordinary Copy. Both paths remove userspace copies, not the
++socket kernel copy. No asynchronous multi-bank pipeline is provided.
++
++XRAY_NSS_DMA_BATCH=1..16 bounds the slot count (default 16). Batches use only
++already-available records and never wait to fill. The CPU-batch control opens
++no NSS device. XRAY_NSS_TLS_VERIFY=1 enables CPU cross-checking for diagnostics;
++disable it when measuring throughput. Cryptodev rejects requests beyond the
++verified hardware length limit and retains software fallback.
++
++Tests cover TLS 1.2/1.3, uTLS, corrupted records, traffic-key changes, buffer
++ownership, close/reuse races, dynamic record sizing, direct read deadlines and
++accounting, and handshake state changes while acquiring the output lock.
++Generate the overlay with the package Go environment, then use go test -race
++with -overlay=<dest>/overlay.json and -modfile=<dest>/go.mod for crypto/tls,
++github.com/refraction-networking/utls, ./common/buf and ./transport/internet/tls
++with -run NSS. Linux/ARM64 device tests additionally need the matching driver.
+--- a/_nss/go-dmabuf.patch
++++ b/_nss/go-dmabuf.patch
+@@ -0,0 +1,128 @@
++Subject: [PATCH] tls: batch mapped NSS records and retain buffer lifetimes
++
++Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
++
++--- a/conn.go
+++++ b/conn.go
++@@ -102,6 +102,12 @@
++-	in, out   halfConn
++-	rawInput  bytes.Buffer // raw input, starting with a record header
++-	input     bytes.Reader // application data waiting to be read, from rawInput.Next
++-	hand      bytes.Buffer // handshake data waiting to be read
++-	buffering bool         // whether records are buffered in sendBuf
++-	sendBuf   []byte       // a buffer of records waiting to be sent
+++	in, out        halfConn
+++	rawInput       bytes.Buffer // raw input, starting with a record header
+++	nssWriteRefs   [16][]byte
+++	nssReadOwner   nssMappedAEAD
+++	nssReadBuffer  []byte
+++	nssReadRelease func()
+++	nssReadLease *nssReadLease
+++	nssReadNotify *sync.Cond
+++	input          bytes.Reader // application data waiting to be read, from rawInput.Next
+++	hand           bytes.Buffer // handshake data waiting to be read
+++	buffering      bool         // whether records are buffered in sendBuf
+++	sendBuf        []byte       // a buffer of records waiting to be sent
++@@ -169,0 +176,5 @@
+++	nssPrefetched                    []nssPrefetchedRecord
+++	nssPrefetchStorage               [16]nssPrefetchedRecord
+++	nssPrefetchNonce                 [16][12]byte
+++	nssPrefetchAADStore              [16][13]byte
+++	nssPrefetchInput, nssPrefetchAAD [16][]byte
++@@ -383 +394,5 @@
++-			plaintext, err = c.Open(payload[:0], nonce, payload, additionalData)
+++			if mapped := nssRecords(hc.cipher); mapped != nil {
+++				plaintext, err = hc.nssOpenRecord(mapped, nonce, payload, additionalData)
+++			} else {
+++				plaintext, err = c.Open(payload[:0], nonce, payload, additionalData)
+++			}
++@@ -532,2 +547,11 @@
++-			record = c.Seal(record[:recordHeaderLen],
++-				nonce, record[recordHeaderLen:], record[:recordHeaderLen])
+++			if mapped := nssRecords(hc.cipher); mapped != nil {
+++				var err error
+++				record, err = mapped.NSSSealRecord(record[:recordHeaderLen], nonce,
+++					record[recordHeaderLen:], record[:recordHeaderLen])
+++				if err != nil {
+++					return nil, err
+++				}
+++			} else {
+++				record = c.Seal(record[:recordHeaderLen],
+++					nonce, record[recordHeaderLen:], record[:recordHeaderLen])
+++			}
++@@ -537 +561,12 @@
++-			record = c.Seal(record, nonce, payload, additionalData)
+++			if mapped := nssRecords(hc.cipher); mapped != nil {
+++				prefixLen := len(record)
+++				record = append(record, payload...)
+++				var err error
+++				record, err = mapped.NSSSealRecord(record[:prefixLen], nonce,
+++					record[prefixLen:], additionalData)
+++				if err != nil {
+++					return nil, err
+++				}
+++			} else {
+++				record = c.Seal(record, nonce, payload, additionalData)
+++			}
++@@ -612,0 +648 @@
+++	if err := c.nssWaitReadLease(); err != nil { return err }
++@@ -622,0 +659 @@
+++	c.nssPrepareInput()
++@@ -687,0 +725 @@
+++	c.nssPrefetchRecords()
++@@ -819,0 +858 @@
+++	c.nssCompactInput(needs)
++@@ -995,0 +1035,5 @@
+++	if typ == recordTypeApplicationData && !c.buffering {
+++		if batch := nssBatchRecords(c.out.cipher); batch != nil {
+++			return c.nssWriteRecords(batch, data)
+++		}
+++	}
++@@ -997,0 +1042,5 @@
+++	var nssInput []byte
+++	var nssRelease func()
+++	if mapped := nssRecords(c.out.cipher); mapped != nil {
+++		nssInput, _, nssRelease = mapped.NSSRecordBuffers()
+++	}
++@@ -1004 +1053,5 @@
++-		*outBufPtr = outBuf
+++		if nssRelease != nil {
+++			nssRelease()
+++		} else {
+++			*outBufPtr = outBuf
+++		}
++@@ -1014,0 +1068,3 @@
+++		if nssInput != nil {
+++			outBuf = nssInput[:0]
+++		}
++@@ -1204 +1260,7 @@
++-func (c *Conn) Write(b []byte) (int, error) {
+++func (c *Conn) Write(b []byte) (int, error) { return c.writeNSSBuffers(b, nil) }
+++
+++// NSSWriteBuffers consumes only buffers supplied by this call. The TLS write
+++// interlock and output lock cover the entire vector, as with a single Write.
+++func (c *Conn) NSSWriteBuffers(parts [][]byte) (int, error) { return c.writeNSSBuffers(nil, parts) }
+++
+++func (c *Conn) writeNSSBuffers(b []byte, parts [][]byte) (int, error) {
++@@ -1244,0 +1307,19 @@
+++	if parts != nil {
+++		if mapped := nssBatchRecords(c.out.cipher); mapped != nil && !c.buffering {
+++			n, err := c.nssWriteScattered(mapped, parts)
+++			return n, c.out.setErrorLocked(err)
+++		}
+++		// Non-NSS ciphers keep ordinary Write semantics, including TLS 1.0 splitting.
+++		total := 0
+++		for _, p := range parts {
+++			if len(p) > int(^uint(0)>>1)-total {
+++				return 0, io.ErrShortBuffer
+++			}
+++			total += len(p)
+++		}
+++		b = make([]byte, 0, total)
+++		for _, p := range parts {
+++			b = append(b, p...)
+++		}
+++	}
+++
++@@ -1725,0 +1807 @@
+++	c.nssReleaseInput()
+--- a/_nss/go-tls.patch
++++ b/_nss/go-tls.patch
+@@ -0,0 +1,56 @@
++Subject: [PATCH] tls: optional NSS AES-GCM backend and session cleanup
++
++Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
++
++--- a/cipher_suites.go
+++++ b/cipher_suites.go
++@@ -527,0 +528 @@
+++	aead = cipher.NewNSSGCM(key, aead)
++@@ -561,0 +563 @@
+++	aead = cipher.NewNSSGCM(key, aead)
++@@ -716,0 +719,12 @@
+++
+++// closeNSS releases only the optional external crypto session.
+++func (f *prefixNonceAEAD) closeNSS() {
+++	if c, ok := f.aead.(interface{ Close() }); ok {
+++		c.Close()
+++	}
+++}
+++func (f *xorNonceAEAD) closeNSS() {
+++	if c, ok := f.aead.(interface{ Close() }); ok {
+++		c.Close()
+++	}
+++}
++--- a/conn.go
+++++ b/conn.go
++@@ -208,0 +209 @@
+++	closeNSSCipher(hc.nextCipher)
++@@ -218,0 +220 @@
+++	closeNSSCipher(hc.cipher)
++@@ -233,0 +236 @@
+++	closeNSSCipher(hc.cipher)
++@@ -1433,0 +1437 @@
+++	defer c.closeNSSSessions()
++@@ -1704,0 +1709,22 @@
+++}
+++
+++func closeNSSCipher(v any) {
+++	if c, ok := v.(interface{ closeNSS() }); ok {
+++		c.closeNSS()
+++	}
+++}
+++
+++// Called after the underlying socket is closed, so blocked network operations
+++// wake before we wait for the handshake and record locks. Also covers failed
+++// handshakes and a prepared but never activated TLS 1.2 cipher.
+++func (c *Conn) closeNSSSessions() {
+++	c.handshakeMutex.Lock()
+++	defer c.handshakeMutex.Unlock()
+++	c.in.Lock()
+++	closeNSSCipher(c.in.cipher)
+++	closeNSSCipher(c.in.nextCipher)
+++	c.in.Unlock()
+++	c.out.Lock()
+++	closeNSSCipher(c.out.cipher)
+++	closeNSSCipher(c.out.nextCipher)
+++	c.out.Unlock()
+--- a/_nss/nss_borrow_buf.go
++++ b/_nss/nss_borrow_buf.go
+@@ -0,0 +1,41 @@
++// SPDX-License-Identifier: MPL-2.0
++package buf
++
++import "sync/atomic"
++
++// BorrowMulti takes ownership of a batch of disjoint slices. The slices must
++// remain valid until release is called. No payload is copied; the last Buffer
++// release returns the whole batch. Individual Buffer ownership is exclusive,
++// while different buffers in the batch may be released concurrently.
++func BorrowMulti(parts [][]byte, release func()) MultiBuffer {
++	count := 0
++	for _, p := range parts {
++		if len(p) > 0 {
++			count++
++		}
++	}
++	if count == 0 {
++		release()
++		return nil
++	}
++	var remaining atomic.Int32
++	remaining.Store(int32(count))
++	done := func() {
++		if remaining.Add(-1) == 0 {
++			release()
++		}
++	}
++	// All records already share a mapping lifetime. Allocate their descriptors
++	// together as well, avoiding one heap allocation per TLS record.
++	mb := make(MultiBuffer, count)
++	buffers := make([]Buffer, count)
++	i := 0
++	for _, p := range parts {
++		if len(p) > 0 {
++			buffers[i] = Buffer{v: p[:len(p):len(p)], end: int32(len(p)), ownership: borrowed, release: done}
++			mb[i] = &buffers[i]
++			i++
++		}
++	}
++	return mb
++}
+--- a/_nss/nss_borrow_buf_test.go
++++ b/_nss/nss_borrow_buf_test.go
+@@ -0,0 +1,109 @@
++// SPDX-License-Identifier: MPL-2.0
++package buf
++
++import (
++	"bytes"
++	"errors"
++	"fmt"
++	"sync"
++	"sync/atomic"
++	"testing"
++)
++
++func TestNSSBorrowBatchLifetime(t *testing.T) {
++	var calls atomic.Int32
++	parts := [][]byte{[]byte("first"), nil, []byte("second")}
++	mb := BorrowMulti(parts, func() { calls.Add(1) })
++	if &mb[0].Bytes()[0] != &parts[0][0] {
++		t.Fatal("payload copied")
++	}
++	rest, first := SplitFirst(mb)
++	first.Release()
++	first.Release()
++	if calls.Load() != 0 {
++		t.Fatal("batch released early")
++	}
++	var wg sync.WaitGroup
++	for _, b := range rest {
++		wg.Add(1)
++		go func(b *Buffer) { defer wg.Done(); b.Release() }(b)
++	}
++	wg.Wait()
++	if calls.Load() != 1 {
++		t.Fatal("batch release count", calls.Load())
++	}
++	BorrowMulti(nil, func() { calls.Add(1) })
++	if calls.Load() != 2 {
++		t.Fatal("empty batch leaked")
++	}
++}
++
++type nssFailWriter struct{}
++
++func (nssFailWriter) Write(p []byte) (int, error) { return 0, errors.New("closed") }
++func TestNSSBorrowWriterFailure(t *testing.T) {
++	released := 0
++	mb := BorrowMulti([][]byte{[]byte("first"), []byte("second")}, func() { released++ })
++	w := BufferToBytesWriter{Writer: nssFailWriter{}}
++	if w.WriteMultiBuffer(mb) == nil || released != 1 {
++		t.Fatal("failed send leaked", released)
++	}
++}
++func TestNSSBorrowSplitAndSend(t *testing.T) {
++	released := 0
++	mb := BorrowMulti([][]byte{[]byte("first"), []byte("second")}, func() { released++ })
++	rest, head := SplitSize(mb, 3)
++	if released != 0 {
++		t.Fatal("split released storage")
++	}
++	var out bytes.Buffer
++	w := BufferToBytesWriter{Writer: &out}
++	if err := w.WriteMultiBuffer(head); err != nil {
++		t.Fatal(err)
++	}
++	if released != 0 {
++		t.Fatal("partial batch released")
++	}
++	if err := w.WriteMultiBuffer(rest); err != nil {
++		t.Fatal(err)
++	}
++	if released != 1 || out.String() != "firstsecond" {
++		t.Fatal("stream or release", out.String(), released)
++	}
++}
++
++func TestNSSBorrowSplitLargeRecord(t *testing.T) {
++	released := 0
++	want := bytes.Repeat([]byte{71}, 16384)
++	mb := BorrowMulti([][]byte{want}, func() { released++ })
++	rest, head := SplitSize(mb, 12000)
++	if head.Len() != 12000 || rest.Len() != 4384 {
++		t.Fatal("large split length")
++	}
++	got := append([]byte(nil), head[0].Bytes()...)
++	got = append(got, rest[0].Bytes()...)
++	if !bytes.Equal(got, want) {
++		t.Fatal("split corrupted stream")
++	}
++	ReleaseMulti(head)
++	ReleaseMulti(rest)
++	if released != 1 {
++		t.Fatal("split leaked mapping")
++	}
++}
++
++func BenchmarkNSSBorrowMulti(b *testing.B) {
++	for _, count := range []int{1, 4, 16} {
++		b.Run(fmt.Sprint(count), func(b *testing.B) {
++			parts := make([][]byte, count)
++			for i := range parts {
++				parts[i] = make([]byte, 16384)
++			}
++			b.ReportAllocs()
++			b.ResetTimer()
++			for i := 0; i < b.N; i++ {
++				ReleaseMulti(BorrowMulti(parts, func() {}))
++			}
++		})
++	}
++}
+--- a/_nss/nss_borrow_tls.go
++++ b/_nss/nss_borrow_tls.go
+@@ -0,0 +1,129 @@
++// Copyright 2026. SPDX-License-Identifier: BSD-3-Clause
++package tls
++
++import (
++	"io"
++	"net"
++	"os"
++	"sync"
++)
++
++// A lease pins both the mapping and its contents. Close cancels readers waiting
++// for reuse, but only the consumer may drop the mapping reference.
++var nssBorrowCond = os.Getenv("XRAY_NSS_BORROW_NOTIFY") == "cond"
++
++type nssReadLease struct {
++	cond     *sync.Cond
++	done     chan struct{}
++	canceled chan struct{}
++}
++
++// Called with c.in held. Never hold the input lock while waiting for a consumer:
++// Close must be able to cancel this wait and release the connection's own pin.
++func (c *Conn) nssWaitReadLease() error {
++	for c.nssReadLease != nil {
++		lease := c.nssReadLease
++		if lease.cond != nil {
++			lease.cond.Wait()
++			if c.activeCall.Load()&1 != 0 {
++				return net.ErrClosed
++			}
++			continue
++		}
++		c.in.Unlock()
++		select {
++		case <-lease.done:
++		case <-lease.canceled:
++		}
++		c.in.Lock()
++		if c.activeCall.Load()&1 != 0 {
++			return net.ErrClosed
++		}
++		if c.nssReadLease == lease {
++			c.nssReadLease = nil
++		}
++	}
++	return nil
++}
++
++type nssCaptureRecord struct{ data []byte }
++
++func (w *nssCaptureRecord) Write(p []byte) (int, error) { w.data = p; return len(p), nil }
++
++// NSSBorrowRecords returns authenticated application records without copying
++// their payload. The caller must release the entire batch before reading again.
++// Only records already decrypted by the same NSS request batch are included.
++// TLS control messages, key changes and the next DMA submission wait for release.
++func (c *Conn) NSSBorrowRecords() ([][]byte, func(), error) {
++	if err := c.Handshake(); err != nil {
++		return nil, nil, err
++	}
++	c.in.Lock()
++	defer c.in.Unlock()
++	if err := c.nssWaitReadLease(); err != nil {
++		return nil, nil, err
++	}
++	for c.input.Len() == 0 {
++		if err := c.readRecord(); err != nil {
++			return nil, nil, err
++		}
++		for c.hand.Len() > 0 {
++			if err := c.handlePostHandshakeMessage(); err != nil {
++				return nil, nil, err
++			}
++		}
++	}
++	// A negotiated non-NSS cipher retains normal copying semantics.
++	if c.nssReadOwner == nil {
++		p := make([]byte, c.input.Len())
++		_, err := io.ReadFull(&c.input, p)
++		return [][]byte{p}, func() {}, err
++	}
++	_, _, unpin := c.nssReadOwner.NSSRecordBuffers()
++	if unpin == nil {
++		return nil, nil, net.ErrClosed
++	}
++	parts := make([][]byte, 0, 16)
++	var readErr error
++	for {
++		var capture nssCaptureRecord
++		_, _ = c.input.WriteTo(&capture)
++		if len(capture.data) > 0 {
++			parts = append(parts, capture.data[:len(capture.data):len(capture.data)])
++		}
++		if len(parts) == 16 || !c.nssReadyApplicationRecord() {
++			break
++		}
++		if readErr = c.readRecord(); readErr != nil {
++			break
++		}
++	}
++	lease := &nssReadLease{}
++	if nssBorrowCond {
++		if c.nssReadNotify == nil {
++			c.nssReadNotify = sync.NewCond(&c.in.Mutex)
++		}
++		lease.cond = c.nssReadNotify
++	} else {
++		lease.done = make(chan struct{})
++		lease.canceled = make(chan struct{})
++	}
++	c.nssReadLease = lease
++	var once sync.Once
++	return parts, func() {
++		once.Do(func() {
++			if lease.cond == nil {
++				unpin()
++				close(lease.done)
++				return
++			}
++			c.in.Lock()
++			unpin()
++			if c.nssReadLease == lease {
++				c.nssReadLease = nil
++			}
++			lease.cond.Broadcast()
++			c.in.Unlock()
++		})
++	}, readErr
++}
+--- a/_nss/nss_direct_buf.go
++++ b/_nss/nss_direct_buf.go
+@@ -0,0 +1,25 @@
++// SPDX-License-Identifier: MPL-2.0
++package buf
++
++import "os"
++
++var nssDirectCopyEnabled = (os.Getenv("XRAY_NSS_TLS") == "dmabuf" || os.Getenv("XRAY_NSS_TLS") == "cpu-batch") && os.Getenv("XRAY_NSS_TX_DIRECT") == "1"
++
++// A writer implementing this optional interface consumes at most one batch of
++// already-ready plaintext. False means no bytes were consumed. Read and write
++// errors are kept separate to preserve Copy's error classification.
++type nssReadyCopier interface {
++	NSSCopyReadyFrom(Reader, func(MultiBuffer)) (bool, error, error)
++}
++
++func (w *BufferedWriter) NSSCopyReadyFrom(reader Reader, observe func(MultiBuffer)) (bool, error, error) {
++	w.Lock()
++	defer w.Unlock()
++	if w.buffered {
++		return false, nil, nil
++	}
++	if direct, ok := w.writer.(nssReadyCopier); ok {
++		return direct.NSSCopyReadyFrom(reader, observe)
++	}
++	return false, nil, nil
++}
+--- a/_nss/nss_direct_buf_test.go
++++ b/_nss/nss_direct_buf_test.go
+@@ -0,0 +1,118 @@
++//go:build linux && (arm64 || amd64)
++
++// SPDX-License-Identifier: MPL-2.0
++package buf
++
++import (
++	"bytes"
++	"io"
++	"net"
++	"testing"
++	"time"
++)
++
++type directCounter struct{ n int64 }
++
++func (c *directCounter) Value() int64      { return c.n }
++func (c *directCounter) Set(n int64) int64 { old := c.n; c.n = n; return old }
++func (c *directCounter) Add(n int64) int64 { old := c.n; c.n += n; return old }
++
++func TestNSSReadyReadTCP(t *testing.T) {
++	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer listener.Close()
++	tx, err := net.DialTCP("tcp4", nil, listener.Addr().(*net.TCPAddr))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer tx.Close()
++	rx, err := listener.AcceptTCP()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer rx.Close()
++	raw, err := rx.SyscallConn()
++	if err != nil {
++		t.Fatal(err)
++	}
++	counter := &directCounter{}
++	r := NewReadVReader(rx, raw, counter)
++	parts := [][]byte{make([]byte, 3), make([]byte, 7)}
++	rx.SetReadDeadline(time.Now().Add(time.Second))
++	if n, err := r.NSSReadReadyBuffers(parts); n != 0 || err != nil {
++		t.Fatalf("idle socket waited: %d %v", n, err)
++	}
++	if _, err := tx.Write([]byte("0123456789")); err != nil {
++		t.Fatal(err)
++	}
++	var got []byte
++	until := time.Now().Add(time.Second)
++	for len(got) < 10 && time.Now().Before(until) {
++		n, err := r.NSSReadReadyBuffers(parts)
++		if err != nil {
++			t.Fatal(err)
++		}
++		for _, p := range parts {
++			take := min(n, len(p))
++			got = append(got, p[:take]...)
++			n -= take
++		}
++		if len(got) < 10 {
++			time.Sleep(time.Millisecond)
++		}
++	}
++	if !bytes.Equal(got, []byte("0123456789")) || counter.Value() != 10 {
++		t.Fatal("data/counter", string(got), counter.Value())
++	}
++	rx.SetReadDeadline(time.Now().Add(-time.Second))
++	if _, err := r.NSSReadReadyBuffers(parts); err == nil {
++		t.Fatal("deadline bypassed")
++	}
++}
++
++type directNoReader struct{}
++
++func (directNoReader) ReadMultiBuffer() (MultiBuffer, error) { panic("unexpected fallback") }
++
++type directCopyWriter struct {
++	writeErr error
++	called   int
++}
++
++func (w *directCopyWriter) WriteMultiBuffer(mb MultiBuffer) error { ReleaseMulti(mb); return nil }
++func (w *directCopyWriter) NSSCopyReadyFrom(_ Reader, observe func(MultiBuffer)) (bool, error, error) {
++	w.called++
++	mb := BorrowMulti([][]byte{[]byte("abc"), []byte("defg")}, func() {})
++	observe(mb)
++	ReleaseMulti(mb)
++	return true, io.EOF, w.writeErr
++}
++func TestNSSDirectCopyAccountingAndErrors(t *testing.T) {
++	old := nssDirectCopyEnabled
++	nssDirectCopyEnabled = true
++	defer func() { nssDirectCopyEnabled = old }()
++	for _, writeErr := range []error{nil, io.ErrClosedPipe} {
++		w := &directCopyWriter{writeErr: writeErr}
++		buffered := NewBufferedWriter(w)
++		handled, _, _ := buffered.NSSCopyReadyFrom(directNoReader{}, nil)
++		if handled || w.called != 0 {
++			t.Fatal("bypassed pending protocol header")
++		}
++		if err := buffered.SetBuffered(false); err != nil {
++			t.Fatal(err)
++		}
++		var count SizeCounter
++		err := Copy(directNoReader{}, buffered, CountSize(&count))
++		if count.Size != 7 || w.called != 1 {
++			t.Fatal("accounting", count.Size, w.called)
++		}
++		if writeErr == nil && err != nil {
++			t.Fatal(err)
++		}
++		if writeErr != nil && !IsWriteError(err) {
++			t.Fatal("write error classification", err)
++		}
++	}
++}
+--- a/_nss/nss_direct_read_linux.go
++++ b/_nss/nss_direct_read_linux.go
+@@ -0,0 +1,59 @@
++//go:build linux && (arm64 || amd64)
++
++// SPDX-License-Identifier: MPL-2.0
++package buf
++
++import (
++	"io"
++	"net"
++	"runtime"
++	"syscall"
++	"unsafe"
++)
++
++// Only plain TCP is eligible. A wrapper may expose a raw fd while transforming
++// reads; bypassing such a wrapper would change the byte stream or its accounting.
++func (r *ReadVReader) NSSCanReadReady() bool { _, ok := r.Reader.(*net.TCPConn); return ok }
++func (r *ReadVReader) NSSReadReadyBuffers(parts [][]byte) (int, error) {
++	if !r.NSSCanReadReady() || len(parts) == 0 || len(parts) > 16 {
++		return 0, syscall.EINVAL
++	}
++	var vec [16]syscall.Iovec
++	for i, p := range parts {
++		if len(p) == 0 {
++			return 0, syscall.EINVAL
++		}
++		vec[i].Base = &p[0]
++		vec[i].SetLen(len(p))
++	}
++	n := 0
++	var readErr error
++	err := r.rawConn.Read(func(fd uintptr) bool {
++		for {
++			count, _, errno := syscall.Syscall(syscall.SYS_READV, fd, uintptr(unsafe.Pointer(&vec[0])), uintptr(len(parts)))
++			if errno == syscall.EINTR {
++				continue
++			}
++			if errno == syscall.EAGAIN || errno == syscall.EWOULDBLOCK {
++				return true
++			}
++			if errno != 0 {
++				readErr = errno
++				return true
++			}
++			n = int(count)
++			if n == 0 {
++				readErr = io.EOF
++			}
++			return true // Never ask netpoll to wait while the TLS writer owns its lock.
++		}
++	})
++	runtime.KeepAlive(parts)
++	if err != nil {
++		return 0, err
++	}
++	if n > 0 && r.counter != nil {
++		r.counter.Add(int64(n))
++	}
++	return n, readErr
++}
+--- a/_nss/nss_direct_tls.go
++++ b/_nss/nss_direct_tls.go
+@@ -0,0 +1,98 @@
++// Copyright 2026. SPDX-License-Identifier: BSD-3-Clause
++package tls
++
++import (
++	"io"
++	"net"
++)
++
++// NSSWriteFromReady reads plaintext directly into mapped record slots. read MUST
++// be nonblocking: (0,nil) means not ready and leaves the ordinary copy path in
++// charge of waiting. No unrelated socket wait may occur under the TLS write lock.
++// observe runs before encryption and may only inspect the supplied slices during
++// its call. The return values distinguish source errors from TLS write errors.
++func (c *Conn) NSSWriteFromReady(read func([][]byte) (int, error), observe func([][]byte)) (bool, error, error) {
++	// In particular, do not start a handshake before the ordinary reader has data.
++	if !c.isHandshakeComplete.Load() {
++		return false, nil, nil
++	}
++	for {
++		x := c.activeCall.Load()
++		if x&1 != 0 {
++			return true, nil, net.ErrClosed
++		}
++		if c.activeCall.CompareAndSwap(x, x+2) {
++			break
++		}
++	}
++	defer c.activeCall.Add(-2)
++	c.out.Lock()
++	defer c.out.Unlock()
++	// A concurrent TLS 1.2 renegotiation may have started while acquiring
++	// the output lock. Let ordinary Write perform its handshake in that case.
++	if !c.isHandshakeComplete.Load() {
++		return false, nil, nil
++	}
++	if c.out.err != nil {
++		return true, nil, c.out.err
++	}
++	if c.closeNotifySent {
++		return true, nil, errShutdown
++	}
++	mapped := nssBatchRecords(c.out.cipher)
++	if mapped == nil || c.buffering || (c.vers != VersionTLS12 && c.vers != VersionTLS13) {
++		return false, nil, nil
++	}
++	input, _, release := mapped.NSSRecordBuffers()
++	if release == nil {
++		return true, nil, net.ErrClosed
++	}
++	defer release()
++	slots := mapped.NSSBatchSize()
++	if slots < 1 || slots > 16 || len(input)%slots != 0 {
++		return true, nil, io.ErrShortBuffer
++	}
++	capacity := len(input) / slots
++	var storage [16][]byte
++	parts := storage[:slots]
++	defer clear(parts)
++	// Preview the same record sizes that nssWriteScattered will commit if bytes
++	// arrive. An empty nonblocking read must not advance dynamic record sizing.
++	packets := c.packetsSent
++	total := 0
++	for i := range parts {
++		size := c.maxPayloadSizeForWrite(recordTypeApplicationData)
++		offset := i*capacity + recordHeaderLen + c.out.explicitNonceLen()
++		if size+recordHeaderLen+c.out.explicitNonceLen()+32 > capacity {
++			c.packetsSent = packets
++			return true, nil, io.ErrShortBuffer
++		}
++		parts[i] = input[offset : offset+size : offset+size]
++		total += size
++	}
++	c.packetsSent = packets
++	n, readErr := read(parts)
++	if n < 0 || n > total {
++		return true, io.ErrShortBuffer, nil
++	}
++	if n == 0 {
++		return readErr != nil, readErr, nil
++	}
++	left, count := n, 0
++	for count < len(parts) && left > 0 {
++		if len(parts[count]) > left {
++			parts[count] = parts[count][:left]
++		}
++		left -= len(parts[count])
++		count++
++	}
++	parts = parts[:count]
++	if observe != nil {
++		observe(parts)
++	}
++	written, writeErr := c.nssWriteScattered(mapped, parts)
++	if writeErr == nil && written != n {
++		writeErr = io.ErrShortWrite
++	}
++	return true, readErr, c.out.setErrorLocked(writeErr)
++}
+--- a/_nss/nss_direct_xray.go
++++ b/_nss/nss_direct_xray.go
+@@ -0,0 +1,41 @@
++// SPDX-License-Identifier: MPL-2.0
++package tls
++
++import (
++	"github.com/xtls/xray-core/common/buf"
++	"os"
++)
++
++var nssDirectReadEnabled = (os.Getenv("XRAY_NSS_TLS") == "dmabuf" || os.Getenv("XRAY_NSS_TLS") == "cpu-batch") && os.Getenv("XRAY_NSS_TX_DIRECT") == "1"
++
++func nssCopyReadyFrom(writer any, reader buf.Reader, observe func(buf.MultiBuffer)) (bool, error, error) {
++	if !nssDirectReadEnabled {
++		return false, nil, nil
++	}
++	source, ok := reader.(interface {
++		NSSCanReadReady() bool
++		NSSReadReadyBuffers([][]byte) (int, error)
++	})
++	if !ok || !source.NSSCanReadReady() {
++		return false, nil, nil
++	}
++	target, ok := writer.(interface {
++		NSSWriteFromReady(func([][]byte) (int, error), func([][]byte)) (bool, error, error)
++	})
++	if !ok {
++		return false, nil, nil
++	}
++	return target.NSSWriteFromReady(source.NSSReadReadyBuffers, func(parts [][]byte) {
++		if observe != nil {
++			mb := buf.BorrowMulti(parts, func() {})
++			observe(mb)
++			buf.ReleaseMulti(mb)
++		}
++	})
++}
++func (c *Conn) NSSCopyReadyFrom(reader buf.Reader, observe func(buf.MultiBuffer)) (bool, error, error) {
++	return nssCopyReadyFrom(c.Conn, reader, observe)
++}
++func (c *UConn) NSSCopyReadyFrom(reader buf.Reader, observe func(buf.MultiBuffer)) (bool, error, error) {
++	return nssCopyReadyFrom(c.UConn, reader, observe)
++}
+--- a/_nss/nss_dmabuf_linux_arm64.go
++++ b/_nss/nss_dmabuf_linux_arm64.go
+@@ -0,0 +1,467 @@
++// Copyright 2026. SPDX-License-Identifier: BSD-3-Clause
++//go:build linux && arm64
++
++package cipher
++
++import (
++	"bytes"
++	"errors"
++	"os"
++	"runtime"
++	"strconv"
++	"sync"
++	"syscall"
++	"unsafe"
++)
++
++const nssDMACapacity = 32768
++
++type nssDMAInit struct {
++	ABI, KeyLen     uint32
++	Key             [32]byte
++	Capacity, Slots uint32
++	FD              int32
++	Reserved        uint32
++}
++type nssDMARequest struct {
++	Slot, Offset, Len, AAD, Op, Reserved uint32
++	Nonce                                [12]byte
++	Status                               int32
++}
++type nssDMABatch struct {
++	Count, Reserved uint32
++	Req             [16]nssDMARequest
++}
++
++type nssDMA struct {
++	mu          sync.Mutex
++	file        *os.File
++	mem         []byte
++	fallback    AEAD
++	borrowers   int
++	closed      bool
++	slots       int
++	writeQueued bool
++	pending     nssDMABatch
++	pendingAAD  [16][13]byte
++	records     [16][]byte
++	expected    [16][]byte
++	readOutput  [16][]byte
++	readErrors  [16]error
++	readBatch   nssDMABatch
++	singleBatch nssDMABatch
++	cpuOnly     bool
++}
++
++func newNSSDMA(key []byte, fallback AEAD) AEAD {
++	slots := 16
++	if v, err := strconv.Atoi(os.Getenv("XRAY_NSS_DMA_BATCH")); err == nil && v >= 1 && v <= 16 {
++		slots = v
++	}
++	if nssMode == "cpu-batch" {
++		// Benchmark control: identical record assembly, batching and socket writes,
++		// but CPU AES-GCM and ordinary Go memory. It never opens an NSS device.
++		g := &nssDMA{mem: make([]byte, 2*nssDMACapacity*slots), fallback: fallback, slots: slots, cpuOnly: true}
++		runtime.SetFinalizer(g, (*nssDMA).Close)
++		return g
++	}
++
++	fail := func(err error) AEAD { nssFallbacks.Add(1); nssWarning(err); return fallback }
++	f, err := os.OpenFile("/dev/nss-crypto-dmabuf", os.O_RDWR, 0)
++	if err != nil {
++		return fail(err)
++	}
++
++	init := nssDMAInit{ABI: 3, KeyLen: uint32(len(key)), Capacity: nssDMACapacity, Slots: uint32(slots), FD: -1}
++	copy(init.Key[:], key)
++	err = nssDMAIoctl(f, 0xc0384e60, unsafe.Pointer(&init))
++	clear(init.Key[:])
++	if err != nil {
++		f.Close()
++		return fail(err)
++	}
++	mem, err := syscall.Mmap(int(init.FD), 0, 2*nssDMACapacity*slots, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
++	syscall.Close(int(init.FD)) // mmap retains the exported buffer's file reference.
++	if err != nil {
++		f.Close()
++		return fail(err)
++	}
++	g := &nssDMA{file: f, mem: mem, fallback: fallback, slots: slots}
++	nssCreated.Add(1)
++	runtime.SetFinalizer(g, (*nssDMA).Close)
++	return g
++}
++func (g *nssDMA) NonceSize() int { return 12 }
++func (g *nssDMA) Overhead() int  { return 16 }
++func (g *nssDMA) Close() {
++	g.mu.Lock()
++	defer g.mu.Unlock()
++	if !g.closed {
++		g.closed = true
++		if !g.cpuOnly {
++			g.file.Close()
++			g.file = nil
++			nssClosed.Add(1)
++		}
++	}
++	g.releaseMappingLocked()
++}
++func (g *nssDMA) releaseMappingLocked() {
++	if g.closed && g.borrowers == 0 && g.mem != nil {
++		if g.cpuOnly {
++			clear(g.mem)
++		} else {
++			syscall.Munmap(g.mem)
++		}
++		g.mem = nil
++	}
++}
++
++// Borrowed record storage remains mapped across key changes/Close until the
++// TLS record owner releases it. Generic AEAD results never borrow this storage.
++func (g *nssDMA) NSSRecordBuffers() (in, out []byte, release func()) {
++	g.mu.Lock()
++	defer g.mu.Unlock()
++	if g.closed {
++		return nil, nil, nil
++	}
++	g.borrowers++
++	var once sync.Once
++	return g.mem[:g.inputSize():g.inputSize()], g.mem[g.inputSize():], func() { once.Do(func() { g.mu.Lock(); defer g.mu.Unlock(); g.borrowers--; g.releaseMappingLocked() }) }
++}
++func (g *nssDMA) Seal(dst, nonce, plaintext, aad []byte) []byte {
++	// Compatibility only. Never disguise a heap->CMA copy as zero-copy.
++	nssFallbacks.Add(1)
++	nssWarning(errors.New("DMA-BUF requires the mapped TLS record API"))
++	return g.fallback.Seal(dst, nonce, plaintext, aad)
++}
++func (g *nssDMA) Open(dst, nonce, ciphertext, aad []byte) ([]byte, error) {
++	nssFallbacks.Add(1)
++	nssWarning(errors.New("DMA-BUF requires the mapped TLS record API"))
++	return g.fallback.Open(dst, nonce, ciphertext, aad)
++}
++func (g *nssDMA) runLocked(op uint32, nonce, input, aad []byte) ([]byte, error) {
++	if g.closed || len(nonce) != 12 || (len(input) == 0 && (op == 2 || len(aad) == 0)) || len(aad) > 255 {
++		return nil, errors.New("invalid mapped NSS record")
++	}
++	base := uintptr(unsafe.Pointer(&g.mem[0]))
++	start := uintptr(unsafe.Pointer(unsafe.SliceData(input)))
++	if start < base+uintptr(len(aad)) || start-base > uintptr(g.inputSize()) || uintptr(len(input)) > uintptr(g.inputSize())-(start-base) {
++		return nil, errors.New("TLS payload is not in its CMA input slot")
++	}
++	offset := int(start-base) - len(aad)
++	total := len(input) + len(aad)
++	if op != 2 {
++		total += 16
++	}
++	if total > nssMaxRequest || total > nssDMACapacity {
++		return nil, syscall.EMSGSIZE
++	}
++	// Only AAD metadata is copied. The payload already resides in CMA.
++	copy(g.mem[offset:offset+len(aad)], aad)
++	g.singleBatch = nssDMABatch{Count: 1}
++	b := &g.singleBatch
++	r := &b.Req[0]
++	r.Offset = uint32(offset)
++	r.Len = uint32(len(input))
++	r.AAD = uint32(len(aad))
++	r.Op = op
++	copy(r.Nonce[:], nonce)
++	if err := g.executeBatch(b); err != nil {
++		return nil, err
++	}
++	runtime.KeepAlive(g.mem)
++	if r.Status != 0 {
++		return nil, syscall.Errno(-r.Status)
++	}
++	size := len(input) + 16
++	if op == 2 {
++		size = len(input) - 16
++	}
++	if size < 0 {
++		return nil, syscall.EBADMSG
++	}
++	return g.mem[g.inputSize()+len(aad) : g.inputSize()+len(aad)+size], nil
++}
++func (g *nssDMA) NSSSealRecord(prefix, nonce, plaintext, aad []byte) ([]byte, error) {
++	g.mu.Lock()
++	defer g.mu.Unlock()
++	if g.closed || len(prefix) > 13 || len(prefix) != len(aad) {
++		return nil, errors.New("invalid NSS record prefix")
++	}
++	if g.writeQueued {
++		return g.queueSealLocked(prefix, nonce, plaintext, aad)
++	}
++	var header [13]byte
++	copy(header[:], prefix)
++	var expected []byte
++	if nssVerify {
++		expected = g.fallback.Seal(nil, nonce, plaintext, aad)
++	}
++	result, err := g.runLocked(1, nonce, plaintext, aad)
++	if err == nil && nssVerify && !bytes.Equal(result, expected) {
++		err = errors.New("DMA-BUF encryption failed CPU verification")
++	}
++	out := g.mem[g.inputSize() : g.inputSize()+len(prefix)]
++	if err != nil {
++		nssFallbacks.Add(1)
++		nssWarning(err)
++		if nssVerify {
++			out = append(out, expected...)
++		} else {
++			out = g.fallback.Seal(out, nonce, plaintext, aad)
++		}
++	} else {
++		if !g.cpuOnly {
++			nssSeals.Add(1)
++		}
++		out = g.mem[g.inputSize() : g.inputSize()+len(prefix)+len(result)]
++	}
++	copy(out, header[:len(prefix)])
++	return out, nil
++}
++func (g *nssDMA) NSSOpenRecord(nonce, ciphertext, aad []byte) ([]byte, error) {
++	g.mu.Lock()
++	defer g.mu.Unlock()
++	if g.closed {
++		return nil, errors.New("NSS session closed")
++	}
++	var expected []byte
++	var expectedErr error
++	if nssVerify {
++		expected, expectedErr = g.fallback.Open(nil, nonce, ciphertext, aad)
++	}
++	result, err := g.runLocked(2, nonce, ciphertext, aad)
++	if err == nil && nssVerify && (expectedErr != nil || !bytes.Equal(result, expected)) {
++		err = errors.New("DMA-BUF decryption failed CPU verification")
++	}
++	if err == nil {
++		if !g.cpuOnly {
++			nssOpens.Add(1)
++		}
++		return result, nil
++	}
++	if err == syscall.EBADMSG {
++		return nil, errors.New("cipher: message authentication failed")
++	}
++	nssFallbacks.Add(1)
++	nssWarning(err)
++	if nssVerify {
++		if expectedErr != nil {
++			return nil, expectedErr
++		}
++		return append(g.mem[g.inputSize():g.inputSize()], expected...), nil
++	}
++	return g.fallback.Open(g.mem[g.inputSize():g.inputSize()], nonce, ciphertext, aad)
++}
++
++func (g *nssDMA) inputSize() int {
++	if g.slots == 0 {
++		return nssDMACapacity
++	}
++	return g.slots * nssDMACapacity
++}
++func (g *nssDMA) NSSBeginRecordBatch() (int, error) {
++	g.mu.Lock()
++	defer g.mu.Unlock()
++	if g.closed || g.writeQueued {
++		return 0, errors.New("invalid NSS batch state")
++	}
++	g.writeQueued = true
++	g.pending = nssDMABatch{}
++	return g.inputSize() / nssDMACapacity, nil
++}
++func (g *nssDMA) NSSAbortRecordBatch() {
++	g.mu.Lock()
++	defer g.mu.Unlock()
++	g.writeQueued = false
++	g.pending = nssDMABatch{}
++	clear(g.records[:])
++	clear(g.expected[:])
++}
++func (g *nssDMA) prepareRequest(slot int, op uint32, nonce, input, aad []byte) (nssDMARequest, error) {
++	r := nssDMARequest{Slot: uint32(slot), Op: op, Len: uint32(len(input)), AAD: uint32(len(aad))}
++	if g.closed || len(nonce) != 12 || (len(input) == 0 && (op == 2 || len(aad) == 0)) || len(aad) > 255 || slot < 0 || slot >= g.inputSize()/nssDMACapacity {
++		return r, errors.New("invalid NSS batch record")
++	}
++	base := uintptr(unsafe.Pointer(&g.mem[0]))
++	start := uintptr(unsafe.Pointer(unsafe.SliceData(input)))
++	if start < base+uintptr(len(aad)) || start-base > uintptr(g.inputSize()) || uintptr(len(input)) > uintptr(g.inputSize())-(start-base) {
++		return r, errors.New("NSS batch payload outside CMA input")
++	}
++	total := len(input) + len(aad)
++	if op != 2 {
++		total += 16
++	}
++	if total > nssMaxRequest || total > nssDMACapacity || (op == 2 && len(input) < 16) {
++		return r, syscall.EMSGSIZE
++	}
++	r.Offset = uint32(start-base) - uint32(len(aad))
++	copy(r.Nonce[:], nonce)
++	return r, nil
++}
++func (g *nssDMA) queueSealLocked(prefix, nonce, plaintext, aad []byte) ([]byte, error) {
++	slot := int(g.pending.Count)
++	r, err := g.prepareRequest(slot, 3, nonce, plaintext, aad)
++	if err != nil {
++		return nil, err
++	}
++	if nssVerify {
++		g.expected[slot] = g.fallback.Seal(nil, nonce, plaintext, aad)
++	}
++	out := g.mem[slot*nssDMACapacity : slot*nssDMACapacity+len(prefix)+len(plaintext)+16]
++	copy(out, prefix)
++	copy(g.pendingAAD[slot][:], aad)
++	g.pending.Req[slot] = r
++	g.pending.Count++
++	g.records[slot] = out
++	return out, nil
++}
++func (g *nssDMA) NSSFlushRecordBatch() error {
++	g.mu.Lock()
++	defer g.mu.Unlock()
++	if !g.writeQueued || g.closed {
++		return errors.New("NSS batch is not open")
++	}
++	defer func() { g.pending = nssDMABatch{}; clear(g.records[:]); clear(g.expected[:]) }()
++	if g.pending.Count == 0 {
++		return nil
++	}
++	var headers [16][13]byte
++	for i := 0; i < int(g.pending.Count); i++ {
++		r := g.pending.Req[i]
++		copy(headers[i][:], g.records[i][:r.AAD])
++		copy(g.mem[int(r.Offset):int(r.Offset+r.AAD)], g.pendingAAD[i][:r.AAD])
++	}
++	err := g.executeBatch(&g.pending)
++	runtime.KeepAlive(g.mem)
++	for i := 0; i < int(g.pending.Count); i++ {
++		r := g.pending.Req[i]
++		out := g.records[i]
++		copy(out[:r.AAD], headers[i][:r.AAD])
++		if err == nil && r.Status != 0 {
++			err = syscall.Errno(-r.Status)
++		}
++		if err == nil && nssVerify && !bytes.Equal(out[r.AAD:], g.expected[i]) {
++			err = errors.New("NSS batched seal failed CPU verification")
++		}
++	}
++	if err != nil {
++		return err
++	} // Never expose a partially successful batch as TLS data.
++	if !g.cpuOnly {
++		nssSeals.Add(uint64(g.pending.Count))
++	}
++	return nil
++}
++
++// Nonces are complete 12-byte GCM nonces. Inputs remain intact for key-update
++// lookahead invalidation; output slices borrow distinct slots until next RUN.
++func (g *nssDMA) NSSOpenRecords(nonces [][12]byte, inputs, aads [][]byte) ([][]byte, []error) {
++	g.mu.Lock()
++	defer g.mu.Unlock()
++	n := len(inputs)
++	if n > 16 {
++		return nil, nil
++	}
++	clear(g.readOutput[:])
++	clear(g.readErrors[:])
++	out := g.readOutput[:n]
++	errs := g.readErrors[:n]
++	if n == 0 {
++		return out, errs
++	}
++	if n > g.inputSize()/nssDMACapacity || len(nonces) != n || len(aads) != n || g.closed {
++		for i := range errs {
++			errs[i] = errors.New("invalid NSS read batch")
++		}
++		return out, errs
++	}
++	g.readBatch = nssDMABatch{Count: uint32(n)}
++	b := &g.readBatch
++	var saved [16][255]byte
++	var expected [16][]byte
++	var expectedErr [16]error
++	for i := 0; i < n; i++ {
++		r, err := g.prepareRequest(i, 2, nonces[i][:], inputs[i], aads[i])
++		if err != nil {
++			for j := range errs {
++				errs[j] = err
++			}
++			return out, errs
++		}
++		b.Req[i] = r
++		copy(saved[i][:], g.mem[int(r.Offset):int(r.Offset)+len(aads[i])])
++		if nssVerify {
++			expected[i], expectedErr[i] = g.fallback.Open(nil, nonces[i][:], inputs[i], aads[i])
++		}
++	}
++	for i := 0; i < n; i++ {
++		r := b.Req[i]
++		copy(g.mem[int(r.Offset):int(r.Offset)+len(aads[i])], aads[i])
++	}
++	err := g.executeBatch(b)
++	runtime.KeepAlive(g.mem)
++	for i := 0; i < n; i++ {
++		r := b.Req[i]
++		copy(g.mem[int(r.Offset):int(r.Offset)+len(aads[i])], saved[i][:len(aads[i])])
++		errs[i] = err
++		if err == nil && r.Status != 0 {
++			errs[i] = syscall.Errno(-r.Status)
++		}
++		if errs[i] == nil {
++			start := g.inputSize() + i*nssDMACapacity + len(aads[i])
++			out[i] = g.mem[start : start+len(inputs[i])-16]
++			if nssVerify && (expectedErr[i] != nil || !bytes.Equal(out[i], expected[i])) {
++				out[i] = nil
++				errs[i] = errors.New("NSS batched open failed CPU verification")
++			}
++		}
++		if errs[i] == nil {
++			if !g.cpuOnly {
++				nssOpens.Add(1)
++			}
++		}
++	}
++	return out, errs
++}
++func (g *nssDMA) NSSBatchSize() int { return g.inputSize() / nssDMACapacity }
++
++// These ABI structures contain no Go pointers and the ioctl is synchronous.
++// Passing the pointer directly in Syscall follows the syscall package's pointer
++// liveness convention. No nested Go buffers need pinning, unlike cryptodev.
++func nssDMAIoctl(f *os.File, request uintptr, arg unsafe.Pointer) error {
++	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), request, uintptr(arg))
++	runtime.KeepAlive(arg)
++	runtime.KeepAlive(f)
++	if e != 0 {
++		return e
++	}
++	return nil
++}
++
++func (g *nssDMA) executeBatch(b *nssDMABatch) error {
++	if !g.cpuOnly {
++		return nssDMAIoctl(g.file, 0xc2884e61, unsafe.Pointer(b))
++	}
++	for i := 0; i < int(b.Count); i++ {
++		r := &b.Req[i]
++		in := g.mem[int(r.Offset) : int(r.Offset)+int(r.AAD+r.Len)]
++		start := g.inputSize() + int(r.Slot)*nssDMACapacity
++		if r.Op == 3 {
++			start = int(r.Offset)
++		}
++		out := g.mem[start : start+nssDMACapacity]
++		copy(out[:r.AAD], in[:r.AAD])
++		r.Status = 0
++		if r.Op != 2 {
++			g.fallback.Seal(out[:r.AAD], r.Nonce[:], in[r.AAD:], in[:r.AAD])
++		} else {
++			if _, err := g.fallback.Open(out[:r.AAD], r.Nonce[:], in[r.AAD:], in[:r.AAD]); err != nil {
++				r.Status = -int32(syscall.EBADMSG)
++				clear(out)
++			}
++		}
++	}
++	return nil
++}
+--- a/_nss/nss_dmabuf_linux_arm64_test.go
++++ b/_nss/nss_dmabuf_linux_arm64_test.go
+@@ -0,0 +1,199 @@
++// Copyright 2026. SPDX-License-Identifier: BSD-3-Clause
++//go:build linux && arm64
++
++package cipher
++
++import (
++	"bytes"
++	"crypto/internal/fips140/aes"
++	"os"
++	"strconv"
++	"syscall"
++	"testing"
++	"unsafe"
++)
++
++func testDMAStorage(t *testing.T) *nssDMA {
++	t.Helper()
++	f, err := os.OpenFile("/dev/null", os.O_RDWR, 0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	mem, err := syscall.Mmap(-1, 0, 2*nssDMACapacity, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_PRIVATE|syscall.MAP_ANON)
++	if err != nil {
++		f.Close()
++		t.Fatal(err)
++	}
++	block, err := aes.New(make([]byte, 16))
++	if err != nil {
++		t.Fatal(err)
++	}
++	cpu, err := NewGCM(block)
++	if err != nil {
++		t.Fatal(err)
++	}
++	g := &nssDMA{file: f, mem: mem, fallback: cpu}
++	t.Cleanup(g.Close)
++	return g
++}
++func TestNSSDMABorrowSurvivesClose(t *testing.T) {
++	g := testDMAStorage(t)
++	input, output, release := g.NSSRecordBuffers()
++	input[0] = 0xa5
++	output[0] = 0x5a
++	g.Close()
++	if g.mem == nil || input[0] != 0xa5 || output[0] != 0x5a {
++		t.Fatal("Close invalidated borrowed record storage")
++	}
++	release()
++	release()
++	if g.mem != nil || g.borrowers != 0 {
++		t.Fatal("last borrower did not release mapping exactly once")
++	}
++	if in, _, done := g.NSSRecordBuffers(); in != nil || done != nil {
++		t.Fatal("borrow accepted after Close")
++	}
++}
++func TestNSSDMASubmitFailurePreservesInput(t *testing.T) {
++	for _, prefixLen := range []int{5, 13} {
++		for _, offset := range []int{0, 37} {
++			g := testDMAStorage(t)
++			input, _, release := g.NSSRecordBuffers()
++			prefix := bytes.Repeat([]byte{0x23}, prefixLen)
++			aad := bytes.Repeat([]byte{0x5a}, prefixLen)
++			nonce := make([]byte, 12)
++			plain := bytes.Repeat([]byte{0x61}, 17)
++			copy(input[offset:], prefix)
++			copy(input[offset+prefixLen:], plain)
++			want := g.fallback.Seal(nil, nonce, plain, aad)
++			// /dev/null rejects RUN. Test real mapped pointer/offset handling and
++			// fallback after AAD replaces the wire header (as in TLS 1.2).
++			got, err := g.NSSSealRecord(input[offset:offset+prefixLen], nonce,
++				input[offset+prefixLen:offset+prefixLen+len(plain)], aad)
++			if err != nil || !bytes.Equal(got[:prefixLen], prefix) ||
++				!bytes.Equal(got[prefixLen:], want) ||
++				!bytes.Equal(input[offset+prefixLen:offset+prefixLen+len(plain)], plain) {
++				t.Fatalf("bad submission fallback, prefix=%d offset=%d: %v", prefixLen, offset, err)
++			}
++			copy(input[offset+prefixLen:], want)
++			opened, err := g.NSSOpenRecord(nonce,
++				input[offset+prefixLen:offset+prefixLen+len(want)], aad)
++			if err != nil || !bytes.Equal(opened, plain) {
++				t.Fatalf("bad decrypt fallback: %v", err)
++			}
++			release()
++			g.Close()
++		}
++	}
++}
++
++func TestNSSDMABatchEngine(t *testing.T) {
++	for _, tc := range []struct {
++		hardware bool
++		size     int
++	}{{false, 16}, {false, 32}, {true, 16}, {true, 32}} {
++		hardware := tc.hardware
++		name := "cpu-control"
++		if hardware {
++			name = "hardware"
++		}
++		t.Run(name+strconv.Itoa(tc.size), func(t *testing.T) {
++			if hardware && os.Getenv("XRAY_NSS_HARDWARE_TEST") != "1" {
++				t.Skip("explicit hardware test required")
++			}
++			key := make([]byte, tc.size)
++			block, err := aes.New(key)
++			if err != nil {
++				t.Fatal(err)
++			}
++			cpu, err := NewGCM(block)
++			if err != nil {
++				t.Fatal(err)
++			}
++			var g *nssDMA
++			if hardware {
++				t.Setenv("XRAY_NSS_DMA_BATCH", "4")
++				var ok bool
++				g, ok = newNSSDMA(key, cpu).(*nssDMA)
++				if !ok {
++					t.Fatal("hardware constructor fell back")
++				}
++			} else {
++				g = &nssDMA{mem: make([]byte, 8*nssDMACapacity), slots: 4, fallback: cpu, cpuOnly: true}
++			}
++			defer g.Close()
++			input, _, release := g.NSSRecordBuffers()
++			defer release()
++			slots, err := g.NSSBeginRecordBatch()
++			if err != nil || slots != 4 {
++				t.Fatalf("begin %d %v", slots, err)
++			}
++			if hardware {
++				bad := nssDMABatch{Count: 1}
++				bad.Req[0] = nssDMARequest{Op: 3, Offset: 1, Len: 1, AAD: 5}
++				if err := nssDMAIoctl(g.file, 0xc2884e61, unsafe.Pointer(&bad)); err != syscall.EINVAL {
++					t.Fatalf("misaligned in-place slot accepted: %v", err)
++				}
++			}
++
++			var records, expected [4][]byte
++			var nonces [4][12]byte
++			var aad [4][]byte
++			for i, n := range []int{0, 1, 16384, 7} {
++				nonces[i][11] = byte(i)
++				aad[i] = bytes.Repeat([]byte{byte(i + 1)}, 13)
++				off := i * nssDMACapacity
++				prefix := input[off : off+13]
++				copy(prefix, bytes.Repeat([]byte{0x23}, 13))
++				plain := input[off+13 : off+13+n]
++				for j := range plain {
++					plain[j] = byte(i + j)
++				}
++				expected[i] = cpu.Seal(nil, nonces[i][:], plain, aad[i])
++				records[i], err = g.NSSSealRecord(prefix, nonces[i][:], plain, aad[i])
++				if err != nil {
++					t.Fatal(err)
++				}
++				records[i][3] = byte((n + 24) >> 8)
++				records[i][4] = byte(n + 24)
++			}
++			if err = g.NSSFlushRecordBatch(); err != nil {
++				t.Fatal(err)
++			}
++			g.NSSAbortRecordBatch()
++			var encrypted [4][]byte
++			var prefixes [4][]byte
++			off := 0
++			for i := range records {
++				if !bytes.Equal(records[i][13:], expected[i]) {
++					t.Fatalf("seal mismatch slot %d", i)
++				}
++				n := copy(input[off:], records[i])
++				prefixes[i] = append([]byte(nil), input[off:off+13]...)
++				encrypted[i] = input[off+13 : off+n]
++				off += n
++			}
++			encrypted[3][len(encrypted[3])-1] ^= 1
++			out, errs := g.NSSOpenRecords(nonces[:], encrypted[:], aad[:])
++			for i := range out {
++				if i == 3 {
++					if errs[i] != syscall.EBADMSG || out[i] != nil {
++						t.Fatal("bad tag was not rejected")
++					}
++					continue
++				}
++				want, err := cpu.Open(nil, nonces[i][:], encrypted[i], aad[i])
++				if err != nil || errs[i] != nil || !bytes.Equal(out[i], want) {
++					t.Fatalf("open slot %d: %v %v", i, err, errs[i])
++				}
++			}
++			off = 0
++			for i, r := range records {
++				if !bytes.Equal(input[off:off+13], prefixes[i]) {
++					t.Fatal("lookahead modified wire prefix")
++				}
++				off += len(r)
++			}
++		})
++	}
++}
+--- a/_nss/nss_linux_arm64.go
++++ b/_nss/nss_linux_arm64.go
+@@ -0,0 +1,253 @@
++// Copyright 2026. SPDX-License-Identifier: BSD-3-Clause
++//go:build linux && arm64
++
++package cipher
++
++import (
++	"bytes"
++	"errors"
++	"fmt"
++	"os"
++	"runtime"
++	"strconv"
++	"sync"
++	"sync/atomic"
++	"syscall"
++	"unsafe"
++)
++
++// The ioctl layouts below are the cryptodev-linux arm64 ABI, not AF_ALG.
++type nssSession struct {
++	Cipher, Mac, Keylen uint32
++	Key                 *byte
++	Mackeylen           uint32
++	Mackey              *byte
++	Ses                 uint32
++}
++type nssInfo struct {
++	Ses                              uint32
++	Cipher, Driver, Hash, HashDriver [64]byte
++	Align                            uint16
++	Flags                            uint32
++}
++type nssAuth struct {
++	Ses                uint32
++	Op, Flags          uint16
++	Len, Authlen       uint32
++	Aad, Src, Dst, Tag *byte
++	Taglen             uint32
++	IV                 *byte
++	IVlen              uint32
++}
++
++var nssVerify = os.Getenv("XRAY_NSS_TLS_VERIFY") == "1"
++
++// Include AAD and tag. The tested NSS firmware silently skips some larger
++// requests; keep them on CPU even when used with an older cryptodev build.
++const nssMaxRequest = 65023
++
++var nssMode = os.Getenv("XRAY_NSS_TLS")
++var nssEnabled = nssMode == "1" || nssMode == "cryptodev" || (nssMode == "dmabuf" || nssMode == "cpu-batch")
++var nssMin = func() int {
++	n, _ := strconv.Atoi(os.Getenv("XRAY_NSS_TLS_MIN"))
++	if n < 0 {
++		return 0
++	}
++	return n
++}()
++var nssWarn sync.Once
++var nssCreated, nssClosed, nssSeals, nssOpens, nssFallbacks atomic.Uint64
++
++// NSSStats reports sessions opened/closed, hardware seals/opens and fallbacks.
++// It is intended for the accompanying loopback benchmark.
++func NSSStats() [5]uint64 {
++	return [5]uint64{nssCreated.Load(), nssClosed.Load(), nssSeals.Load(), nssOpens.Load(), nssFallbacks.Load()}
++}
++func nssWarning(err error) {
++	nssWarn.Do(func() { fmt.Fprintln(os.Stderr, "xray NSS TLS: using CPU fallback:", err) })
++}
++func nssPtr(b []byte) *byte {
++	if len(b) == 0 {
++		return nil
++	}
++	return &b[0]
++}
++func nssIoctl(f *os.File, request uintptr, arg unsafe.Pointer) error {
++	var pin runtime.Pinner
++	pin.Pin(arg)
++	defer pin.Unpin()
++	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), request, uintptr(arg))
++	runtime.KeepAlive(f)
++	if e != 0 {
++		return e
++	}
++	return nil
++}
++
++// NewNSSGCM wraps only TLS AES-GCM records. Disabled unless XRAY_NSS_TLS=1.
++// It checks the selected driver so a software CryptoAPI implementation cannot
++// silently be reported as NSS acceleration. ChaCha20 and handshakes are untouched.
++func NewNSSGCM(key []byte, fallback AEAD) AEAD {
++	if !nssEnabled {
++		return fallback
++	}
++	if fallback.NonceSize() != 12 || fallback.Overhead() != 16 {
++		return fallback
++	}
++	if nssMode == "dmabuf" || nssMode == "cpu-batch" {
++		return newNSSDMA(key, fallback)
++	}
++	f, err := os.OpenFile("/dev/crypto", os.O_RDWR, 0)
++	if err != nil {
++		nssFallbacks.Add(1)
++		nssWarning(err)
++		return fallback
++	}
++	var pin runtime.Pinner
++	pin.Pin(nssPtr(key))
++	defer pin.Unpin()
++	s := nssSession{Cipher: 50, Keylen: uint32(len(key)), Key: nssPtr(key)}
++	err = nssIoctl(f, 0xc0306366, unsafe.Pointer(&s))
++	runtime.KeepAlive(key)
++	if err == nil {
++		info := nssInfo{Ses: s.Ses}
++		err = nssIoctl(f, 0xc10c636b, unsafe.Pointer(&info))
++		if err == nil && info.Flags&2 == 0 {
++			err = errors.New("cryptodev lacks the NSS GCM linear-buffer fix")
++		}
++		if err == nil && string(bytes.TrimRight(info.Driver[:], "\x00")) != "nss-gcm" {
++			err = errors.New("selected AES-GCM driver is not nss-gcm")
++		}
++	}
++	if err != nil {
++		f.Close()
++		nssFallbacks.Add(1)
++		nssWarning(err)
++		return fallback
++	}
++	g := &nssGCM{file: f, session: s.Ses, fallback: fallback}
++	nssCreated.Add(1)
++	// Deterministic Close is used by TLS; the finalizer also covers abandoned
++	// connections and AEADs owned by callers outside the TLS connection lifecycle.
++	runtime.SetFinalizer(g, (*nssGCM).Close)
++	return g
++}
++
++type nssGCM struct {
++	mu       sync.Mutex
++	file     *os.File
++	session  uint32
++	fallback AEAD
++	scratch  []byte
++}
++
++func (g *nssGCM) NonceSize() int { return 12 }
++func (g *nssGCM) Overhead() int  { return 16 }
++func (g *nssGCM) closeLocked() {
++	if g.file != nil {
++		g.file.Close()
++		g.file = nil
++		nssClosed.Add(1)
++	}
++	clear(g.scratch)
++	g.scratch = nil
++}
++func (g *nssGCM) Close() { g.mu.Lock(); defer g.mu.Unlock(); g.closeLocked() }
++func (g *nssGCM) run(op uint16, nonce, in, aad []byte) ([]byte, error) {
++	size := len(in) + 16
++	if cap(g.scratch) < size {
++		g.scratch = make([]byte, size)
++	} else {
++		g.scratch = g.scratch[:size]
++	}
++	var pin runtime.Pinner
++	pin.Pin(nssPtr(nonce))
++	pin.Pin(nssPtr(in))
++	pin.Pin(nssPtr(g.scratch))
++	if len(aad) > 0 {
++		pin.Pin(nssPtr(aad))
++	}
++	defer pin.Unpin()
++	a := nssAuth{Ses: g.session, Op: op, Len: uint32(len(in)), Authlen: uint32(len(aad)), Aad: nssPtr(aad), Src: nssPtr(in), Dst: nssPtr(g.scratch), Taglen: 16, IV: nssPtr(nonce), IVlen: 12}
++	err := nssIoctl(g.file, 0xc048636d, unsafe.Pointer(&a))
++	runtime.KeepAlive(nonce)
++	runtime.KeepAlive(in)
++	runtime.KeepAlive(aad)
++	runtime.KeepAlive(g)
++	if err != nil {
++
++		clear(g.scratch)
++		return nil, err
++	}
++	if op == 1 {
++		size = len(in) - 16
++	}
++	return g.scratch[:size], nil
++}
++func (g *nssGCM) Seal(dst, nonce, plaintext, aad []byte) []byte {
++	if len(nonce) != 12 {
++		panic("cipher: incorrect nonce length given to NSS GCM")
++	}
++	g.mu.Lock()
++	defer g.mu.Unlock()
++	if g.file != nil && len(plaintext) > 0 && len(plaintext) >= nssMin && len(aad) <= 255 && len(plaintext)+len(aad)+16 <= nssMaxRequest {
++		out, err := g.run(0, nonce, plaintext, aad)
++		if err == nil {
++			if nssVerify {
++				want := g.fallback.Seal(nil, nonce, plaintext, aad)
++				if !bytes.Equal(out, want) {
++					g.closeLocked()
++					nssFallbacks.Add(1)
++					nssWarning(errors.New("hardware encryption failed CPU verification"))
++					return append(dst, want...)
++				}
++			}
++			nssSeals.Add(1)
++			return append(dst, out...)
++		}
++		g.closeLocked()
++		nssWarning(err)
++	}
++	nssFallbacks.Add(1)
++	return g.fallback.Seal(dst, nonce, plaintext, aad)
++}
++func (g *nssGCM) Open(dst, nonce, ciphertext, aad []byte) ([]byte, error) {
++	if len(nonce) != 12 {
++		panic("cipher: incorrect nonce length given to NSS GCM")
++	}
++	if len(ciphertext) < 16 {
++		return nil, errors.New("cipher: message authentication failed")
++	}
++	g.mu.Lock()
++	defer g.mu.Unlock()
++
++	if g.file != nil && len(ciphertext) > 16 && len(ciphertext)-16 >= nssMin && len(aad) <= 255 && len(ciphertext)+len(aad) <= nssMaxRequest {
++		out, err := g.run(1, nonce, ciphertext, aad)
++		if err == nil {
++			if nssVerify {
++				want, e := g.fallback.Open(nil, nonce, ciphertext, aad)
++				if e != nil || !bytes.Equal(out, want) {
++					g.closeLocked()
++					nssFallbacks.Add(1)
++					nssWarning(errors.New("hardware decryption failed CPU verification"))
++					if e != nil {
++						return nil, e
++					}
++					return append(dst, want...), nil
++				}
++			}
++			nssOpens.Add(1)
++			return append(dst, out...), nil
++		}
++		// Never release plaintext on failed authentication. A driver error also
++		// requires CPU verification of the original, untouched ciphertext.
++		if err == syscall.EBADMSG {
++			return nil, errors.New("cipher: message authentication failed")
++		}
++
++		g.closeLocked()
++		nssWarning(err)
++	}
++	nssFallbacks.Add(1)
++	return g.fallback.Open(dst, nonce, ciphertext, aad)
++}
+--- a/_nss/nss_readv_test.go
++++ b/_nss/nss_readv_test.go
+@@ -0,0 +1,36 @@
++// SPDX-License-Identifier: MPL-2.0
++//go:build !windows && !wasm && !illumos && !openbsd
++
++package buf
++
++import (
++	"errors"
++	"syscall"
++	"testing"
++)
++
++type badReadvConn struct{ calls int }
++
++func (c *badReadvConn) Control(fn func(uintptr)) error { fn(^uintptr(0)); return nil }
++func (c *badReadvConn) Read(fn func(uintptr) bool) error {
++	c.calls++
++	if !fn(^uintptr(0)) {
++		return errors.New("permanent readv error incorrectly requested a poll wait")
++	}
++	return nil
++}
++func (c *badReadvConn) Write(fn func(uintptr) bool) error { return nil }
++func TestNSSReadvPermanentErrorDoesNotWait(t *testing.T) {
++	conn := &badReadvConn{}
++	reader := &ReadVReader{rawConn: conn, mr: newMultiReader(), alloc: allocStrategy{current: 32}}
++	mb, err := reader.readMulti()
++	if !errors.Is(err, syscall.EBADF) || len(mb) != 0 || conn.calls != 1 {
++		t.Fatalf("readv error: %v buffers=%d calls=%d", err, len(mb), conn.calls)
++	}
++	// An error path must clear stale Go buffer pointers before pool reuse.
++	for _, iov := range reader.mr.(*posixReader).iovecs[:cap(reader.mr.(*posixReader).iovecs)] {
++		if iov.Base != nil {
++			t.Fatal("readv retained a released buffer")
++		}
++	}
++}
+--- a/_nss/nss_record_tls.go
++++ b/_nss/nss_record_tls.go
+@@ -0,0 +1,451 @@
++// Copyright 2026. SPDX-License-Identifier: BSD-3-Clause
++package tls
++
++import (
++	"bytes"
++	"io"
++	"net"
++)
++
++// Private record API: returned buffers are borrowed until release, unlike
++// ordinary cipher.AEAD results. Implemented only by the DMA-BUF backend.
++type nssMappedAEAD interface {
++	NSSRecordBuffers() (input, output []byte, release func())
++	NSSSealRecord(prefix, nonce, plaintext, aad []byte) ([]byte, error)
++	NSSOpenRecord(nonce, ciphertext, aad []byte) ([]byte, error)
++}
++
++func nssRecords(v any) nssMappedAEAD {
++	if c, ok := v.(interface{ nssRecordCipher() nssMappedAEAD }); ok {
++		return c.nssRecordCipher()
++	}
++	return nil
++}
++func (f *prefixNonceAEAD) nssRecordCipher() nssMappedAEAD {
++	if _, ok := f.aead.(nssMappedAEAD); ok {
++		return f
++	}
++	return nil
++}
++func (f *xorNonceAEAD) nssRecordCipher() nssMappedAEAD {
++	if _, ok := f.aead.(nssMappedAEAD); ok {
++		return f
++	}
++	return nil
++}
++func (f *prefixNonceAEAD) NSSRecordBuffers() ([]byte, []byte, func()) {
++	return f.aead.(nssMappedAEAD).NSSRecordBuffers()
++}
++func (f *xorNonceAEAD) NSSRecordBuffers() ([]byte, []byte, func()) {
++	return f.aead.(nssMappedAEAD).NSSRecordBuffers()
++}
++func (f *prefixNonceAEAD) NSSSealRecord(prefix, nonce, plaintext, aad []byte) ([]byte, error) {
++	copy(f.nonce[4:], nonce)
++	return f.aead.(nssMappedAEAD).NSSSealRecord(prefix, f.nonce[:], plaintext, aad)
++}
++func (f *prefixNonceAEAD) NSSOpenRecord(nonce, ciphertext, aad []byte) ([]byte, error) {
++	copy(f.nonce[4:], nonce)
++	return f.aead.(nssMappedAEAD).NSSOpenRecord(f.nonce[:], ciphertext, aad)
++}
++func (f *xorNonceAEAD) NSSSealRecord(prefix, nonce, plaintext, aad []byte) ([]byte, error) {
++	mask := f.nonceMask
++	for i, b := range nonce {
++		mask[4+i] ^= b
++	}
++	return f.aead.(nssMappedAEAD).NSSSealRecord(prefix, mask[:], plaintext, aad)
++}
++func (f *xorNonceAEAD) NSSOpenRecord(nonce, ciphertext, aad []byte) ([]byte, error) {
++	mask := f.nonceMask
++	for i, b := range nonce {
++		mask[4+i] ^= b
++	}
++	return f.aead.(nssMappedAEAD).NSSOpenRecord(mask[:], ciphertext, aad)
++}
++
++// Bind raw socket input to CMA once per traffic key. Retain the old mapping
++// across cipher Close until any prefetched ciphertext has moved to the new
++// record owner. Key changes may copy pending bytes; the steady-state path reads
++// socket data directly into CMA and submits a slot offset without staging.
++func (c *Conn) nssPrepareInput() {
++	owner := nssRecords(c.in.cipher)
++	if owner == c.nssReadOwner {
++		return
++	}
++	var input []byte
++	var release func()
++	if owner != nil {
++		input, _, release = owner.NSSRecordBuffers()
++	}
++	c.in.nssPrefetched = nil
++	clear(c.in.nssPrefetchStorage[:])
++	pending := c.rawInput.Bytes()
++	if input != nil && len(pending) <= cap(input) {
++		copy(input, pending)
++		c.rawInput = *bytes.NewBuffer(input[:len(pending)])
++	} else if c.nssReadRelease != nil {
++		c.rawInput = *bytes.NewBuffer(append([]byte(nil), pending...))
++	}
++	if c.nssReadRelease != nil {
++		c.nssReadRelease()
++	}
++	c.nssReadOwner = owner
++	c.nssReadBuffer = input
++	c.nssReadRelease = release
++}
++func (c *Conn) nssCompactInput(needs int) {
++	if c.nssReadBuffer == nil || c.rawInput.Available() >= needs+bytes.MinRead {
++		return
++	}
++	pending := c.rawInput.Bytes()
++	if len(pending)+needs+bytes.MinRead > cap(c.nssReadBuffer) {
++		return
++	}
++	copy(c.nssReadBuffer, pending)
++	c.rawInput = *bytes.NewBuffer(c.nssReadBuffer[:len(pending)])
++}
++func (c *Conn) nssReleaseInput() {
++	if c.nssReadLease != nil {
++		if c.nssReadLease.cond != nil {
++			c.nssReadLease.cond.Broadcast()
++		} else {
++			close(c.nssReadLease.canceled)
++		}
++		c.nssReadLease = nil
++	}
++	if c.nssReadRelease == nil {
++		return
++	}
++	c.input.Reset(nil)
++	c.in.nssPrefetched = nil
++	clear(c.in.nssPrefetchStorage[:])
++	c.rawInput = bytes.Buffer{}
++	c.nssReadRelease()
++	c.nssReadRelease = nil
++	c.nssReadBuffer = nil
++	c.nssReadOwner = nil
++}
++
++// Only currently available records are grouped. No timer or extra socket read
++// waits for a batch. A change of traffic key invalidates speculative decrypts.
++type nssBatchAEAD interface {
++	nssMappedAEAD
++	NSSBatchSize() int
++	NSSBeginRecordBatch() (int, error)
++	NSSFlushRecordBatch() error
++	NSSAbortRecordBatch()
++	NSSOpenRecords(nonces [][12]byte, inputs, aads [][]byte) ([][]byte, []error)
++}
++
++func nssBatchRecords(v any) nssBatchAEAD {
++	switch f := v.(type) {
++	case *prefixNonceAEAD:
++		if _, ok := f.aead.(nssBatchAEAD); ok {
++			return f
++		}
++	case *xorNonceAEAD:
++		if _, ok := f.aead.(nssBatchAEAD); ok {
++			return f
++		}
++	}
++	return nil
++}
++func (f *prefixNonceAEAD) NSSBatchSize() int { return f.aead.(nssBatchAEAD).NSSBatchSize() }
++func (f *xorNonceAEAD) NSSBatchSize() int    { return f.aead.(nssBatchAEAD).NSSBatchSize() }
++func (f *prefixNonceAEAD) NSSBeginRecordBatch() (int, error) {
++	return f.aead.(nssBatchAEAD).NSSBeginRecordBatch()
++}
++func (f *xorNonceAEAD) NSSBeginRecordBatch() (int, error) {
++	return f.aead.(nssBatchAEAD).NSSBeginRecordBatch()
++}
++func (f *prefixNonceAEAD) NSSFlushRecordBatch() error {
++	return f.aead.(nssBatchAEAD).NSSFlushRecordBatch()
++}
++func (f *xorNonceAEAD) NSSFlushRecordBatch() error {
++	return f.aead.(nssBatchAEAD).NSSFlushRecordBatch()
++}
++func (f *prefixNonceAEAD) NSSAbortRecordBatch() { f.aead.(nssBatchAEAD).NSSAbortRecordBatch() }
++func (f *xorNonceAEAD) NSSAbortRecordBatch()    { f.aead.(nssBatchAEAD).NSSAbortRecordBatch() }
++func (f *prefixNonceAEAD) NSSOpenRecords(nonces [][12]byte, inputs, aads [][]byte) ([][]byte, []error) {
++	for i := range nonces {
++		n := f.nonce
++		copy(n[4:], nonces[i][:8])
++		nonces[i] = n
++	}
++	return f.aead.(nssBatchAEAD).NSSOpenRecords(nonces, inputs, aads)
++}
++func (f *xorNonceAEAD) NSSOpenRecords(nonces [][12]byte, inputs, aads [][]byte) ([][]byte, []error) {
++	for i := range nonces {
++		n := f.nonceMask
++		for j, b := range nonces[i][:8] {
++			n[4+j] ^= b
++		}
++		nonces[i] = n
++	}
++	return f.aead.(nssBatchAEAD).NSSOpenRecords(nonces, inputs, aads)
++}
++func (c *Conn) nssWriteRecords(mapped nssBatchAEAD, data []byte) (int, error) {
++	return c.nssWriteScattered(mapped, [][]byte{data})
++}
++func (c *Conn) nssWriteScattered(mapped nssBatchAEAD, parts [][]byte) (int, error) {
++	remaining := 0
++	for _, p := range parts {
++		if len(p) > int(^uint(0)>>1)-remaining {
++			return 0, io.ErrShortBuffer
++		}
++		remaining += len(p)
++	}
++	part, offset := 0, 0
++	input, _, release := mapped.NSSRecordBuffers()
++	if release == nil {
++		return 0, io.ErrClosedPipe
++	}
++	defer release()
++	slots, err := mapped.NSSBeginRecordBatch()
++	if err != nil {
++		return 0, err
++	}
++	defer mapped.NSSAbortRecordBatch()
++	defer clear(c.nssWriteRefs[:])
++	if slots < 1 || slots > 16 || len(input)%slots != 0 {
++		return 0, io.ErrShortBuffer
++	}
++	capacity := len(input) / slots
++	written := 0
++	for remaining > 0 {
++		records := &c.nssWriteRefs
++		clear(records[:])
++		var sizes, wireSizes [16]int
++		count := 0
++		for count < slots && remaining > 0 {
++			m := remaining
++			if max := c.maxPayloadSizeForWrite(recordTypeApplicationData); m > max {
++				m = max
++			}
++			record := input[count*capacity : count*capacity+recordHeaderLen : (count+1)*capacity]
++			record[0] = byte(recordTypeApplicationData)
++			record[1] = 3
++			record[2] = 3
++			record[3] = byte(m >> 8)
++			record[4] = byte(m)
++			payloadOffset := recordHeaderLen + c.out.explicitNonceLen()
++			payload := input[count*capacity+payloadOffset : count*capacity+payloadOffset+m]
++			filled := 0
++			for filled < m {
++				for part < len(parts) && offset == len(parts[part]) {
++					part++
++					offset = 0
++				}
++				n := min(m-filled, len(parts[part])-offset)
++				if &payload[filled] != &parts[part][offset] {
++					copy(payload[filled:filled+n], parts[part][offset:offset+n])
++				}
++				filled += n
++				offset += n
++			}
++			record, err = c.out.encrypt(record, payload, c.config.rand())
++			if err != nil {
++				return written, err
++			}
++			records[count] = record
++			sizes[count] = m
++			wireSizes[count] = len(record)
++			count++
++			remaining -= m
++		}
++		if err = mapped.NSSFlushRecordBatch(); err != nil {
++			return written, err
++		}
++		bufs := net.Buffers(records[:count])
++		n, err := bufs.WriteTo(c.conn)
++		c.bytesSent += n
++		left := n
++		for i := 0; i < count; i++ {
++			if left < int64(wireSizes[i]) {
++				break
++			}
++			written += sizes[i]
++			left -= int64(wireSizes[i])
++		}
++		if err != nil {
++			return written, err
++		}
++		if len(bufs) != 0 {
++			return written, io.ErrShortWrite
++		}
++	}
++	return written, nil
++}
++
++type nssPrefetchedRecord struct {
++	input, plain []byte
++	err          error
++}
++
++func (hc *halfConn) nssOpenRecord(mapped nssMappedAEAD, nonce, payload, aad []byte) ([]byte, error) {
++	if len(hc.nssPrefetched) > 0 {
++		r := hc.nssPrefetched[0]
++		if len(payload) > 0 && len(r.input) > 0 && &r.input[0] == &payload[0] && len(r.input) == len(payload) {
++			hc.nssPrefetched[0] = nssPrefetchedRecord{}
++			hc.nssPrefetched = hc.nssPrefetched[1:]
++			return r.plain, r.err
++		}
++		hc.nssPrefetched = nil
++	}
++	return mapped.NSSOpenRecord(nonce, payload, aad)
++}
++func (c *Conn) nssPrefetchRecords() {
++	if len(c.in.nssPrefetched) > 0 {
++		return
++	}
++	mapped := nssBatchRecords(c.in.cipher)
++	if mapped == nil || mapped.NSSBatchSize() < 2 {
++		return
++	}
++	raw := c.rawInput.Bytes()
++	seq := c.in.seq
++	nonces := &c.in.nssPrefetchNonce
++	aadStore := &c.in.nssPrefetchAADStore
++	inputs, aads := &c.in.nssPrefetchInput, &c.in.nssPrefetchAAD
++	defer func() { clear(inputs[:]); clear(aads[:]) }()
++	count := 0
++	limit := mapped.NSSBatchSize()
++	if limit > 16 {
++		limit = 16
++	}
++	for count < limit && len(raw) >= 5 {
++		if raw[0] != byte(recordTypeApplicationData) || raw[1] != 3 || raw[2] != 3 {
++			break
++		}
++		n := int(raw[3])<<8 | int(raw[4])
++		explicit := c.in.explicitNonceLen()
++		if n < explicit+16 || n > maxCiphertext || n+5 > len(raw) {
++			break
++		}
++		record := raw[:5+n]
++		payload := record[5+explicit:]
++		if explicit == 8 {
++			copy(nonces[count][:], record[5:13])
++		} else if explicit == 0 {
++			copy(nonces[count][:], seq[:])
++		} else {
++			break
++		}
++		if c.vers == VersionTLS13 {
++			copy(aadStore[count][:], record[:5])
++			aads[count] = aadStore[count][:5]
++		} else {
++			copy(aadStore[count][:8], seq[:])
++			copy(aadStore[count][8:11], record[:3])
++			plainLen := len(payload) - 16
++			aadStore[count][11] = byte(plainLen >> 8)
++			aadStore[count][12] = byte(plainLen)
++			aads[count] = aadStore[count][:]
++		}
++		inputs[count] = payload
++		count++
++		raw = raw[n+5:]
++		j := 7
++		for ; j >= 0; j-- {
++			seq[j]++
++			if seq[j] != 0 {
++				break
++			}
++		}
++		if j < 0 {
++			break
++		}
++	}
++	if count < 2 {
++		return
++	}
++	plains, errs := mapped.NSSOpenRecords(nonces[:count], inputs[:count], aads[:count])
++	c.in.nssPrefetched = c.in.nssPrefetchStorage[:count]
++	for i := 0; i < count; i++ {
++		c.in.nssPrefetched[i] = nssPrefetchedRecord{inputs[i], plains[i], errs[i]}
++	}
++}
++
++// NSSReadBuffers fills caller-owned buffers from the current record and already
++// authenticated application records. Only the initial read may wait for input.
++// Normal readRecord processing still advances sequence numbers and validates
++// record types; speculative plaintext is never exposed directly to the caller.
++func (c *Conn) NSSReadBuffers(parts [][]byte) (int, error) {
++	if err := c.Handshake(); err != nil {
++		return 0, err
++	}
++	nonempty := false
++	for _, p := range parts {
++		nonempty = nonempty || len(p) != 0
++	}
++	if !nonempty {
++		return 0, nil
++	}
++	c.in.Lock()
++	defer c.in.Unlock()
++	for c.input.Len() == 0 {
++		if err := c.readRecord(); err != nil {
++			return 0, err
++		}
++		for c.hand.Len() > 0 {
++			if err := c.handlePostHandshakeMessage(); err != nil {
++				return 0, err
++			}
++		}
++	}
++	n := 0
++	for _, p := range parts {
++		for len(p) > 0 {
++			if c.input.Len() == 0 {
++				if !c.nssReadyApplicationRecord() {
++					return n, nil
++				}
++				if err := c.readRecord(); err != nil {
++					return n, err
++				}
++			}
++			copied, _ := c.input.Read(p)
++			n += copied
++			p = p[copied:]
++			// Preserve ordinary Read's eager handling of a queued TLS 1.2
++			// close-notify, including returning data together with EOF.
++			if c.input.Len() == 0 && c.rawInput.Len() > 0 &&
++				recordType(c.rawInput.Bytes()[0]) == recordTypeAlert {
++				if err := c.readRecord(); err != nil {
++					return n, err
++				}
++			}
++		}
++	}
++	return n, nil
++}
++
++// Called with c.in held. Stop before errors, empty records and post-handshake
++// messages: ordinary Read handles those on the next call, where waiting is OK.
++func (c *Conn) nssReadyApplicationRecord() bool {
++	if c.in.err != nil || c.hand.Len() != 0 || len(c.in.nssPrefetched) == 0 {
++		return false
++	}
++	raw := c.rawInput.Bytes()
++	if len(raw) < recordHeaderLen || recordType(raw[0]) != recordTypeApplicationData {
++		return false
++	}
++	n := int(raw[3])<<8 | int(raw[4])
++	offset := recordHeaderLen + c.in.explicitNonceLen()
++	if n+recordHeaderLen > len(raw) || offset >= n+recordHeaderLen {
++		return false
++	}
++	r := c.in.nssPrefetched[0]
++	if r.err != nil || len(r.input) != n+recordHeaderLen-offset ||
++		len(r.input) == 0 || &r.input[0] != &raw[offset] {
++		return false
++	}
++	if c.vers != VersionTLS13 {
++		return len(r.plain) > 0
++	}
++	for i := len(r.plain) - 1; i >= 0; i-- {
++		if r.plain[i] != 0 {
++			return i > 0 && recordType(r.plain[i]) == recordTypeApplicationData
++		}
++	}
++	return false
++}
+--- a/_nss/nss_record_tls_test.go
++++ b/_nss/nss_record_tls_test.go
+@@ -0,0 +1,616 @@
++// Copyright 2026. SPDX-License-Identifier: BSD-3-Clause
++package tls
++
++import (
++	"bytes"
++	"crypto/aes"
++	"crypto/cipher"
++	"crypto/rand"
++	"io"
++	"net"
++	"runtime"
++	"sync"
++	"testing"
++	"time"
++)
++
++type mappedTestAEAD struct {
++	cpu           cipher.AEAD
++	input, output []byte
++	borrowers     int
++	closed        bool
++}
++
++func newMappedTestAEAD(t *testing.T) *mappedTestAEAD {
++	block, err := aes.NewCipher(make([]byte, 16))
++	if err != nil {
++		t.Fatal(err)
++	}
++	cpu, err := cipher.NewGCM(block)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return &mappedTestAEAD{cpu: cpu, input: make([]byte, 32768), output: make([]byte, 32768)}
++}
++func (g *mappedTestAEAD) NonceSize() int { return 12 }
++func (g *mappedTestAEAD) Overhead() int  { return 16 }
++func (g *mappedTestAEAD) Seal([]byte, []byte, []byte, []byte) []byte {
++	panic("generic Seal bypassed mapped record API")
++}
++func (g *mappedTestAEAD) Open([]byte, []byte, []byte, []byte) ([]byte, error) {
++	panic("generic Open bypassed mapped record API")
++}
++func (g *mappedTestAEAD) Close() {
++	g.closed = true
++	if g.borrowers == 0 {
++		clear(g.input)
++		clear(g.output)
++	}
++}
++func (g *mappedTestAEAD) NSSRecordBuffers() ([]byte, []byte, func()) {
++	g.borrowers++
++	var once sync.Once
++	return g.input, g.output, func() {
++		once.Do(func() {
++			g.borrowers--
++			if g.closed && g.borrowers == 0 {
++				clear(g.input)
++				clear(g.output)
++			}
++		})
++	}
++}
++func (g *mappedTestAEAD) NSSSealRecord(prefix, nonce, plain, aad []byte) ([]byte, error) {
++	off := len(prefix)
++	if len(plain) > 0 && &plain[0] != &g.input[off] {
++		panic("encryption did not use mapped input")
++	}
++	copy(g.output, prefix)
++	return g.cpu.Seal(g.output[:off], nonce, plain, aad), nil
++}
++func (g *mappedTestAEAD) NSSOpenRecord(nonce, encrypted, aad []byte) ([]byte, error) {
++	if len(encrypted) > 0 && &encrypted[0] != &g.input[len(aad)] {
++		panic("decryption did not use mapped input")
++	}
++	return g.cpu.Open(g.output[:0], nonce, encrypted, aad)
++}
++func TestNSSMappedRecords(t *testing.T) {
++	for _, version := range []uint16{VersionTLS12, VersionTLS13} {
++		tx, rx := newMappedTestAEAD(t), newMappedTestAEAD(t)
++		out, in := halfConn{version: version}, halfConn{version: version}
++		if version == VersionTLS12 {
++			out.cipher = &prefixNonceAEAD{aead: tx}
++			in.cipher = &prefixNonceAEAD{aead: rx}
++		} else {
++			out.cipher = &xorNonceAEAD{aead: tx}
++			in.cipher = &xorNonceAEAD{aead: rx}
++		}
++		for _, size := range []int{1, 4096, 16384, 31} {
++			plain := bytes.Repeat([]byte{byte(size)}, size)
++			header := tx.input[:5]
++			copy(header, []byte{23, 3, 3, byte(size >> 8), byte(size)})
++			encrypted, err := out.encrypt(header, plain, rand.Reader)
++			if err != nil {
++				t.Fatal(err)
++			}
++			copy(rx.input, encrypted)
++			opened, typ, err := in.decrypt(rx.input[:len(encrypted)])
++			if err != nil || typ != recordTypeApplicationData || !bytes.Equal(opened, plain) {
++				t.Fatalf("TLS %x size %d: typ %d err %v", version, size, typ, err)
++			}
++		}
++	}
++}
++func TestNSSMappedKeyChangeRetainsPrefetch(t *testing.T) {
++	old, next := newMappedTestAEAD(t), newMappedTestAEAD(t)
++	c := &Conn{}
++	c.in.cipher = &xorNonceAEAD{aead: old}
++	c.nssPrepareInput()
++	want := []byte("prefetched next-key record")
++	copy(old.input, want)
++	c.rawInput = *bytes.NewBuffer(old.input[:len(want)])
++	old.Close()
++	if old.borrowers != 1 || !bytes.Equal(c.rawInput.Bytes(), want) {
++		t.Fatal("old mapping released while prefetched data is live")
++	}
++	c.in.cipher = &xorNonceAEAD{aead: next}
++	c.nssPrepareInput()
++	if old.borrowers != 0 || next.borrowers != 1 || !bytes.Equal(c.rawInput.Bytes(), want) {
++		t.Fatal("key change lost prefetched data")
++	}
++	c.nssReleaseInput()
++	if next.borrowers != 0 {
++		t.Fatal("mapping reference leaked")
++	}
++}
++func TestNSSMappedSocketReadAndCompaction(t *testing.T) {
++	g := newMappedTestAEAD(t)
++	c := &Conn{}
++	c.in.cipher = &xorNonceAEAD{aead: g}
++	c.nssPrepareInput()
++	defer c.nssReleaseInput()
++	// Consume most of a large read so bytes.Buffer would otherwise grow away
++	// from its mapped allocation. Ensure refill compacts within the same slot.
++	data := bytes.Repeat([]byte{0x73}, 30000)
++	if err := c.readFromUntil(bytes.NewReader(data), 30000); err != nil {
++		t.Fatal(err)
++	}
++	c.rawInput.Next(20000)
++	tail := bytes.Repeat([]byte{0x41}, 8000)
++	if err := c.readFromUntil(bytes.NewReader(tail), 18000); err != nil {
++		t.Fatal(err)
++	}
++	got := c.rawInput.Bytes()
++	if &got[0] != &g.input[0] || !bytes.Equal(got[:10000], data[:10000]) || !bytes.Equal(got[10000:], tail) {
++		t.Fatal("refill lost mapped storage or changed bytes")
++	}
++	if err := c.readFromUntil(bytes.NewReader(nil), len(got)+1); err != io.ErrUnexpectedEOF {
++		t.Fatalf("unexpected EOF behavior: %v", err)
++	}
++}
++
++type batchMappedRequest struct{ nonce, plain, aad, out []byte }
++type batchMappedTestAEAD struct {
++	*mappedTestAEAD
++	queued       bool
++	requests     []batchMappedRequest
++	seals, opens []int
++}
++
++func newBatchMappedTestAEAD(t *testing.T) *batchMappedTestAEAD {
++	g := newMappedTestAEAD(t)
++	g.input = make([]byte, 4*32768)
++	g.output = make([]byte, 4*32768)
++	return &batchMappedTestAEAD{mappedTestAEAD: g}
++}
++func (g *batchMappedTestAEAD) NSSBatchSize() int                 { return 4 }
++func (g *batchMappedTestAEAD) NSSBeginRecordBatch() (int, error) { g.queued = true; return 4, nil }
++func (g *batchMappedTestAEAD) NSSAbortRecordBatch()              { g.queued = false; g.requests = nil }
++func (g *batchMappedTestAEAD) NSSSealRecord(prefix, nonce, plain, aad []byte) ([]byte, error) {
++	slot := len(g.requests)
++	out := g.output[slot*32768 : slot*32768+len(prefix)+len(plain)+16]
++	copy(out, prefix)
++	g.requests = append(g.requests, batchMappedRequest{append([]byte(nil), nonce...), plain, append([]byte(nil), aad...), out})
++	return out, nil
++}
++func (g *batchMappedTestAEAD) NSSFlushRecordBatch() error {
++	g.seals = append(g.seals, len(g.requests))
++	for _, r := range g.requests {
++		g.cpu.Seal(r.out[:len(r.aad)], r.nonce, r.plain, r.aad)
++	}
++	g.requests = nil
++	return nil
++}
++func (g *batchMappedTestAEAD) NSSOpenRecord(nonce, input, aad []byte) ([]byte, error) {
++	return g.cpu.Open(g.output[:0], nonce, input, aad)
++}
++func (g *batchMappedTestAEAD) NSSOpenRecords(nonces [][12]byte, inputs, aads [][]byte) ([][]byte, []error) {
++	g.opens = append(g.opens, len(inputs))
++	out := make([][]byte, len(inputs))
++	errs := make([]error, len(inputs))
++	for i := range inputs {
++		out[i], errs[i] = g.cpu.Open(g.output[i*32768:i*32768], nonces[i][:], inputs[i], aads[i])
++	}
++	return out, errs
++}
++
++type batchWireConn struct {
++	net.Conn
++	bytes.Buffer
++}
++
++func (c *batchWireConn) Write(p []byte) (int, error) { return c.Buffer.Write(p) }
++func (c *batchWireConn) Read(p []byte) (int, error)  { return c.Buffer.Read(p) }
++func batchHalf(version uint16, g *batchMappedTestAEAD) halfConn {
++	if version == VersionTLS12 {
++		return halfConn{version: version, cipher: &prefixNonceAEAD{aead: g}}
++	}
++	return halfConn{version: version, cipher: &xorNonceAEAD{aead: g}}
++}
++
++func TestNSSBatchRecordsRoundTrip(t *testing.T) {
++	for _, version := range []uint16{VersionTLS12, VersionTLS13} {
++		tx, rx := newBatchMappedTestAEAD(t), newBatchMappedTestAEAD(t)
++		wire := &batchWireConn{}
++		writer := &Conn{conn: wire, vers: version, config: &Config{DynamicRecordSizingDisabled: true}, out: batchHalf(version, tx)}
++		plain := bytes.Repeat([]byte("multi record batch"), 6000)
++		writer.isHandshakeComplete.Store(true)
++		parts := [][]byte{nil, plain[:7], plain[7:8200], nil, plain[8200:32769], plain[32769:]}
++		n, err := writer.NSSWriteBuffers(parts)
++		if err != nil || n != len(plain) {
++			t.Fatalf("write %d %v", n, err)
++		}
++		if len(tx.seals) != 2 || tx.seals[0] != 4 || tx.seals[1] != 3 {
++			t.Fatalf("unexpected seal batches %v", tx.seals)
++		}
++		reader := &Conn{vers: version, in: batchHalf(version, rx)}
++		reader.nssPrepareInput()
++		defer reader.nssReleaseInput()
++		copy(rx.input, wire.Bytes())
++		reader.rawInput = *bytes.NewBuffer(rx.input[:wire.Len()])
++		var got []byte
++		for reader.rawInput.Len() > 0 {
++			reader.nssPrefetchRecords()
++			header := reader.rawInput.Bytes()[:5]
++			size := int(header[3])<<8 | int(header[4])
++			record := reader.rawInput.Next(5 + size)
++			p, typ, err := reader.in.decrypt(record)
++			if err != nil || typ != recordTypeApplicationData {
++				t.Fatalf("TLS %x open: %v %v", version, typ, err)
++			}
++			got = append(got, p...)
++		}
++		if !bytes.Equal(got, plain) {
++			t.Fatal("batched stream differs")
++		}
++		if len(rx.opens) != 2 || rx.opens[0] != 4 || rx.opens[1] != 3 {
++			t.Fatalf("unexpected open batches %v", rx.opens)
++		}
++	}
++}
++func TestNSSBatchRejectsCorruptLaterRecord(t *testing.T) {
++	tx, rx := newBatchMappedTestAEAD(t), newBatchMappedTestAEAD(t)
++	wire := &batchWireConn{}
++	writer := &Conn{conn: wire, vers: VersionTLS13, config: &Config{DynamicRecordSizingDisabled: true}, out: batchHalf(VersionTLS13, tx)}
++	_, err := writer.writeRecordLocked(recordTypeApplicationData, make([]byte, 32768))
++	if err != nil {
++		t.Fatal(err)
++	}
++	reader := &Conn{vers: VersionTLS13, in: batchHalf(VersionTLS13, rx)}
++	reader.nssPrepareInput()
++	defer reader.nssReleaseInput()
++	copy(rx.input, wire.Bytes())
++	rx.input[wire.Len()-1] ^= 1
++	reader.rawInput = *bytes.NewBuffer(rx.input[:wire.Len()])
++	reader.nssPrefetchRecords()
++	for i := 0; i < 2; i++ {
++		b := reader.rawInput.Bytes()
++		n := int(b[3])<<8 | int(b[4])
++		_, _, err := reader.in.decrypt(reader.rawInput.Next(n + 5))
++		if (err != nil) != (i == 1) {
++			t.Fatalf("record %d authentication result: %v", i, err)
++		}
++	}
++	if reader.in.seq[7] != 1 {
++		t.Fatal("failed record advanced sequence")
++	}
++}
++func TestNSSBatchKeyChangeInvalidatesLookahead(t *testing.T) {
++	old, next := newBatchMappedTestAEAD(t), newBatchMappedTestAEAD(t)
++	c := &Conn{vers: VersionTLS13, in: batchHalf(VersionTLS13, old)}
++	c.nssPrepareInput()
++	wire := []byte("unconsumed next-key ciphertext")
++	copy(old.input, wire)
++	c.rawInput = *bytes.NewBuffer(old.input[:len(wire)])
++	c.in.nssPrefetched = []nssPrefetchedRecord{{input: old.input, plain: old.output, err: io.ErrUnexpectedEOF}}
++	old.Close()
++	c.in.cipher = &xorNonceAEAD{aead: next}
++	c.nssPrepareInput()
++	defer c.nssReleaseInput()
++	if len(c.in.nssPrefetched) != 0 || !bytes.Equal(c.rawInput.Bytes(), wire) || old.borrowers != 0 {
++		t.Fatal("stale key cache or lost ciphertext")
++	}
++}
++
++func TestNSSBatchRetriesPrefetchAfterTrafficKeyUpdate(t *testing.T) {
++	old, next := newBatchMappedTestAEAD(t), newBatchMappedTestAEAD(t)
++	block, err := aes.NewCipher(bytes.Repeat([]byte{1}, 16))
++	if err != nil {
++		t.Fatal(err)
++	}
++	next.cpu, err = cipher.NewGCM(block)
++	if err != nil {
++		t.Fatal(err)
++	}
++	record := func(g cipher.AEAD, plain []byte, typ byte) []byte {
++		p := append(append([]byte(nil), plain...), typ)
++		n := len(p) + 16
++		header := []byte{23, 3, 3, byte(n >> 8), byte(n)}
++		return g.Seal(header, make([]byte, 12), p, header)
++	}
++	update := []byte{24, 0, 0, 1, 0}
++	first := record(old.cpu, update, 22)
++	second := record(next.cpu, []byte("new key payload"), 23)
++	c := &Conn{vers: VersionTLS13, in: batchHalf(VersionTLS13, old)}
++	c.nssPrepareInput()
++	n := copy(old.input, first)
++	n += copy(old.input[n:], second)
++	c.rawInput = *bytes.NewBuffer(old.input[:n])
++	c.nssPrefetchRecords()
++	if len(c.in.nssPrefetched) != 2 || c.in.nssPrefetched[1].err == nil {
++		t.Fatal("lookahead should reject the next traffic key")
++	}
++	p, typ, err := c.in.decrypt(c.rawInput.Next(len(first)))
++	if err != nil || typ != recordTypeHandshake || !bytes.Equal(p, update) {
++		t.Fatalf("key update record %v %v", typ, err)
++	}
++	old.Close()
++	c.in.cipher = &xorNonceAEAD{aead: next}
++	c.in.seq = [8]byte{}
++	c.nssPrepareInput()
++	defer c.nssReleaseInput()
++	if !bytes.Equal(c.rawInput.Bytes(), second) {
++		t.Fatal("speculative decrypt changed future ciphertext")
++	}
++	p, typ, err = c.in.decrypt(c.rawInput.Next(len(second)))
++	if err != nil || typ != recordTypeApplicationData || string(p) != "new key payload" {
++		t.Fatalf("new-key retry %v %v %q", typ, err, p)
++	}
++}
++
++type nssNoReadConn struct {
++	net.Conn
++	reads int
++}
++
++func (c *nssNoReadConn) Read([]byte) (int, error)    { c.reads++; return 0, io.ErrUnexpectedEOF }
++func (c *nssNoReadConn) Write(p []byte) (int, error) { return len(p), nil }
++
++func nssBufferedReader(t *testing.T, version uint16, plain []byte) (*Conn, *nssNoReadConn) {
++	t.Helper()
++	tx, rx := newBatchMappedTestAEAD(t), newBatchMappedTestAEAD(t)
++	wire := &batchWireConn{}
++	writer := &Conn{conn: wire, vers: version, config: &Config{DynamicRecordSizingDisabled: true}, out: batchHalf(version, tx)}
++	writer.isHandshakeComplete.Store(true)
++	if _, err := writer.NSSWriteBuffers([][]byte{plain}); err != nil {
++		t.Fatal(err)
++	}
++	conn := &nssNoReadConn{}
++	reader := &Conn{conn: conn, vers: version, haveVers: true, config: &Config{}, in: batchHalf(version, rx)}
++	reader.isHandshakeComplete.Store(true)
++	reader.nssPrepareInput()
++	copy(rx.input, wire.Bytes())
++	reader.rawInput = *bytes.NewBuffer(rx.input[:wire.Len()])
++	t.Cleanup(reader.nssReleaseInput)
++	return reader, conn
++}
++func TestNSSReadBufferedRecords(t *testing.T) {
++	for _, version := range []uint16{VersionTLS12, VersionTLS13} {
++		plain := bytes.Repeat([]byte("read-batch"), 7200)
++		reader, wire := nssBufferedReader(t, version, plain)
++		var got []byte
++		for len(got) < len(plain) {
++			parts := [][]byte{make([]byte, 3), nil, make([]byte, 8192), make([]byte, 65536)}
++			n, err := reader.NSSReadBuffers(parts)
++			if err != nil || n == 0 {
++				t.Fatalf("version %x: read %d %v", version, n, err)
++			}
++			for _, p := range parts {
++				if len(p) > n {
++					p = p[:n]
++				}
++				got = append(got, p...)
++				n -= len(p)
++			}
++		}
++		if !bytes.Equal(got, plain) || wire.reads != 0 {
++			t.Fatalf("changed stream or extra socket reads: %d", wire.reads)
++		}
++	}
++}
++func TestNSSReadBufferedRejectsLaterCorruption(t *testing.T) {
++	reader, wire := nssBufferedReader(t, VersionTLS13, bytes.Repeat([]byte{7}, 32768))
++	raw := reader.rawInput.Bytes()
++	raw[len(raw)-1] ^= 1
++	out := make([]byte, 65536)
++	n, err := reader.NSSReadBuffers([][]byte{out})
++	if n != 16384 || err != nil {
++		t.Fatalf("valid first record: %d %v", n, err)
++	}
++	n, err = reader.NSSReadBuffers([][]byte{out})
++	if n != 0 || err == nil || wire.reads != 0 {
++		t.Fatalf("bad tag escaped or socket read: %d %v %d", n, err, wire.reads)
++	}
++}
++func TestNSSReadReadyStopsAtControlOrEmpty(t *testing.T) {
++	for _, plain := range [][]byte{nil, {23}, {0, 0}, {1, 22}, {1, 21}, {1, 23, 0, 0}} {
++		c := &Conn{vers: VersionTLS13}
++		wire := []byte{23, 3, 3, 0, 16, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
++		c.rawInput.Write(wire)
++		c.in.nssPrefetched = []nssPrefetchedRecord{{input: c.rawInput.Bytes()[5:], plain: plain}}
++		want := bytes.Equal(plain, []byte{1, 23, 0, 0})
++		if got := c.nssReadyApplicationRecord(); got != want {
++			t.Fatalf("plain %x readiness %v", plain, got)
++		}
++	}
++}
++
++func TestNSSBorrowRecords(t *testing.T) {
++	for _, version := range []uint16{VersionTLS12, VersionTLS13} {
++		plain := bytes.Repeat([]byte("borrow"), 10000)
++		reader, wire := nssBufferedReader(t, version, plain)
++		parts, release, err := reader.NSSBorrowRecords()
++		if err != nil || release == nil {
++			t.Fatal(err)
++		}
++		got := bytes.Join(parts, nil)
++		if !bytes.Equal(got, plain) || wire.reads != 0 {
++			t.Fatal("changed data or extra socket read")
++		}
++		// Verify the exported slice aliases the backend's output, not a heap copy.
++		_, output, unpin := reader.nssReadOwner.NSSRecordBuffers()
++		found := false
++		for i := range output {
++			if &output[i] == &parts[0][0] {
++				found = true
++				break
++			}
++		}
++		unpin()
++		if !found {
++			t.Fatal("borrowed output was copied")
++		}
++		release()
++		release()
++		reader.in.Lock()
++		if err := reader.nssWaitReadLease(); err != nil {
++			t.Fatal(err)
++		}
++		reader.in.Unlock()
++	}
++}
++func TestNSSBorrowRejectsLaterCorruption(t *testing.T) {
++	reader, _ := nssBufferedReader(t, VersionTLS13, bytes.Repeat([]byte{7}, 32768))
++	raw := reader.rawInput.Bytes()
++	raw[len(raw)-1] ^= 1
++	parts, release, err := reader.NSSBorrowRecords()
++	if err != nil || len(parts) != 1 || len(parts[0]) != 16384 {
++		t.Fatal("bad first batch", err)
++	}
++	release()
++	parts, release, err = reader.NSSBorrowRecords()
++	if err == nil || len(parts) != 0 || release != nil {
++		t.Fatal("bad tag escaped")
++	}
++}
++func TestNSSBorrowCloseKeepsConsumerAlive(t *testing.T) {
++	reader, _ := nssBufferedReader(t, VersionTLS13, []byte("retained plaintext"))
++	parts, release, err := reader.NSSBorrowRecords()
++	if err != nil {
++		t.Fatal(err)
++	}
++	started := make(chan struct{})
++	finished := make(chan error, 1)
++	go func() {
++		reader.in.Lock()
++		close(started)
++		err := reader.nssWaitReadLease()
++		reader.in.Unlock()
++		finished <- err
++	}()
++	<-started
++	reader.activeCall.Store(1)
++	reader.in.Lock()
++	closeNSSCipher(reader.in.cipher)
++	reader.nssReleaseInput()
++	reader.in.Unlock()
++	if err := <-finished; err != net.ErrClosed {
++		t.Fatal("wait not canceled", err)
++	}
++	if string(parts[0]) != "retained plaintext" {
++		t.Fatal("close invalidated borrowed data")
++	}
++	release()
++	release()
++}
++
++func TestNSSBorrowBlocksReuseUntilRelease(t *testing.T) {
++	reader, _ := nssBufferedReader(t, VersionTLS13, []byte("leased"))
++	parts, release, err := reader.NSSBorrowRecords()
++	if err != nil {
++		t.Fatal(err)
++	}
++	started := make(chan struct{})
++	finished := make(chan error, 1)
++	go func() {
++		reader.in.Lock()
++		close(started)
++		err := reader.nssWaitReadLease()
++		reader.in.Unlock()
++		finished <- err
++	}()
++	<-started
++	// Acquiring this lock proves the waiter has dropped it to await the lease.
++	reader.in.Lock()
++	select {
++	case <-finished:
++		t.Fatal("reuse allowed before consumer release")
++	default:
++	}
++	if string(parts[0]) != "leased" {
++		t.Fatal("leased payload changed")
++	}
++	reader.in.Unlock()
++	release()
++	if err := <-finished; err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestNSSWriteFromReady(t *testing.T) {
++	for _, version := range []uint16{VersionTLS12, VersionTLS13} {
++		for _, fixed := range []bool{false, true} {
++			tx, rx := newBatchMappedTestAEAD(t), newBatchMappedTestAEAD(t)
++			wire := &batchWireConn{}
++			writer := &Conn{conn: wire, vers: version, config: &Config{DynamicRecordSizingDisabled: fixed}, out: batchHalf(version, tx)}
++			writer.isHandshakeComplete.Store(true)
++			packets := writer.packetsSent
++			handled, rerr, werr := writer.NSSWriteFromReady(func([][]byte) (int, error) { return 0, nil }, nil)
++			if handled || rerr != nil || werr != nil || writer.packetsSent != packets || wire.Len() != 0 {
++				t.Fatal("empty ready read changed writer")
++			}
++			var want []byte
++			observed := false
++			handled, rerr, werr = writer.NSSWriteFromReady(func(parts [][]byte) (int, error) {
++				n := 0
++				for i, p := range parts {
++					if i == len(parts)-1 {
++						p = p[:len(p)/2]
++					}
++					for j := range p {
++						p[j] = byte(n + j)
++					}
++					want = append(want, p...)
++					n += len(p)
++				}
++				return n, io.EOF
++			}, func(parts [][]byte) {
++				observed = true
++				if !bytes.Equal(bytes.Join(parts, nil), want) {
++					t.Fatal("plaintext observation changed")
++				}
++			})
++			if !handled || rerr != io.EOF || werr != nil || !observed {
++				t.Fatalf("ready read: %v %v %v", handled, rerr, werr)
++			}
++			in := batchHalf(version, rx)
++			var got []byte
++			for wire.Len() > 0 {
++				raw := wire.Bytes()
++				size := 5 + (int(raw[3]) << 8) + int(raw[4])
++				record := wire.Next(size)
++				copy(rx.input, record)
++				plain, kind, err := in.decrypt(rx.input[:size])
++				if err != nil || kind != recordTypeApplicationData {
++					t.Fatal("direct ciphertext", kind, err)
++				}
++				got = append(got, plain...)
++			}
++			if !bytes.Equal(got, want) {
++				t.Fatal("direct plaintext changed")
++			}
++			if tx.borrowers != 0 || tx.queued {
++				t.Fatal("direct input lease leaked")
++			}
++			writer.activeCall.Store(1)
++			handled, _, werr = writer.NSSWriteFromReady(func([][]byte) (int, error) { t.Fatal("read after close"); return 0, nil }, nil)
++			if !handled || werr != net.ErrClosed {
++				t.Fatal("close ignored")
++			}
++		}
++	}
++}
++
++func TestNSSDirectRechecksHandshakeAfterWriteLock(t *testing.T) {
++	c := &Conn{conn: &batchWireConn{}, vers: VersionTLS13, config: &Config{}, out: batchHalf(VersionTLS13, newBatchMappedTestAEAD(t))}
++	c.isHandshakeComplete.Store(true)
++	c.out.Lock()
++	done := make(chan bool, 1)
++	go func() {
++		handled, rerr, werr := c.NSSWriteFromReady(func([][]byte) (int, error) { t.Error("read during renegotiation"); return 0, nil }, nil)
++		done <- (!handled && rerr == nil && werr == nil)
++	}()
++	until := time.Now().Add(time.Second)
++	for c.activeCall.Load() == 0 && time.Now().Before(until) {
++		runtime.Gosched()
++	}
++	if c.activeCall.Load() == 0 {
++		c.out.Unlock()
++		t.Fatal("writer did not enter")
++	}
++	c.isHandshakeComplete.Store(false)
++	c.out.Unlock()
++	if !<-done {
++		t.Fatal("handshake state not rechecked")
++	}
++}
+--- a/_nss/nss_stub.go
++++ b/_nss/nss_stub.go
+@@ -0,0 +1,7 @@
++// Copyright 2026. SPDX-License-Identifier: BSD-3-Clause
++//go:build !linux || !arm64
++
++package cipher
++
++func NewNSSGCM(key []byte, fallback AEAD) AEAD { return fallback }
++func NSSStats() [5]uint64                      { return [5]uint64{} }
+--- a/_nss/overlay.py
++++ b/_nss/overlay.py
+@@ -0,0 +1,83 @@
++#!/usr/bin/env python3
++"""Build an isolated Go overlay; never edit the shared SDK or module cache."""
++import json
++from pathlib import Path
++import shutil
++import subprocess
++import sys
++
++source = Path(__file__).resolve().parent
++project, dest = map(lambda p: Path(p).resolve(), sys.argv[1:])
++def go(*args):
++    return subprocess.check_output(['go', *args], cwd=project, text=True).strip()
++goroot = Path(go('env', 'GOROOT')).resolve()
++utls = Path(go('list', '-m', '-f', '{{.Dir}}', 'github.com/refraction-networking/utls')).resolve()
++dest.mkdir(parents=True, exist_ok=True)
++replace = {}
++for name, root in [('go', goroot / 'src/crypto/tls'), ('utls', utls)]:
++    target = dest / name
++    if name == "utls":
++        if target.exists():
++            shutil.rmtree(target)
++        shutil.copytree(root, target, copy_function=shutil.copyfile)
++    else:
++        target.mkdir(exist_ok=True)
++    for filename in ['cipher_suites.go', 'conn.go']:
++        shutil.copyfile(root / filename, target / filename)
++        if name == "go":
++            replace[str(root / filename)] = str(target / filename)
++    subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(target),
++                    '-i', str(source / (name + '-tls.patch'))], check=True)
++    subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(target),
++                    '-i', str(source / (name + '-dmabuf.patch'))], check=True)
++    if name == 'go':
++        replace[str(root / 'nss_direct_tls.go')] = str(source / 'nss_direct_tls.go')
++        replace[str(root / 'nss_borrow_tls.go')] = str(source / 'nss_borrow_tls.go')
++        replace[str(root / 'nss_record_tls.go')] = str(source / 'nss_record_tls.go')
++        replace[str(root / 'nss_record_tls_test.go')] = str(source / 'nss_record_tls_test.go')
++    else:
++        shutil.copyfile(source / 'nss_direct_tls.go', target / 'nss_direct_tls.go')
++        shutil.copyfile(source / 'nss_borrow_tls.go', target / 'nss_borrow_tls.go')
++        shutil.copyfile(source / 'nss_record_tls.go', target / 'nss_record_tls.go')
++        shutil.copyfile(source / 'nss_record_tls_test.go', target / 'nss_record_tls_test.go')
++for filename in ['nss_linux_arm64.go', 'nss_dmabuf_linux_arm64.go', 'nss_dmabuf_linux_arm64_test.go', 'nss_stub.go']:
++    replace[str(goroot / 'src/crypto/cipher' / filename)] = str(source / filename)
++xray_tls = project / 'transport/internet/tls'
++xray_overlay = dest / 'xray-tls'
++xray_overlay.mkdir(exist_ok=True)
++shutil.copyfile(xray_tls / 'tls.go', xray_overlay / 'tls.go')
++subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(xray_overlay),
++                '-i', str(source / 'xray-tls.patch')], check=True)
++replace[str(xray_tls / 'tls.go')] = str(xray_overlay / 'tls.go')
++for filename in ['xray_nss_batch.go', 'xray_nss_batch_test.go', 'nss_direct_xray.go']:
++    replace[str(xray_tls / filename)] = str(source / filename)
++xray_buf = project / 'common/buf'
++buf_overlay = dest / 'xray-buf'
++buf_overlay.mkdir(exist_ok=True)
++for filename in ['readv_reader.go','readv_posix.go']:
++    shutil.copyfile(xray_buf / filename, buf_overlay / filename)
++subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(buf_overlay),
++                '-i', str(source / 'xray-readv.patch')], check=True)
++for filename in ['readv_reader.go','readv_posix.go']:
++    replace[str(xray_buf / filename)] = str(buf_overlay / filename)
++for filename in ['buffer.go', 'multi_buffer.go']:
++    shutil.copyfile(xray_buf / filename, buf_overlay / filename)
++subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(buf_overlay),
++                '-i', str(source / 'xray-borrow.patch')], check=True)
++for filename in ['buffer.go', 'multi_buffer.go']:
++    replace[str(xray_buf / filename)] = str(buf_overlay / filename)
++replace[str(xray_buf / 'nss_borrow_buf.go')] = str(source / 'nss_borrow_buf.go')
++replace[str(xray_buf / 'nss_borrow_buf_test.go')] = str(source / 'nss_borrow_buf_test.go')
++replace[str(xray_buf / 'nss_readv_test.go')] = str(source / 'nss_readv_test.go')
++shutil.copyfile(xray_buf / 'copy.go', buf_overlay / 'copy.go')
++subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-d', str(buf_overlay),
++                '-i', str(source / 'xray-direct.patch')], check=True)
++replace[str(xray_buf / 'copy.go')] = str(buf_overlay / 'copy.go')
++for filename in ['nss_direct_buf.go', 'nss_direct_read_linux.go', 'nss_direct_buf_test.go']:
++    replace[str(xray_buf / filename)] = str(source / filename)
++(dest / 'overlay.json').write_text(json.dumps({'Replace': replace}, indent=2) + '\n')
++
++mod = (project / 'go.mod').read_text()
++mod += '\nreplace github.com/refraction-networking/utls => ' + str(dest / 'utls') + '\n'
++(dest / 'go.mod').write_text(mod)
++shutil.copyfile(project / 'go.sum', dest / 'go.sum')
+--- a/_nss/utls-dmabuf.patch
++++ b/_nss/utls-dmabuf.patch
+@@ -0,0 +1,128 @@
++Subject: [PATCH] tls: batch mapped NSS records and retain buffer lifetimes
++
++Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
++
++--- a/conn.go
+++++ b/conn.go
++@@ -105,6 +105,12 @@
++-	in, out   halfConn
++-	rawInput  bytes.Buffer // raw input, starting with a record header
++-	input     bytes.Reader // application data waiting to be read, from rawInput.Next
++-	hand      bytes.Buffer // handshake data waiting to be read
++-	buffering bool         // whether records are buffered in sendBuf
++-	sendBuf   []byte       // a buffer of records waiting to be sent
+++	in, out        halfConn
+++	rawInput       bytes.Buffer // raw input, starting with a record header
+++	nssWriteRefs   [16][]byte
+++	nssReadOwner   nssMappedAEAD
+++	nssReadBuffer  []byte
+++	nssReadRelease func()
+++	nssReadLease *nssReadLease
+++	nssReadNotify *sync.Cond
+++	input          bytes.Reader // application data waiting to be read, from rawInput.Next
+++	hand           bytes.Buffer // handshake data waiting to be read
+++	buffering      bool         // whether records are buffered in sendBuf
+++	sendBuf        []byte       // a buffer of records waiting to be sent
++@@ -172,0 +179,5 @@
+++	nssPrefetched                    []nssPrefetchedRecord
+++	nssPrefetchStorage               [16]nssPrefetchedRecord
+++	nssPrefetchNonce                 [16][12]byte
+++	nssPrefetchAADStore              [16][13]byte
+++	nssPrefetchInput, nssPrefetchAAD [16][]byte
++@@ -387 +398,5 @@
++-			plaintext, err = c.Open(payload[:0], nonce, payload, additionalData)
+++			if mapped := nssRecords(hc.cipher); mapped != nil {
+++				plaintext, err = hc.nssOpenRecord(mapped, nonce, payload, additionalData)
+++			} else {
+++				plaintext, err = c.Open(payload[:0], nonce, payload, additionalData)
+++			}
++@@ -536,2 +551,11 @@
++-			record = c.Seal(record[:recordHeaderLen],
++-				nonce, record[recordHeaderLen:], record[:recordHeaderLen])
+++			if mapped := nssRecords(hc.cipher); mapped != nil {
+++				var err error
+++				record, err = mapped.NSSSealRecord(record[:recordHeaderLen], nonce,
+++					record[recordHeaderLen:], record[:recordHeaderLen])
+++				if err != nil {
+++					return nil, err
+++				}
+++			} else {
+++				record = c.Seal(record[:recordHeaderLen],
+++					nonce, record[recordHeaderLen:], record[:recordHeaderLen])
+++			}
++@@ -541 +565,12 @@
++-			record = c.Seal(record, nonce, payload, additionalData)
+++			if mapped := nssRecords(hc.cipher); mapped != nil {
+++				prefixLen := len(record)
+++				record = append(record, payload...)
+++				var err error
+++				record, err = mapped.NSSSealRecord(record[:prefixLen], nonce,
+++					record[prefixLen:], additionalData)
+++				if err != nil {
+++					return nil, err
+++				}
+++			} else {
+++				record = c.Seal(record, nonce, payload, additionalData)
+++			}
++@@ -616,0 +652 @@
+++	if err := c.nssWaitReadLease(); err != nil { return err }
++@@ -626,0 +663 @@
+++	c.nssPrepareInput()
++@@ -691,0 +729 @@
+++	c.nssPrefetchRecords()
++@@ -833,0 +872 @@
+++	c.nssCompactInput(needs)
++@@ -991,0 +1031,5 @@
+++	if typ == recordTypeApplicationData && !c.buffering {
+++		if batch := nssBatchRecords(c.out.cipher); batch != nil {
+++			return c.nssWriteRecords(batch, data)
+++		}
+++	}
++@@ -993,0 +1038,5 @@
+++	var nssInput []byte
+++	var nssRelease func()
+++	if mapped := nssRecords(c.out.cipher); mapped != nil {
+++		nssInput, _, nssRelease = mapped.NSSRecordBuffers()
+++	}
++@@ -1000 +1049,5 @@
++-		*outBufPtr = outBuf
+++		if nssRelease != nil {
+++			nssRelease()
+++		} else {
+++			*outBufPtr = outBuf
+++		}
++@@ -1010,0 +1064,3 @@
+++		if nssInput != nil {
+++			outBuf = nssInput[:0]
+++		}
++@@ -1209 +1265,7 @@
++-func (c *Conn) Write(b []byte) (int, error) {
+++func (c *Conn) Write(b []byte) (int, error) { return c.writeNSSBuffers(b, nil) }
+++
+++// NSSWriteBuffers consumes only buffers supplied by this call. The TLS write
+++// interlock and output lock cover the entire vector, as with a single Write.
+++func (c *Conn) NSSWriteBuffers(parts [][]byte) (int, error) { return c.writeNSSBuffers(nil, parts) }
+++
+++func (c *Conn) writeNSSBuffers(b []byte, parts [][]byte) (int, error) {
++@@ -1249,0 +1312,19 @@
+++	if parts != nil {
+++		if mapped := nssBatchRecords(c.out.cipher); mapped != nil && !c.buffering {
+++			n, err := c.nssWriteScattered(mapped, parts)
+++			return n, c.out.setErrorLocked(err)
+++		}
+++		// Non-NSS ciphers keep ordinary Write semantics, including TLS 1.0 splitting.
+++		total := 0
+++		for _, p := range parts {
+++			if len(p) > int(^uint(0)>>1)-total {
+++				return 0, io.ErrShortBuffer
+++			}
+++			total += len(p)
+++		}
+++		b = make([]byte, 0, total)
+++		for _, p := range parts {
+++			b = append(b, p...)
+++		}
+++	}
+++
++@@ -1721,0 +1803 @@
+++	c.nssReleaseInput()
+--- a/_nss/utls-tls.patch
++++ b/_nss/utls-tls.patch
+@@ -0,0 +1,56 @@
++Subject: [PATCH] tls: optional NSS AES-GCM backend and session cleanup
++
++Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
++
++--- a/cipher_suites.go
+++++ b/cipher_suites.go
++@@ -533,0 +534 @@
+++	aead = cipher.NewNSSGCM(key, aead)
++@@ -570,0 +572 @@
+++	aead = cipher.NewNSSGCM(key, aead)
++@@ -725,0 +728,12 @@
+++
+++// closeNSS releases only the optional external crypto session.
+++func (f *prefixNonceAEAD) closeNSS() {
+++	if c, ok := f.aead.(interface{ Close() }); ok {
+++		c.Close()
+++	}
+++}
+++func (f *xorNonceAEAD) closeNSS() {
+++	if c, ok := f.aead.(interface{ Close() }); ok {
+++		c.Close()
+++	}
+++}
++--- a/conn.go
+++++ b/conn.go
++@@ -211,0 +212 @@
+++	closeNSSCipher(hc.nextCipher)
++@@ -221,0 +223 @@
+++	closeNSSCipher(hc.cipher)
++@@ -235,0 +238 @@
+++	closeNSSCipher(hc.cipher)
++@@ -1436,0 +1440 @@
+++	defer c.closeNSSSessions()
++@@ -1700,0 +1705,22 @@
+++}
+++
+++func closeNSSCipher(v any) {
+++	if c, ok := v.(interface{ closeNSS() }); ok {
+++		c.closeNSS()
+++	}
+++}
+++
+++// Called after the underlying socket is closed, so blocked network operations
+++// wake before we wait for the handshake and record locks. Also covers failed
+++// handshakes and a prepared but never activated TLS 1.2 cipher.
+++func (c *Conn) closeNSSSessions() {
+++	c.handshakeMutex.Lock()
+++	defer c.handshakeMutex.Unlock()
+++	c.in.Lock()
+++	closeNSSCipher(c.in.cipher)
+++	closeNSSCipher(c.in.nextCipher)
+++	c.in.Unlock()
+++	c.out.Lock()
+++	closeNSSCipher(c.out.cipher)
+++	closeNSSCipher(c.out.nextCipher)
+++	c.out.Unlock()
+--- a/_nss/xray-borrow.patch
++++ b/_nss/xray-borrow.patch
+@@ -0,0 +1,21 @@
++Subject: [PATCH] buf: release borrowed record batches after consumption
++
++Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
++
++--- a/buffer.go
+++++ b/buffer.go
++@@ -26,0 +27 @@
+++	borrowed
++@@ -36,0 +38 @@
+++	release func()
++@@ -119,0 +122,4 @@
+++	case borrowed:
+++		release := b.release
+++		b.release = nil
+++		release()
++--- a/multi_buffer.go
+++++ b/multi_buffer.go
++@@ -179 +179,2 @@
++-		b := New()
+++		var b *Buffer
+++		if size > Size { b = NewWithSize(size) } else { b = New() }
+--- a/_nss/xray-direct.patch
++++ b/_nss/xray-direct.patch
+@@ -0,0 +1,24 @@
++Subject: [PATCH] buf: copy ready TCP input directly into NSS TLS slots
++
++Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
++
++--- a/copy.go
+++++ b/copy.go
++@@ -91,0 +92,10 @@
+++    var direct nssReadyCopier
+++    var observe func(MultiBuffer)
+++    if nssDirectCopyEnabled {
+++        direct, _ = writer.(nssReadyCopier)
+++        if direct != nil {
+++            observe = func(buffer MultiBuffer) {
+++                for _, onData := range handler.onData { onData(buffer) }
+++            }
+++        }
+++    }
++@@ -92,0 +103,6 @@
+++        if direct != nil {
+++            handled, rerr, werr := direct.NSSCopyReadyFrom(reader, observe)
+++            if werr != nil { return writeError{werr} }
+++            if rerr != nil { return readError{rerr} }
+++            if handled { continue }
+++        }
+--- a/_nss/xray-readv.patch
++++ b/_nss/xray-readv.patch
+@@ -0,0 +1,69 @@
++Subject: [PATCH] buf: batch ready readv data and handle interrupted reads
++
++Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
++
++--- a/readv_reader.go
+++++ b/readv_reader.go
++@@ -7,0 +8,2 @@
+++	"os"
+++	"strconv"
++@@ -14,0 +17,13 @@
+++// Larger readv vectors only consume bytes already ready in the socket. Keep
+++// the regular allocation limit when the optional batched TLS path is disabled.
+++var nssReadvLimit = func() uint32 {
+++	mode := os.Getenv("XRAY_NSS_TLS")
+++	if mode != "dmabuf" && mode != "cpu-batch" {
+++		return 8
+++	}
+++	if n, err := strconv.Atoi(os.Getenv("XRAY_NSS_READV_BUFFERS")); err == nil && n >= 8 && n <= 64 {
+++		return uint32(n)
+++	}
+++	return 32
+++}()
+++
++@@ -30,2 +45,2 @@
++-	if s.current > 8 {
++-		s.current = 8
+++	if s.current > nssReadvLimit {
+++		s.current = nssReadvLimit
++@@ -79,0 +95 @@
+++	var readErr error
++@@ -82,0 +99,6 @@
+++			if source, ok := r.mr.(interface{ ReadError() error }); ok {
+++				readErr = source.ReadError()
+++				if readErr != nil {
+++					return true
+++				}
+++			}
++@@ -89,0 +112,3 @@
+++	if err == nil {
+++		err = readErr
+++	}
++--- a/readv_posix.go
+++++ b/readv_posix.go
++@@ -12,0 +13 @@
+++	err    error
++@@ -30,3 +31,13 @@
++-	n, _, e := syscall.Syscall(syscall.SYS_READV, fd, uintptr(unsafe.Pointer(&r.iovecs[0])), uintptr(len(r.iovecs)))
++-	if e != 0 {
++-		return -1
+++	r.err = nil
+++	for {
+++		n, _, e := syscall.Syscall(syscall.SYS_READV, fd, uintptr(unsafe.Pointer(&r.iovecs[0])), uintptr(len(r.iovecs)))
+++		if e == syscall.EINTR {
+++			continue
+++		}
+++		if e != 0 {
+++			if e != syscall.EAGAIN && e != syscall.EWOULDBLOCK {
+++				r.err = e
+++			}
+++			return -1
+++		}
+++		return int32(n)
++@@ -34 +44,0 @@
++-	return int32(n)
++@@ -35,0 +46,4 @@
+++
+++// Only would-block asks RawConn.Read to wait. Permanent errors must escape
+++// the callback instead of waiting forever for an unrelated readiness edge.
+++func (r *posixReader) ReadError() error { return r.err }
+--- a/_nss/xray-tls.patch
++++ b/_nss/xray-tls.patch
+@@ -0,0 +1,13 @@
++Subject: [PATCH] tls: batch available buffers into NSS TLS records
++
++Reduce synchronous cryptodev calls without waiting for future input.
++The optional NSS overlay provides the batching helper and runtime guard.
++
++Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
++
++--- a/tls.go
+++++ b/tls.go
++@@ -53,0 +54,3 @@
+++	if nssBatchEnabled {
+++		return nssWriteMultiBuffer(c.Conn, mb)
+++	}
+--- a/_nss/xray_nss_batch.go
++++ b/_nss/xray_nss_batch.go
+@@ -0,0 +1,142 @@
++// SPDX-License-Identifier: MPL-2.0
++package tls
++
++import (
++	"io"
++	"os"
++	"sync"
++
++	"github.com/xtls/xray-core/common/buf"
++)
++
++var nssBatchEnabled = (os.Getenv("XRAY_NSS_TLS") == "cryptodev" || os.Getenv("XRAY_NSS_TLS") == "1" || (os.Getenv("XRAY_NSS_TLS") == "dmabuf" || os.Getenv("XRAY_NSS_TLS") == "cpu-batch")) && os.Getenv("XRAY_NSS_TLS_BATCH") != "0"
++
++var nssBatchBytes = func() int {
++	if os.Getenv("XRAY_NSS_TLS") == "dmabuf" || os.Getenv("XRAY_NSS_TLS") == "cpu-batch" {
++		return 65536
++	}
++	return 16384
++}()
++var nssRecordPool = sync.Pool{New: func() any { return make([]byte, nssBatchBytes) }}
++
++// Batch only bytes already supplied by this call. Never wait for another read,
++// and retain the standard TLS record limit and normal short-write semantics.
++func nssWriteMultiBuffer(w io.Writer, mb buf.MultiBuffer) error {
++	defer buf.ReleaseMulti(mb)
++	if os.Getenv("XRAY_NSS_TLS") == "dmabuf" || os.Getenv("XRAY_NSS_TLS") == "cpu-batch" {
++		if direct, ok := w.(interface{ NSSWriteBuffers([][]byte) (int, error) }); ok {
++			var local [8][]byte
++			parts := local[:0]
++			total := 0
++			for _, b := range mb {
++				parts = append(parts, b.Bytes())
++				total += int(b.Len())
++			}
++			n, err := direct.NSSWriteBuffers(parts)
++			if err == nil && n != total {
++				err = io.ErrShortWrite
++			}
++			return err
++		}
++	}
++	if len(mb) <= 1 {
++		for _, b := range mb {
++			if err := nssWriteAll(w, b.Bytes()); err != nil {
++				return err
++			}
++		}
++		return nil
++	}
++	block := nssRecordPool.Get().([]byte)
++	defer func() {
++		clear(block[:])
++		nssRecordPool.Put(block)
++	}()
++	n := 0
++	for _, b := range mb {
++		p := b.Bytes()
++		for len(p) > 0 {
++			copied := copy(block[n:], p)
++			n += copied
++			p = p[copied:]
++			if n == len(block) {
++				if err := nssWriteAll(w, block[:]); err != nil {
++					return err
++				}
++				n = 0
++			}
++		}
++	}
++	if n > 0 {
++		return nssWriteAll(w, block[:n])
++	}
++	return nil
++}
++
++func nssWriteAll(w io.Writer, p []byte) error {
++	for len(p) > 0 {
++		n, err := w.Write(p)
++		if n < 0 || n > len(p) {
++			return io.ErrShortWrite
++		}
++		p = p[n:]
++		if err != nil {
++			return err
++		}
++		if n == 0 {
++			return io.ErrShortWrite
++		}
++	}
++	return nil
++}
++
++func (c *UConn) WriteMultiBuffer(mb buf.MultiBuffer) error {
++	if nssBatchEnabled {
++		return nssWriteMultiBuffer(c.UConn, mb)
++	}
++	return buf.NewWriter(c.UConn).WriteMultiBuffer(mb)
++}
++
++var nssReadBatchEnabled = (os.Getenv("XRAY_NSS_TLS") == "dmabuf" || os.Getenv("XRAY_NSS_TLS") == "cpu-batch") && os.Getenv("XRAY_NSS_READ_BATCH") == "1"
++
++var nssReadBorrowEnabled = (os.Getenv("XRAY_NSS_TLS") == "dmabuf" || os.Getenv("XRAY_NSS_TLS") == "cpu-batch") && os.Getenv("XRAY_NSS_READ_BORROW") == "1"
++
++func nssReadMultiBuffer(r io.Reader) (buf.MultiBuffer, error) {
++	if nssReadBorrowEnabled {
++		if reader, ok := r.(interface {
++			NSSBorrowRecords() ([][]byte, func(), error)
++		}); ok {
++			parts, release, err := reader.NSSBorrowRecords()
++			if release == nil {
++				return nil, err
++			}
++			return buf.BorrowMulti(parts, release), err
++		}
++	}
++	bulk, ok := r.(interface{ NSSReadBuffers([][]byte) (int, error) })
++	if !nssReadBatchEnabled || !ok {
++		return (&buf.SingleReader{Reader: r}).ReadMultiBuffer()
++	}
++	// One pool-owned allocation avoids 32 small-buffer allocations and lets
++	// the downstream socket send a contiguous chunk. Buffer.NewWithSize
++	// retains normal MultiBuffer ownership and release semantics.
++	const capacity = 128 * 1024
++	b := buf.NewWithSize(capacity)
++	parts := [1][]byte{b.Extend(capacity)}
++	n, err := bulk.NSSReadBuffers(parts[:])
++	if n < 0 || n > capacity {
++		n, err = 0, io.ErrShortBuffer
++	}
++	if n == 0 {
++		b.Release()
++		return nil, err
++	}
++	b.Resize(0, int32(n))
++	return buf.MultiBuffer{b}, err
++}
++func (c *Conn) ReadMultiBuffer() (buf.MultiBuffer, error) {
++	return nssReadMultiBuffer(c.Conn)
++}
++func (c *UConn) ReadMultiBuffer() (buf.MultiBuffer, error) {
++	return nssReadMultiBuffer(c.UConn)
++}
+--- a/_nss/xray_nss_batch_test.go
++++ b/_nss/xray_nss_batch_test.go
+@@ -0,0 +1,170 @@
++// SPDX-License-Identifier: MPL-2.0
++package tls
++
++import (
++	"bytes"
++	"errors"
++	"io"
++	"testing"
++
++	"github.com/xtls/xray-core/common/buf"
++)
++
++type batchTestWriter struct {
++	bytes.Buffer
++	writes []int
++	limit  int
++	fail   bool
++}
++
++func (w *batchTestWriter) Write(p []byte) (int, error) {
++	w.writes = append(w.writes, len(p))
++	if w.fail {
++		return 0, io.ErrClosedPipe
++	}
++	if w.limit > 0 && len(p) > w.limit {
++		p = p[:w.limit]
++	}
++	return w.Buffer.Write(p)
++}
++
++func batchTestBuffers(sizes ...int) (buf.MultiBuffer, []byte) {
++	var mb buf.MultiBuffer
++	var want []byte
++	for i, size := range sizes {
++		p := bytes.Repeat([]byte{byte(i + 1)}, size)
++		b := buf.New()
++		b.Write(p)
++		mb = append(mb, b)
++		want = append(want, p...)
++	}
++	return mb, want
++}
++
++func TestNSSBatchRecords(t *testing.T) {
++	mb, want := batchTestBuffers(8192, 8192, 8192, 8192, 4096)
++	w := new(batchTestWriter)
++	if err := nssWriteMultiBuffer(w, mb); err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Equal(w.Bytes(), want) {
++		t.Fatal("stream changed")
++	}
++	if nssBatchBytes == 16384 {
++		if len(w.writes) != 3 || w.writes[0] != 16384 || w.writes[1] != 16384 || w.writes[2] != 4096 {
++			t.Fatal(w.writes)
++		}
++	} else if len(w.writes) != 1 || w.writes[0] != len(want) {
++		t.Fatal(w.writes)
++	}
++}
++
++func TestNSSBatchFlushAndShortWrite(t *testing.T) {
++	mb, want := batchTestBuffers(23, 41)
++	w := &batchTestWriter{limit: 7}
++	if err := nssWriteMultiBuffer(w, mb); err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Equal(w.Bytes(), want) {
++		t.Fatal("short final batch was not flushed")
++	}
++	mb, want = batchTestBuffers(31)
++	w = new(batchTestWriter)
++	if err := nssWriteMultiBuffer(w, mb); err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Equal(w.Bytes(), want) || len(w.writes) != 1 {
++		t.Fatal("single buffer was delayed")
++	}
++}
++
++func TestNSSBatchReleasesOnError(t *testing.T) {
++	mb, _ := batchTestBuffers(8192, 8192, 8192)
++	refs := append(buf.MultiBuffer(nil), mb...)
++	if err := nssWriteMultiBuffer(&batchTestWriter{fail: true}, mb); !errors.Is(err, io.ErrClosedPipe) {
++		t.Fatal(err)
++	}
++	for _, b := range refs {
++		if !b.IsEmpty() {
++			t.Fatal("buffer retained after write error")
++		}
++	}
++}
++
++type directBatchWriter struct {
++	got    []byte
++	called bool
++	short  bool
++}
++
++func (w *directBatchWriter) Write([]byte) (int, error) { panic("direct NSS buffer path was bypassed") }
++func (w *directBatchWriter) NSSWriteBuffers(parts [][]byte) (int, error) {
++	w.called = true
++	for _, p := range parts {
++		w.got = append(w.got, p...)
++	}
++	if w.short {
++		return len(w.got) - 1, nil
++	}
++	return len(w.got), nil
++}
++func TestNSSDirectBatchBuffers(t *testing.T) {
++	t.Setenv("XRAY_NSS_TLS", "dmabuf")
++	mb, want := batchTestBuffers(13, 8192, 4096)
++	refs := append(buf.MultiBuffer(nil), mb...)
++	w := &directBatchWriter{}
++	if err := nssWriteMultiBuffer(w, mb); err != nil || !w.called || !bytes.Equal(w.got, want) {
++		t.Fatalf("direct batch: %v", err)
++	}
++	for _, b := range refs {
++		if !b.IsEmpty() {
++			t.Fatal("source buffer retained")
++		}
++	}
++	mb, _ = batchTestBuffers(13, 41)
++	w = &directBatchWriter{short: true}
++	if err := nssWriteMultiBuffer(w, mb); !errors.Is(err, io.ErrShortWrite) {
++		t.Fatal(err)
++	}
++}
++
++type readBatchTestReader struct {
++	data      []byte
++	terminal  error
++	bulkCalls int
++}
++
++func (r *readBatchTestReader) Read(p []byte) (int, error) {
++	n := copy(p, r.data)
++	r.data = r.data[n:]
++	return n, r.terminal
++}
++func (r *readBatchTestReader) NSSReadBuffers(parts [][]byte) (int, error) {
++	r.bulkCalls++
++	n := 0
++	for _, p := range parts {
++		k := copy(p, r.data)
++		r.data = r.data[k:]
++		n += k
++	}
++	return n, r.terminal
++}
++func TestNSSReadMultiBufferOwnership(t *testing.T) {
++	old := nssReadBatchEnabled
++	nssReadBatchEnabled = true
++	defer func() { nssReadBatchEnabled = old }()
++	plain := bytes.Repeat([]byte("owned-read"), 6000)
++	r := &readBatchTestReader{data: append([]byte(nil), plain...), terminal: io.EOF}
++	mb, err := nssReadMultiBuffer(r)
++	defer buf.ReleaseMulti(mb)
++	if err != io.EOF || r.bulkCalls != 1 || int(mb.Len()) != len(plain) {
++		t.Fatalf("%v %d %d", err, r.bulkCalls, mb.Len())
++	}
++	var got []byte
++	for _, b := range mb {
++		got = append(got, b.Bytes()...)
++	}
++	if !bytes.Equal(got, plain) {
++		t.Fatal("changed bytes")
++	}
++}
