@@ -782,6 +782,29 @@ local function has_proxy_sections(doc)
 	return type(doc.proxies) == "table" or type(doc["proxy-providers"]) == "table"
 end
 
+-- ==================== 强制开启 UDP ====================
+-- 遍历 doc.proxies：
+--   * 没有 udp 字段 → 补 udp: true
+--   * udp: false    → 改成 udp: true
+--   * udp: true     → 不变
+-- 返回实际被修改的节点数量
+local function force_udp_true(doc)
+	if type(doc) ~= "table" then
+		return 0
+	end
+
+	local count = 0
+	for _, proxy in ipairs(doc.proxies or {}) do
+		if type(proxy) == "table" then
+			if proxy.udp ~= true then
+				proxy.udp = true
+				count = count + 1
+			end
+		end
+	end
+	return count
+end
+
 local function validate(path)
 	local doc = load_yaml(path)
 	if not doc then
@@ -799,6 +822,10 @@ local function filter(path, filter_words)
 
 	local words = split_filter_words(filter_words)
 	if #words == 0 then
+		-- 即使不过滤，也强制开启 UDP
+		force_udp_true(doc)
+		dump_yaml(path, doc)
+		io.stdout:write("0\n")
 		return true
 	end
 
@@ -819,6 +846,9 @@ local function filter(path, filter_words)
 		end
 	end
 	doc.proxies = proxies
+
+	-- 过滤后强制开启 UDP
+	force_udp_true(doc)
 
 	for _, group in ipairs(doc["proxy-groups"] or {}) do
 		if type(group.proxies) == "table" then
@@ -866,14 +896,14 @@ local function apply_sniffer_config(doc, enable_fake_ip)
 		enable = true,
 		["override-destination"] = true,
 		sniff = {
-			HTTP = { 
+			HTTP = {
 				ports = { 80, 2052, 2082, 2086, 2095, "8080-8880" },
 				["override-destination"] = true
 			},
-			TLS = { 
+			TLS = {
 				ports = { 443, 2053, 2083, 2087, 2096, 8443 }
 			},
-			QUIC = { 
+			QUIC = {
 				ports = { 443, 8443 }
 			}
 		},
@@ -978,7 +1008,7 @@ local function merge_rules_with_direct(existing_rules)
 	if existing_rules then
 		for _, rule in ipairs(existing_rules) do
 			local clean_rule = rule:match("^%s*(.-)%s*$") or rule
-			
+
 			if clean_rule:upper():find("^MATCH,") then
 				if not match_rule then
 					match_rule = clean_rule
@@ -1684,7 +1714,8 @@ local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 		["congestion-controller"] = get_server_field(sid, "congestion_control", "cubic"),
 		["skip-cert-verify"] = bool_enabled(get_server_field(sid, "insecure", "0")),
 		["disable-sni"] = bool_enabled(get_server_field(sid, "disable_sni", "0")),
-		["reduce-rtt"] = bool_enabled(get_server_field(sid, "zero_rtt_handshake", "0"))
+		["reduce-rtt"] = bool_enabled(get_server_field(sid, "zero_rtt_handshake", "0")),
+		udp = true
 	}
 
 	if tuic_ip ~= "" then
@@ -2046,6 +2077,9 @@ local function prepare(input_path, output_path)
 	doc.rules = merge_rules_with_direct(doc.rules)
 	apply_sniffer_config(doc, enable_fake_ip)
 
+	-- 强制所有节点开启 UDP
+	local udp_count = force_udp_true(doc)
+
 	if doc["unified-delay"] == nil then
 		doc["unified-delay"] = true
 	end
@@ -2061,7 +2095,7 @@ local function prepare(input_path, output_path)
 		io.stderr:write("dump_failed\n")
 		return false
 	end
-	io.stdout:write(string.format("filled_groups=%d stripped_script_rules=%d\n", filled_groups, stripped_rules))
+	io.stdout:write(string.format("filled_groups=%d stripped_script_rules=%d udp_enabled=%d\n", filled_groups, stripped_rules, udp_count))
 	return true
 end
 
@@ -2097,6 +2131,9 @@ local function merge(raw_path, overlay_path, output_path)
 	merged.rules = merge_rules_with_direct(merged.rules)
 	apply_sniffer_config(merged, enable_fake_ip)
 
+	-- 强制所有节点开启 UDP
+	local udp_count = force_udp_true(merged)
+
 	if merged["unified-delay"] == nil then
 		merged["unified-delay"] = true
 	end
@@ -2112,7 +2149,7 @@ local function merge(raw_path, overlay_path, output_path)
 		io.stderr:write("dump_failed\n")
 		return false
 	end
-	io.stdout:write(string.format("filled_groups=%d stripped_script_rules=%d\n", filled_groups, stripped_rules))
+	io.stdout:write(string.format("filled_groups=%d stripped_script_rules=%d udp_enabled=%d\n", filled_groups, stripped_rules, udp_count))
 	return true
 end
 
