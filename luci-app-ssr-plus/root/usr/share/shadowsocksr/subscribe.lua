@@ -1882,7 +1882,7 @@ local function processData(szType, content, cfgid)
 		local Info = content
 		if Info:find("@") then
 			local contents = split(Info, "@")
-			local userinfo_raw = UrlDecode(contents[1] or "") -- 如有Url编码进行解码
+			local userinfo_raw = UrlDecode(contents[1] or "") -- Decode URL-encoded user information.
 			if userinfo_raw:find(":") then
 				local uuid, password = userinfo_raw:match("^([^:]+):(.*)$")
 				result.tuic_uuid = uuid
@@ -1960,7 +1960,7 @@ local function processData(szType, content, cfgid)
 			end
 		end
 
-		-- 兼容 allowInsecure / allowlnsecure / insecure
+		-- Accept allowInsecure, the legacy allowlnsecure spelling, and insecure.
 		if params.allowinsecure or params.allowlnsecure or params.insecure then
 			local insecure = params.allowinsecure or params.allowlnsecure or params.insecure
 			if insecure == true or insecure == "1" or insecure == "true" then

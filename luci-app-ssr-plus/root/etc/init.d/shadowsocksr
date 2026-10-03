@@ -390,7 +390,7 @@ prepare_anytls_runtime_config() {
 
 	mkdir -p "$workdir"
 	if ! /usr/bin/lua "$CLASH_YAML_HELPER" anytls "$sid" "$runtime_file" "$local_port" "$socks_port" "$run_mode" >/dev/null 2>&1; then
-		echolog "Failed to generate AnyTLS runtime configuration: $sid"
+		echolog "AnyTLS 节点运行配置生成失败：$sid"
 		return 1
 	fi
 
@@ -398,7 +398,7 @@ prepare_anytls_runtime_config() {
 	# Reuse existing local geodata files so Mihomo does not have to fetch them.
 	link_mihomo_geodata "$workdir"
 	if ! "$(first_type mihomo)" -t -d "$workdir" -f "$runtime_file" >/dev/null 2>&1; then
-		echolog "Invalid AnyTLS Mihomo runtime configuration: $sid"
+		echolog "AnyTLS Mihomo 运行配置校验失败：$sid"
 		return 1
 	fi
 }
@@ -2009,7 +2009,7 @@ start_local() {
 		instance_key="${LOCAL_SERVER}-local"
 		[ -n "$probe_instance_key" ] && instance_key="$probe_instance_key"
 		[ -x "$mihomo_bin" ] || {
-			echolog "Global_Socks5:Mihomo core is unavailable; ensure /usr/bin/mihomo or /usr/libexec/mihomo is executable."
+			echolog "Global_Socks5:Mihomo 内核不存在，请确认 /usr/bin/mihomo 或 /usr/libexec/mihomo 可执行。"
 			return 1
 		}
 		prepare_anytls_runtime_config "$LOCAL_SERVER" "$local_port" "$local_port" "$instance_key" "socks" || return 1
@@ -2445,7 +2445,7 @@ Start_Run() {
 		mihomo_bin="$(first_type mihomo)"
 		anytls_socks_port=0
 		[ -x "$mihomo_bin" ] || {
-			echolog "Main node:Mihomo core is unavailable; ensure /usr/bin/mihomo or /usr/libexec/mihomo is executable."
+			echolog "Main node:Mihomo 内核不存在，请确认 /usr/bin/mihomo 或 /usr/libexec/mihomo 可执行。"
 			return 1
 		}
 		if [ "$_local" = "1" ] && [ "$LOCAL_SERVER" = "$GLOBAL_SERVER" ]; then
