@@ -382,6 +382,7 @@ o.value = sid
 
 -- 新增一个选择框，用于选择 Xray 或 Trojan 核心
 o = s:option(ListValue, "type", translate("Server Node Type"))
+o:value("anytls", "AnyTLS")
 if is_finded("xray") then
 	o:value("v2ray", translate("V2Ray/XRay"))
 end
@@ -474,6 +475,7 @@ o:value("http", translate("HTTP"))
 o:depends("type", "v2ray")
 
 o = s:option(Value, "server", translate("Server Address"))
+o:depends("type", "anytls")
 o.datatype = "or(host,ip6addr)"
 o.rmempty = false
 o:depends("type", "ssr")
@@ -499,6 +501,7 @@ if protocols and type(protocols) == "table" and #protocols > 0 then
 end
 
 o = s:option(Value, "server_port", translate("Server Port"))
+o:depends("type", "anytls")
 o.datatype = "port"
 o.rmempty = true
 o:depends("type", "ssr")
@@ -538,6 +541,7 @@ o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "socks", auth_enable = true})
 
 o = s:option(Value, "password", translate("Password"))
+o:depends("type", "anytls")
 o.password = true
 o.rmempty = true
 o:depends("type", "ssr")
@@ -1554,6 +1558,7 @@ if is_finded("xray") then
 end
 
 o = s:option(Value, "tls_host", translate("TLS Host"))
+o:depends("type", "anytls")
 o.datatype = "hostname"
 o:depends("tls", true)
 o:depends("xtls", true)
@@ -1596,6 +1601,7 @@ o:depends("tuic_dual_stack", true)
 
 -- [[ allowInsecure ]]--
 o = s:option(Flag, "insecure", translate("allowInsecure"))
+o:depends("type", "anytls")
 o.rmempty = false
 o:depends("type", "hysteria2")
 o:depends("type", "trojan")

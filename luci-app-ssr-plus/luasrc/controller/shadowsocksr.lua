@@ -1464,11 +1464,11 @@ function act_ping()
 	end
 	-- Hysteria2、TUIC 节点轻量 UDP 端口检测
 	if proto:find("hysteria2") or type:find("hysteria2") or proto:find("tuic") or type:find("tuic") then
-		local udp_cmd = string.format("nping --udp -c 1 -p %d %s 2>/dev/null", port, domain)
+		local udp_cmd = string.format("nping %s--udp -c 1 -p %d %s 2>/dev/null", is_ipv6_address(domain) and "-6 --unprivileged " or "", port, luci.util.shellquote(domain))
 		local udp_raw = luci.sys.exec(udp_cmd) or ""
 		local udp_rtt = udp_raw:match("Avg rtt:%s*([0-9.]+)ms")
 		local udp_unreachable = udp_raw:match("[Pp]ort [Uu]nreachable") or udp_raw:match("ICMP")
-		local udp_sent = udp_raw:match("Raw packets sent:%s*1")
+		local udp_sent = udp_raw:match("Raw packets sent:%s*1") or udp_raw:match("UDP packets sent:%s*1")
 
 		-- UDP 服务通常不会主动回包，未收到应答不等于端口不可用。
 		-- 仅在出现明显的不可达迹象时标记 fail，其余视为轻量可达。
@@ -1514,7 +1514,7 @@ function act_ping()
 		end
 		-- 如果深度探测失败，或是不支持深测的纯 IP
 		if not success then
-			local socket = nixio.socket("inet", "stream")
+			local socket = nixio.socket(is_ipv6_address(domain) and "inet6" or "inet", "stream")
 			if socket then
 				socket:setopt("socket", "rcvtimeo", 3)
 				socket:setopt("socket", "sndtimeo", 3)
@@ -1538,7 +1538,7 @@ function act_ping()
 		end
 	else
 		-- 3. 非 WebSocket 节点的探测逻辑 (TCP / ICMP / UDP)
-		local socket = nixio.socket("inet", "stream")
+		local socket = nixio.socket(is_ipv6_address(domain) and "inet6" or "inet", "stream")
 		if socket then
 			socket:setopt("socket", "rcvtimeo", 3)
 			socket:setopt("socket", "sndtimeo", 3)
