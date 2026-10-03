@@ -210,8 +210,12 @@ end
 
 local function collect_subscribe_items()
 	local items = {}
+	local position = 0
 
 	ucic:foreach(name, "server_subscribe_item", function(s)
+		-- 每个配置节都占用一个位置号，无论 enabled / URL 是否为空
+		position = position + 1
+
 		if target_subscribe_sid ~= "" and s[".name"] ~= target_subscribe_sid then
 			return
 		end
@@ -228,7 +232,8 @@ local function collect_subscribe_items()
 		items[#items + 1] = {
 			sid = s[".name"],
 			alias = trim(s.alias or ""),
-			url = url
+			url = url,
+			index = position
 		}
 	end)
 
@@ -247,7 +252,8 @@ local function collect_subscribe_items()
 			items[#items + 1] = {
 				sid = "legacy_" .. index,
 				alias = "Legacy " .. index,
-				url = url
+				url = url,
+				index = index
 			}
 		end
 	end
@@ -379,20 +385,23 @@ local function isClashYAML(str)
 	return false
 end
 
-local function processClashSubscription(url, groupHash)
+local function processClashSubscription(item)
+	local url = item.url
+	local fetch_url = item.fetch_url or item.url
+	local index = item.index or 1
+
 	local ok, parsed = pcall(URL.parse, url)
 	if not ok or not parsed or not parsed.host then
 		return nil
 	end
 
-	local groupHash_short = string.sub(groupHash, 1, 8)
-	local alias = "Clash_" .. parsed.host .. "_" .. groupHash_short
+	local alias = "Clash_" .. parsed.host .. "_" .. tostring(index)
 	local server_port = parsed.port or ((parsed.scheme == "http") and "80" or "443")
 	local result = {
 		type = "clash",
 		server = normalize_host(parsed.host),
 		server_port = server_port,
-		clash_url = url,
+		clash_url = fetch_url,
 		clash_user_agent = user_agent,
 		raw_alias = alias,
 		alias = alias
@@ -400,7 +409,7 @@ local function processClashSubscription(url, groupHash)
 
 	local saved_alias = result.alias
 	result.alias = nil
-	result.hashkey = md5(jsonStringify(result) .. "_" .. (saved_alias or ""))
+	result.hashkey = md5(jsonStringify(result) .. "_" .. tostring(index) .. "_" .. (saved_alias or ""))
 	result.alias = saved_alias
 	return result
 end
@@ -2663,7 +2672,12 @@ local execute = function()
 
 			if isClashYAML(raw) then
 				is_clash_subscription = true
-				local result = processClashSubscription(fetch_url, groupHash)
+				local clash_item = {
+					url = url,
+					fetch_url = fetch_url,
+					index = item.index
+				}
+				local result = processClashSubscription(clash_item)
 				if result and check_filer(result) then
 					log('过滤 Clash 总节点: ' .. result.alias)
 				elseif result and not cache[groupHash][result.hashkey] then
@@ -2831,7 +2845,7 @@ local execute = function()
 
 			if #mihomo_nodes > 0 then
 				local parsed_url = URL.parse(url)
-				local alias = item.alias ~= "" and item.alias or ("Mihomo_" .. ((parsed_url and parsed_url.host) or groupHash))
+				local alias = "Mihomo_" .. ((parsed_url and parsed_url.host) or tostring(item.index)) .. "_" .. tostring(item.index)
 				local local_path = string.format("%s/%s.mihomo.yaml", local_clash_dir, groupHash)
 				local yaml, proxy_count = buildMihomoSubscribeYaml(mihomo_nodes, "Proxy")
 
