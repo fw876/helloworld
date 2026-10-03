@@ -1641,7 +1641,7 @@ local function build_single_proxy_runtime_doc(proxy, local_port, socks_port, mod
 		doc["socks-port"] = listen_port
 	else
 		doc["redir-port"] = listen_port
-		doc["tproxy-port"] = listen_port
+		doc["tproxy-port"] = listen_port + 1
 		if socks_listen and socks_listen > 0 then
 			doc["socks-port"] = socks_listen
 		end
@@ -1752,7 +1752,7 @@ local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 		doc["socks-port"] = listen_port
 	else
 		doc["redir-port"] = listen_port
-		doc["tproxy-port"] = listen_port
+		doc["tproxy-port"] = listen_port + 1
 		if socks_listen and socks_listen > 0 then
 			doc["socks-port"] = socks_listen
 		end
@@ -1834,7 +1834,7 @@ local function build_shadowsocks_runtime_doc(sid, local_port, socks_port, mode)
 		doc["socks-port"] = listen_port
 	else
 		doc["redir-port"] = listen_port
-		doc["tproxy-port"] = listen_port
+		doc["tproxy-port"] = listen_port + 1
 		if socks_listen and socks_listen > 0 then
 			doc["socks-port"] = socks_listen
 		end
