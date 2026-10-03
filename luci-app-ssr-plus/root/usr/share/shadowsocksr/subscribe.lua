@@ -42,7 +42,7 @@ local has_ss_rust = luci.sys.exec('type -t -p sslocal 2>/dev/null || type -t -p 
 local has_xray = luci.sys.exec('type -t -p xray 2>/dev/null') ~= ""
 local has_mihomo = luci.sys.exec('type -t -p mihomo -p /usr/libexec/mihomo 2>/dev/null') ~= ""
 
-local tuic_type = luci.sys.exec('type -t -p mihomo -p /usr/libexec/mihomo 2>/dev/null') ~= "" and "tuic"
+local tuic_type = has_mihomo and "tuic"
 local log = function(...)
 	print(os.date("%Y-%m-%d %H:%M:%S ") .. table.concat({...}, " "))
 end
@@ -774,7 +774,7 @@ local function to_mihomo_proxy(node)
 		apply_mihomo_trojan_tls_options(proxy, node)
 		apply_mihomo_transport_options(proxy, node)
 	elseif node.type == "tuic" then
-		local alpn = split_csv_values(node.tls_alpn)
+		local alpn = split_csv_values(node.tuic_alpn or node.tls_alpn)
 		local heartbeat = number_from_value(node.heartbeat)
 		local timeout = number_from_value(node.timeout)
 		proxy.type = "tuic"
@@ -1884,9 +1884,9 @@ local function processData(szType, content, cfgid)
 			local contents = split(Info, "@")
 			local userinfo_raw = UrlDecode(contents[1] or "") -- 如有Url编码进行解码
 			if userinfo_raw:find(":") then
-				local userinfo = split(userinfo_raw, ":")
-				result.tuic_uuid = userinfo[1]
-				result.tuic_passwd = userinfo[2]
+				local uuid, password = userinfo_raw:match("^([^:]+):(.*)$")
+				result.tuic_uuid = uuid
+				result.tuic_passwd = password
 			end
 			Info = (contents[2] or ""):gsub("/%?", "?")
 		end
@@ -1906,6 +1906,7 @@ local function processData(szType, content, cfgid)
 		result.server, result.server_port = parse_host_port(host_port, "443")
 
 		result.type = tuic_type
+		result.tls_host = params.sni or params.peer or ""
 		result.tuic_ip = params.ip or ""
 		result.udp_relay_mode = params.udp_relay_mode or "native"
 		result.congestion_control = params.congestion_control or "cubic"
@@ -1924,7 +1925,7 @@ local function processData(szType, content, cfgid)
 				table.insert(alpn, v)
 			end
 			if #alpn > 0 then
-				result.tls_alpn = table.concat(alpn, ",")  -- 确保为字符串
+				result.tuic_alpn = table.concat(alpn, ",")  -- TUIC runtime/editor field
 			end
 		end
 
@@ -1960,8 +1961,8 @@ local function processData(szType, content, cfgid)
 		end
 
 		-- 兼容 allowInsecure / allowlnsecure / insecure
-		if params.allowInsecure or params.allowlnsecure or params.insecure then
-			local insecure = params.allowInsecure or params.allowlnsecure or params.insecure
+		if params.allowinsecure or params.allowlnsecure or params.insecure then
+			local insecure = params.allowinsecure or params.allowlnsecure or params.insecure
 			if insecure == true or insecure == "1" or insecure == "true" then
 				result.insecure = "1"
 			end
@@ -2766,7 +2767,8 @@ local execute = function()
 								local invalid = not result.server or not result.server_port
 									or (result.type ~= "clash" and result.server == "127.0.0.1")
 									or result.alias == "NULL"
-									or (result.type ~= "clash" and result.server:match("[^0-9a-zA-Z%-_%.%s]"))
+									or (result.type ~= "clash" and result.server:match("[^0-9a-zA-Z%-_%.%s]")
+										and not require("luci.ip").IPv6(result.server))
 									or cache[groupHash][result.hashkey]
 								if filtered then
 									log('过滤节点: ' .. result.alias)

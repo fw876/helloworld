@@ -998,6 +998,31 @@ local function build_single_proxy_runtime_doc(proxy, local_port, socks_port, mod
 	return doc
 end
 
+local function generate_anytls_runtime(sid, output_path, local_port, socks_port, mode)
+	local server = string_or_nil(get_server_field(sid, "server", ""))
+	local port = number_or_nil(get_server_field(sid, "server_port", ""))
+	local password = string_or_nil(get_server_field(sid, "password", ""))
+	if not server or not port or port < 1 or port > 65535 or port % 1 ~= 0 or not password then
+		io.stderr:write("invalid_anytls_node\n")
+		return false
+	end
+	local proxy = {
+		name = "AnyTLS",
+		type = "anytls",
+		server = server,
+		port = port,
+		password = password,
+		udp = true,
+		sni = string_or_nil(get_server_field(sid, "tls_host", "")),
+		["skip-cert-verify"] = bool_enabled(get_server_field(sid, "insecure", "0")),
+		["client-fingerprint"] = string_or_nil(get_server_field(sid, "fingerprint", ""))
+	}
+	local alpn = split_alpn(get_server_field(sid, "tls_alpn", ""))
+	if #alpn > 0 then proxy.alpn = alpn end
+	local doc = build_single_proxy_runtime_doc(proxy, local_port, socks_port, mode)
+	return dump_yaml(output_path, doc)
+end
+
 local function pick_plugin_opt(plugin_opts, ...)
 	for i = 1, select("#", ...) do
 		local key = select(i, ...)
@@ -1456,6 +1481,8 @@ elseif action == "merge" then
 	os.exit(merge(arg[2], arg[3], arg[4]) and 0 or 1)
 elseif action == "append_client_policy_rules" then
 	os.exit(append_client_policy_rules(arg[2], arg[3]) and 0 or 1)
+elseif action == "anytls" then
+	os.exit(generate_anytls_runtime(arg[2], arg[3], arg[4], arg[5], arg[6]) and 0 or 1)
 elseif action == "tuic" then
 	os.exit(generate_tuic_runtime(arg[2], arg[3], arg[4], arg[5], arg[6]) and 0 or 1)
 elseif action == "ss" then
@@ -1467,6 +1494,6 @@ elseif action == "ss_server" then
 elseif action == "v2ray_server" then
 	os.exit(generate_mihomo_listener(arg[2], arg[3]) and 0 or 1)
 else
-	io.stderr:write("usage: clash_yaml.lua validate <yaml> | filter <yaml> <words> | prepare <input> <output> | merge <raw> <overlay> <output> | append_client_policy_rules <runtime_yaml> <sid> | tuic <sid> <output> <local_port> [socks_port] [mode] | ss <sid> <output> <local_port> [socks_port] [mode] | v2ray <sid> <output> <local_port> [socks_port] [mode] | ss_server <sid> <output> | v2ray_server <sid> <output>\n")
+	io.stderr:write("usage: clash_yaml.lua validate <yaml> | filter <yaml> <words> | prepare <input> <output> | merge <raw> <overlay> <output> | append_client_policy_rules <runtime_yaml> <sid> | anytls <sid> <output> <local_port> [socks_port] [mode] | tuic <sid> <output> <local_port> [socks_port] [mode] | ss <sid> <output> <local_port> [socks_port] [mode] | v2ray <sid> <output> <local_port> [socks_port] [mode] | ss_server <sid> <output> | v2ray_server <sid> <output>\n")
 	os.exit(1)
 end

@@ -29,11 +29,11 @@ CURRENT_SERVER="$DEFAULT_SERVER"
 ENABLE_SERVER="nil"
 
 cleanup_probe_socks() {
-	ps_list | grep -v "grep" | grep -E "tcp-http-ssr-switch-local\\.json|ss-${PROBE_INSTANCE_KEY}/config\\.yaml|tuic-${PROBE_INSTANCE_KEY}/config\\.yaml|v2ray-${PROBE_INSTANCE_KEY}/config\\.yaml" | awk '{print $1}' | xargs kill >/dev/null 2>&1
+	ps_list | grep -v "grep" | grep -E "tcp-http-ssr-switch-local\\.json|ss-${PROBE_INSTANCE_KEY}/config\\.yaml|anytls-${PROBE_INSTANCE_KEY}( |/)|tuic-${PROBE_INSTANCE_KEY}/config\\.yaml|v2ray-${PROBE_INSTANCE_KEY}/config\\.yaml" | awk '{print $1}' | xargs kill >/dev/null 2>&1
 	sleep 1
-	ps_list | grep -v "grep" | grep -E "tcp-http-ssr-switch-local\\.json|ss-${PROBE_INSTANCE_KEY}/config\\.yaml|tuic-${PROBE_INSTANCE_KEY}/config\\.yaml|v2ray-${PROBE_INSTANCE_KEY}/config\\.yaml" | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1
+	ps_list | grep -v "grep" | grep -E "tcp-http-ssr-switch-local\\.json|ss-${PROBE_INSTANCE_KEY}/config\\.yaml|anytls-${PROBE_INSTANCE_KEY}( |/)|tuic-${PROBE_INSTANCE_KEY}/config\\.yaml|v2ray-${PROBE_INSTANCE_KEY}/config\\.yaml" | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1
 	rm -f "$TMP_PATH/tcp-http-ssr-switch-local.json" 2>/dev/null
-	rm -rf "$TMP_PATH/ss-${PROBE_INSTANCE_KEY}" "$TMP_PATH/tuic-${PROBE_INSTANCE_KEY}" "$TMP_PATH/v2ray-${PROBE_INSTANCE_KEY}" 2>/dev/null
+	rm -rf "$TMP_PATH/ss-${PROBE_INSTANCE_KEY}" "$TMP_PATH/anytls-${PROBE_INSTANCE_KEY}" "$TMP_PATH/tuic-${PROBE_INSTANCE_KEY}" "$TMP_PATH/v2ray-${PROBE_INSTANCE_KEY}" 2>/dev/null
 	rm -f /tmp/ssr-switch-probe.log 2>/dev/null
 }
 
