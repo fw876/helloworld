@@ -340,14 +340,14 @@ local function global_client_running()
 		return true
 	end
 
-	if (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "ss" or global_type == "ss-rust")
+	if (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "anytls" or global_type == "ss" or global_type == "ss-rust")
 		and process_list:find("ssr%-retcp") then
 		return true
 	end
 
-	if (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "ss" or global_type == "ss-rust")
+	if (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "anytls" or global_type == "ss" or global_type == "ss-rust")
 		and process_list:find("mihomo")
-		and (process_list:find("/clash%-") or process_list:find("/v2ray%-") or process_list:find("/tuic%-") or process_list:find("/ss%-")) then
+		and (process_list:find("/clash%-") or process_list:find("/v2ray%-") or process_list:find("/tuic%-") or process_list:find("/anytls%-") or process_list:find("/ss%-")) then
 		return true
 	end
 
@@ -378,6 +378,9 @@ local function get_active_node_runtime(sid)
 	elseif stype == "clash" then
 		backend = translate("Mihomo")
 		protocol = translate("Clash")
+	elseif stype == "anytls" then
+		backend = translate("Mihomo")
+		protocol = translate("AnyTLS")
 	elseif stype == "tuic" then
 		backend = translate("Mihomo")
 		protocol = translate("TUIC")
