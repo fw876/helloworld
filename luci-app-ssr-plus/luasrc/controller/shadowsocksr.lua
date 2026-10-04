@@ -1618,7 +1618,14 @@ end
 function check_status()
 	local e = {}
 	local target = luci.http.formvalue("set") or ""
-	e.ret = luci.sys.call("curl -m 3 -sS -o /dev/null http://www." .. target .. ".com >/dev/null 2>&1")
+	if target == "google" then
+		local sid = uci:get_first("shadowsocksr", "global", "global_server", "nil")
+		e.ret = luci.sys.call("/usr/share/shadowsocksr/check_node.sh " .. luci.util.shellquote(sid) .. " >/dev/null 2>&1")
+	elseif target == "baidu" then
+		e.ret = luci.sys.call("curl -m 3 -sS -o /dev/null https://www.baidu.com >/dev/null 2>&1")
+	else
+		e.ret = 1
+	end
 	luci.http.prepare_content("application/json")
 	luci.http.write_json(e)
 end
@@ -1659,14 +1666,27 @@ function check_port()
 			end
 		end
 
-		-- TCP 测试
-		local socket = nixio.socket(is_ipv6 and "inet6" or "inet", "stream")
-		socket:setopt("socket", "rcvtimeo", 3)
-		socket:setopt("socket", "sndtimeo", 3)
-		local ret = socket:connect(s.server, s.server_port)
-		socket:close()
+		local node_type = (s.type or ""):lower()
+		local protocol = (s.v2ray_protocol or ""):lower()
+		local is_udp = node_type == "tuic" or node_type == "hysteria2" or protocol == "tuic" or protocol == "hysteria2"
+		local ret
+		if is_udp then
+			ret = luci.sys.call("/usr/share/shadowsocksr/check_node.sh " .. luci.util.shellquote(s[".name"]) .. " >/dev/null 2>&1") == 0
+		else
+			local socket = nixio.socket(is_ipv6 and "inet6" or "inet", "stream")
+			if socket then
+				socket:setopt("socket", "rcvtimeo", 3)
+				socket:setopt("socket", "sndtimeo", 3)
+				ret = socket:connect(s.server, s.server_port)
+				socket:close()
+			end
+		end
 
-		if ret then
+		if is_udp and ret then
+			retstring = retstring .. string.format("<font><b style='color:green'>[%s] UDP 代理可用。</b></font><br />", server_name)
+		elseif is_udp then
+			retstring = retstring .. string.format("<font><b style='color:red'>[%s] UDP 代理检查失败。</b></font><br />", server_name)
+		elseif ret then
 			retstring = retstring .. string.format("<font><b style='color:green'>[%s] OK.</b></font><br />", server_name)
 		else
 			retstring = retstring .. string.format("<font><b style='color:red'>[%s] Error.</b></font><br />", server_name)

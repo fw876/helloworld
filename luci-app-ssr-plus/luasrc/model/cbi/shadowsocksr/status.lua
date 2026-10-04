@@ -122,7 +122,7 @@ if global_type == "socks5" and Process_list:find("ipt2socks") then
 	end
 end
 
-if (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "ss" or global_type == "ss-rust")
+if (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "anytls" or global_type == "ss" or global_type == "ss-rust")
 	and Process_list:find("ssr%-retcp") then
 	redir_run = 1
 	reudp_run = 1
@@ -131,9 +131,9 @@ if (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or
 	end
 end
 
-if (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "ss" or global_type == "ss-rust")
+if (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "anytls" or global_type == "ss" or global_type == "ss-rust")
 	and Process_list:find("mihomo")
-	and (Process_list:find("/clash%-") or Process_list:find("/v2ray%-") or Process_list:find("/tuic%-") or Process_list:find("/ss%-")) then
+	and (Process_list:find("/clash%-") or Process_list:find("/v2ray%-") or Process_list:find("/tuic%-") or Process_list:find("/anytls%-") or Process_list:find("/ss%-")) then
 	redir_run = 1
 	reudp_run = 1
 	if global_socks_enabled and (global_socks_server == "same" or global_socks_server == global_server) then
@@ -163,7 +163,7 @@ if  Process_list:find("ssrplus/bin/dns2tcp") or
 	pdnsd_run = 1
 end
 
-if pdnsd_mode == "7" and (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "ss") and Process_list:find("ssr%-retcp") then
+if pdnsd_mode == "7" and (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "anytls" or global_type == "ss") and Process_list:find("ssr%-retcp") then
 	pdnsd_run = 1
 end
 

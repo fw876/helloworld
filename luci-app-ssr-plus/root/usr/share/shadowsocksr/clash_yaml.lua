@@ -511,7 +511,12 @@ local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 		}
 	}
 
-	if mode == "socks" then
+	if mode == "probe" then
+		doc["allow-lan"] = false
+		doc["bind-address"] = "127.0.0.1"
+		doc.dns.enable = false
+		doc["socks-port"] = listen_port
+	elseif mode == "socks" then
 		doc["socks-port"] = listen_port
 	else
 		doc["redir-port"] = listen_port
@@ -521,7 +526,7 @@ local function build_tuic_runtime_doc(sid, local_port, socks_port, mode)
 		end
 	end
 
-	if doc["socks-port"] and doc["socks-port"] > 0 then
+	if mode ~= "probe" and doc["socks-port"] and doc["socks-port"] > 0 then
 		local socks5_auth = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_auth", "noauth")
 		if socks5_auth == "password" then
 			local socks5_user = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_user", "")
@@ -969,7 +974,12 @@ local function build_single_proxy_runtime_doc(proxy, local_port, socks_port, mod
 		}
 	}
 
-	if mode == "socks" then
+	if mode == "probe" then
+		doc["allow-lan"] = false
+		doc["bind-address"] = "127.0.0.1"
+		doc.dns.enable = false
+		doc["socks-port"] = listen_port
+	elseif mode == "socks" then
 		doc["socks-port"] = listen_port
 	else
 		doc["redir-port"] = listen_port
@@ -978,7 +988,7 @@ local function build_single_proxy_runtime_doc(proxy, local_port, socks_port, mod
 			doc["socks-port"] = socks_listen
 		end
 	end
-	if doc["socks-port"] and doc["socks-port"] > 0 then
+	if mode ~= "probe" and doc["socks-port"] and doc["socks-port"] > 0 then
 		local socks5_auth = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_auth", "noauth")
 		if socks5_auth == "password" then
 			local socks5_user = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_user", "")
@@ -1288,7 +1298,12 @@ local function build_shadowsocks_runtime_doc(sid, local_port, socks_port, mode)
 
 	local listen_port = tonumber(local_port)
 	local socks_listen = tonumber(socks_port)
-	if mode == "socks" then
+	if mode == "probe" then
+		doc["allow-lan"] = false
+		doc["bind-address"] = "127.0.0.1"
+		doc.dns.enable = false
+		doc["socks-port"] = listen_port
+	elseif mode == "socks" then
 		doc["socks-port"] = listen_port
 	else
 		doc["redir-port"] = listen_port
@@ -1298,7 +1313,7 @@ local function build_shadowsocks_runtime_doc(sid, local_port, socks_port, mode)
 		end
 	end
 
-	if doc["socks-port"] and doc["socks-port"] > 0 then
+	if mode ~= "probe" and doc["socks-port"] and doc["socks-port"] > 0 then
 		local socks5_auth = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_auth", "noauth")
 		if socks5_auth == "password" then
 			local socks5_user = uci:get_first("shadowsocksr", "socks5_proxy", "socks5_user", "")
