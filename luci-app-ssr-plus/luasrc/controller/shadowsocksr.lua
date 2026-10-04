@@ -340,14 +340,14 @@ local function global_client_running()
 		return true
 	end
 
-	if (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "ss" or global_type == "ss-rust")
+	if (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "anytls" or global_type == "ss" or global_type == "ss-rust")
 		and process_list:find("ssr%-retcp") then
 		return true
 	end
 
-	if (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "ss" or global_type == "ss-rust")
+	if (global_type == "clash" or global_type == "v2ray" or global_type == "tuic" or global_type == "anytls" or global_type == "ss" or global_type == "ss-rust")
 		and process_list:find("mihomo")
-		and (process_list:find("/clash%-") or process_list:find("/v2ray%-") or process_list:find("/tuic%-") or process_list:find("/ss%-")) then
+		and (process_list:find("/clash%-") or process_list:find("/v2ray%-") or process_list:find("/tuic%-") or process_list:find("/anytls%-") or process_list:find("/ss%-")) then
 		return true
 	end
 
@@ -378,6 +378,9 @@ local function get_active_node_runtime(sid)
 	elseif stype == "clash" then
 		backend = translate("Mihomo")
 		protocol = translate("Clash")
+	elseif stype == "anytls" then
+		backend = translate("Mihomo")
+		protocol = translate("AnyTLS")
 	elseif stype == "tuic" then
 		backend = translate("Mihomo")
 		protocol = translate("TUIC")
@@ -1615,7 +1618,14 @@ end
 function check_status()
 	local e = {}
 	local target = luci.http.formvalue("set") or ""
-	e.ret = luci.sys.call("curl -m 3 -sS -o /dev/null http://www." .. target .. ".com >/dev/null 2>&1")
+	if target == "google" then
+		local sid = uci:get_first("shadowsocksr", "global", "global_server", "nil")
+		e.ret = luci.sys.call("/usr/share/shadowsocksr/check_node.sh " .. luci.util.shellquote(sid) .. " >/dev/null 2>&1")
+	elseif target == "baidu" then
+		e.ret = luci.sys.call("curl -m 3 -sS -o /dev/null https://www.baidu.com >/dev/null 2>&1")
+	else
+		e.ret = 1
+	end
 	luci.http.prepare_content("application/json")
 	luci.http.write_json(e)
 end
@@ -1656,14 +1666,27 @@ function check_port()
 			end
 		end
 
-		-- TCP 测试
-		local socket = nixio.socket(is_ipv6 and "inet6" or "inet", "stream")
-		socket:setopt("socket", "rcvtimeo", 3)
-		socket:setopt("socket", "sndtimeo", 3)
-		local ret = socket:connect(s.server, s.server_port)
-		socket:close()
+		local node_type = (s.type or ""):lower()
+		local protocol = (s.v2ray_protocol or ""):lower()
+		local is_udp = node_type == "tuic" or node_type == "hysteria2" or protocol == "tuic" or protocol == "hysteria2"
+		local ret
+		if is_udp then
+			ret = luci.sys.call("/usr/share/shadowsocksr/check_node.sh " .. luci.util.shellquote(s[".name"]) .. " >/dev/null 2>&1") == 0
+		else
+			local socket = nixio.socket(is_ipv6 and "inet6" or "inet", "stream")
+			if socket then
+				socket:setopt("socket", "rcvtimeo", 3)
+				socket:setopt("socket", "sndtimeo", 3)
+				ret = socket:connect(s.server, s.server_port)
+				socket:close()
+			end
+		end
 
-		if ret then
+		if is_udp and ret then
+			retstring = retstring .. string.format("<font><b style='color:green'>[%s] UDP 代理可用。</b></font><br />", server_name)
+		elseif is_udp then
+			retstring = retstring .. string.format("<font><b style='color:red'>[%s] UDP 代理检查失败。</b></font><br />", server_name)
+		elseif ret then
 			retstring = retstring .. string.format("<font><b style='color:green'>[%s] OK.</b></font><br />", server_name)
 		else
 			retstring = retstring .. string.format("<font><b style='color:red'>[%s] Error.</b></font><br />", server_name)
