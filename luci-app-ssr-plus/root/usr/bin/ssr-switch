@@ -29,9 +29,9 @@ CURRENT_SERVER="$DEFAULT_SERVER"
 ENABLE_SERVER="nil"
 
 cleanup_probe_socks() {
-	ps_list | grep -v "grep" | grep -E "tcp-http-ssr-switch-local\\.json|ss-${PROBE_INSTANCE_KEY}/config\\.yaml|anytls-${PROBE_INSTANCE_KEY}( |/)|tuic-${PROBE_INSTANCE_KEY}/config\\.yaml|v2ray-${PROBE_INSTANCE_KEY}/config\\.yaml" | awk '{print $1}' | xargs kill >/dev/null 2>&1
+	ps_list | grep -v "grep" | grep -E "tcp-http-ssr-switch-local\\.json|ss-${PROBE_INSTANCE_KEY}/config\\.yaml|anytls-${PROBE_INSTANCE_KEY}( |/)|tuic-${PROBE_INSTANCE_KEY}( |/)|v2ray-${PROBE_INSTANCE_KEY}/config\\.yaml" | awk '{print $1}' | xargs kill >/dev/null 2>&1
 	sleep 1
-	ps_list | grep -v "grep" | grep -E "tcp-http-ssr-switch-local\\.json|ss-${PROBE_INSTANCE_KEY}/config\\.yaml|anytls-${PROBE_INSTANCE_KEY}( |/)|tuic-${PROBE_INSTANCE_KEY}/config\\.yaml|v2ray-${PROBE_INSTANCE_KEY}/config\\.yaml" | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1
+	ps_list | grep -v "grep" | grep -E "tcp-http-ssr-switch-local\\.json|ss-${PROBE_INSTANCE_KEY}/config\\.yaml|anytls-${PROBE_INSTANCE_KEY}( |/)|tuic-${PROBE_INSTANCE_KEY}( |/)|v2ray-${PROBE_INSTANCE_KEY}/config\\.yaml" | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1
 	rm -f "$TMP_PATH/tcp-http-ssr-switch-local.json" 2>/dev/null
 	rm -rf "$TMP_PATH/ss-${PROBE_INSTANCE_KEY}" "$TMP_PATH/anytls-${PROBE_INSTANCE_KEY}" "$TMP_PATH/tuic-${PROBE_INSTANCE_KEY}" "$TMP_PATH/v2ray-${PROBE_INSTANCE_KEY}" 2>/dev/null
 	rm -f /tmp/ssr-switch-probe.log 2>/dev/null
@@ -43,7 +43,6 @@ start_probe_socks() {
 
 	server_type="$(uci_get_by_name "$sid" type)"
 	[ "$server_type" = "clash" ] && return 1
-	[ "$server_type" = "tuic" ] && return 1
 	[ "$server_type" = "socks5" ] && return 1
 
 	cleanup_probe_socks
@@ -86,6 +85,14 @@ check_direct_probe() {
 	probe_http_ok "$code"
 }
 
+# Use configured SOCKS authentication for candidate connectivity checks.
+proxy_curl() {
+	if [ "$(uci_get_by_type socks5_proxy socks5_auth noauth)" = "password" ]; then
+		set -- --proxy-user "$(uci_get_by_type socks5_proxy socks5_user):$(uci_get_by_type socks5_proxy socks5_pass)" "$@"
+	fi
+	curl "$@"
+}
+
 check_proxy_via_socks() {
 	local try_count
 	local code
@@ -94,7 +101,7 @@ check_proxy_via_socks() {
 	try_count="$(uci_get_by_type global switch_try_count 3)"
 	for i in $(seq 1 "$try_count"); do
 		for proxy_host in "127.0.0.1:$probe_socks_port" "[::1]:$probe_socks_port"; do
-			code="$(curl -k -sS -L -o /dev/null \
+			code="$(proxy_curl -k -sS -L -o /dev/null \
 				--connect-timeout "$switch_time" \
 				--max-time "$switch_time" \
 				--socks5-hostname "$proxy_host" \
@@ -110,7 +117,6 @@ check_proxy_via_socks() {
 test_proxy() {
 	local sid="$1"
 	[ "$(uci_get_by_name "$sid" type)" = "clash" ] && return 1
-	[ "$(uci_get_by_name "$sid" type)" = "tuic" ] && return 1
 	start_probe_socks "$sid" || {
 		cleanup_probe_socks
 		return 1
@@ -125,7 +131,6 @@ search_proxy() {
 	local sid="$1"
 	[ "$(uci_get_by_name "$sid" switch_enable 0)" = "1" ] || return 1
 	[ "$(uci_get_by_name "$sid" type)" = "clash" ] && return 1
-	[ "$(uci_get_by_name "$sid" type)" = "tuic" ] && return 1
 	[ "$sid" = "$CURRENT_SERVER" ] && return 1
 	[ "$ENABLE_SERVER" != "nil" ] && return 0
 
@@ -170,11 +175,6 @@ run_once() {
 		return 0
 	}
 	[ "$(uci_get_by_name "$DEFAULT_SERVER" type)" = "clash" ] && {
-		direct_fail_count=0
-		cleanup_probe_socks
-		return 0
-	}
-	[ "$(uci_get_by_name "$DEFAULT_SERVER" type)" = "tuic" ] && {
 		direct_fail_count=0
 		cleanup_probe_socks
 		return 0
@@ -226,14 +226,14 @@ probe_once() {
 	fi
 	echo "probe_start:ok"
 	echo "probe:curl_ipv4"
-	curl -k -sS -L -o /dev/null \
+	proxy_curl -k -sS -L -o /dev/null \
 		--connect-timeout "$switch_time" \
 		--max-time "$switch_time" \
 		--socks5-hostname "127.0.0.1:$probe_socks_port" \
 		-w 'code=%{http_code}\n' \
 		"$probe_url" 2>/dev/null || true
 	echo "probe:curl_ipv6"
-	curl -g -k -sS -L -o /dev/null \
+	proxy_curl -g -k -sS -L -o /dev/null \
 		--connect-timeout "$switch_time" \
 		--max-time "$switch_time" \
 		--socks5-hostname "[::1]:$probe_socks_port" \
