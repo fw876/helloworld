@@ -295,7 +295,7 @@ flush_nftables() {
 
 	# Optional: force delete all ss_spec related sets (even if table was accidentally deleted)
 	for setname in ss_spec_lan_ac ss_spec_wan_ac ssr_gen_router \
-			china fplan bplan gmlan whitelist blacklist gfwlist music; do
+			china fplan bplan gmlan whitelist whitelist_domain blacklist gfwlist music; do
 		$NFT delete set inet ss_spec $setname 2>/dev/null
 		$NFT delete set ip ss_spec_mangle $setname 2>/dev/null
 	done
@@ -362,6 +362,13 @@ ipset_nft() {
 		fi
 	done
 
+	# DNS returns individual addresses; keep CIDR bypass entries in whitelist.
+	if ! $NFT list set inet ss_spec whitelist_domain >/dev/null 2>&1; then
+		$NFT add set inet ss_spec whitelist_domain '{ type ipv4_addr; }' 2>/dev/null
+	else
+		$NFT flush set inet ss_spec whitelist_domain 2>/dev/null
+	fi
+
 	# Bulk import china ip list safely (avoid huge single element limitation)
 	if [ -f "$IGNORE_LIST" ]; then
 		SKIP_INET=1 /usr/share/shadowsocksr/chinaipset.sh "$IGNORE_LIST"
@@ -405,6 +412,7 @@ ipset_nft() {
 	# Access control: blacklist -> whitelist -> fplan/bplan — TCP
 	$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @blacklist jump ss_spec_wan_fw
 	$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @whitelist return
+	$NFT add rule inet ss_spec ss_spec_wan_ac ip daddr @whitelist_domain return
 	$NFT add rule inet ss_spec ss_spec_wan_ac ip saddr @fplan jump ss_spec_wan_fw
 	$NFT add rule inet ss_spec ss_spec_wan_ac ip saddr @bplan return
 
@@ -1445,6 +1453,14 @@ restore_from_persistence() {
 
 	if [ ! -f "$NFTABLES_RULES_FILE" ]; then
 		loger 4 "Persistence file not found: $NFTABLES_RULES_FILE"
+		return 1
+	fi
+
+	# Old snapshots lack the DNS-only whitelist used by dnsmasq. Regenerate
+	# them through the normal setup path instead of restoring stale schema.
+	if ! grep -q 'set whitelist_domain {' "$NFTABLES_RULES_FILE" ||
+	   ! grep -q 'ip daddr @whitelist_domain return' "$NFTABLES_RULES_FILE"; then
+		loger 6 "DNS whitelist set missing from persistence; rebuilding rules"
 		return 1
 	fi
 
