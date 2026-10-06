@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=mihomo
 PKG_VERSION:=1.19.32
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/MetaCubeX/mihomo.git
@@ -14,7 +14,7 @@ PKG_MIRROR_HASH:=0194b7039e6ff1143c7b80dd70d3a06976f60ff9f40802111d15a93da06c8a9
 PKG_LICENSE:=GPL3.0+
 PKG_MAINTAINER:=Joseph Mory <morytyann@gmail.com>
 
-PKG_BUILD_DEPENDS:=golang/host
+PKG_BUILD_DEPENDS:=golang/host upx/host
 PKG_BUILD_PARALLEL:=1
 PKG_BUILD_FLAGS:=no-mips16
 
@@ -22,12 +22,16 @@ PKG_BUILD_VERSION:=v$(PKG_VERSION)
 PKG_BUILD_TIME:=$(shell date -u -Iseconds)
 
 GO_PKG:=github.com/metacubex/mihomo
+GO_PKG_LDFLAGS:=-s -w
 GO_PKG_LDFLAGS_X:=$(GO_PKG)/constant.Version=$(PKG_BUILD_VERSION) $(GO_PKG)/constant.BuildTime=$(PKG_BUILD_TIME)
 GO_PKG_TAGS:=with_gvisor
 GO_PKG_INSTALL_BIN_PATH:=/usr/libexec
 
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
+
+# Go's -s -w flags strip the binary before UPX; do not strip it again.
+RSTRIP:=:
 
 define Package/mihomo
   SECTION:=net
@@ -45,6 +49,7 @@ endef
 
 define Package/mihomo/install
 	$(call GoPackage/Package/Install/Bin,$(1))
+	$(STAGING_DIR_HOST)/bin/upx --lzma --best $(1)/usr/libexec/mihomo
 endef
 
 define Build/Prepare
