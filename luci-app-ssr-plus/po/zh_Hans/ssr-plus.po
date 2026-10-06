@@ -78,10 +78,10 @@ msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client.lua:51
 msgid ""
-"<h3>Support SS/SSR/V2RAY/XRAY/TROJAN/TUIC/HYSTERIA2/NAIVEPROXY/SOCKS5/CLASH "
+"<h3>Support SS/SSR/V2RAY/XRAY/TROJAN/TUIC/HYSTERIA2/ANYTLS/NAIVEPROXY/SOCKS5/CLASH "
 "etc.</h3>"
 msgstr ""
-"<h3>支持 SS/SSR/V2RAY/XRAY/TROJAN/TUIC/HYSTERIA2/NAIVEPROXY/SOCKS5/CLASH 等协"
+"<h3>支持 SS/SSR/V2RAY/XRAY/TROJAN/TUIC/HYSTERIA2/ANYTLS/NAIVEPROXY/SOCKS5/CLASH 等协"
 "议。</h3>"
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/advanced.lua:269
@@ -3861,3 +3861,12 @@ msgstr "对被代理的 UDP/443 流量处理方式"
 
 #~ msgid "Include Mihomo (Clash Support)"
 #~ msgstr "包含 Mihomo（Clash 支持）"
+
+msgid "Idle session check interval (seconds)"
+msgstr "空闲会话检查间隔（秒）"
+
+msgid "Idle session timeout (seconds)"
+msgstr "空闲会话超时（秒）"
+
+msgid "Minimum idle sessions"
+msgstr "最小空闲会话数"

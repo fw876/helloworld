@@ -397,6 +397,7 @@ local function get_active_node_runtime(sid)
 			trojan = "Trojan",
 			socks = "SOCKS5",
 			hysteria2 = "Hysteria2",
+			anytls = "AnyTLS",
 			shadowsocks = "Shadowsocks",
 			http = "HTTP"
 		}

@@ -140,6 +140,43 @@ function import_ssr_url(btn, urlname, sid) {
 			document.getElementsByName('cbid.shadowsocksr.' + sid + '.alias')[0].value = url.hash ? decodeURIComponent(url.hash.slice(1)) : "";
 			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
 			return false;
+		case "anytls":
+			try {
+				var url = new URL("http://" + ssu[1]);
+				var params = url.searchParams;
+			} catch(e) {
+				alert(e);
+				return false;
+			}
+			if (!hasMihomoOrXray()) {
+				alert("AnyTLS requires Xray or Mihomo.");
+				return false;
+			}
+			function setAnytlsField(name, value) {
+				var field = document.getElementsByName('cbid.shadowsocksr.' + sid + '.' + name)[0];
+				if (!field) return;
+				if (field.type === "checkbox") field.checked = value;
+				else field.value = value;
+				field.dispatchEvent(event);
+			}
+			setAnytlsField("type", "v2ray");
+			setAnytlsField("v2ray_protocol", "anytls");
+			setAnytlsField("transport", "raw");
+			setAnytlsField("reality", false);
+			setAnytlsField("tls", true);
+			setAnytlsField("mux", false);
+			setAnytlsField("server", normalizeHost(url.hostname));
+			setAnytlsField("server_port", url.port || "443");
+			setAnytlsField("password", decodeURIComponent(url.username + (url.password ? ":" + url.password : "")));
+			setAnytlsField("tls_host", params.get("sni") || params.get("servername") || "");
+			setAnytlsField("tls_alpn", params.get("alpn") || "");
+			setAnytlsField("fingerprint", params.get("fp") || params.get("fingerprint") || "");
+			setAnytlsField("tls_CertSha", params.get("pcs") || "");
+			setAnytlsField("tls_CertByName", params.get("vcn") || "");
+			setAnytlsField("insecure", /^(1|true)$/i.test(params.get("insecure") || params.get("allowInsecure") || params.get("allow_insecure") || ""));
+			setAnytlsField("alias", url.hash ? decodeURIComponent(url.hash.slice(1)) : "");
+			s.innerHTML = "<font style=\'color:green\'><%:Import configuration information successfully.%></font>";
+			return false;
 		case "hysteria2":
 		case "hy2":
 			try {

@@ -849,6 +849,13 @@ local function build_v2ray_mihomo_proxy(sid)
 		proxy.cipher = get_server_field(sid, "encrypt_method_ss", "none")
 		proxy.password = get_server_field(sid, "password", "")
 		build_shadowsocks_plugin(proxy, sid)
+	elseif protocol == "anytls" then
+		proxy.type = "anytls"
+		proxy.password = get_server_field(sid, "password", "")
+		apply_trojan_tls_options(proxy, sid)
+		proxy["idle-session-check-interval"] = number_or_nil(get_server_field(sid, "anytls_idle_session_check_interval", ""))
+		proxy["idle-session-timeout"] = number_or_nil(get_server_field(sid, "anytls_idle_session_timeout", ""))
+		proxy["min-idle-session"] = number_or_nil(get_server_field(sid, "anytls_min_idle_session", ""))
 	elseif protocol == "hysteria2" then
 		proxy.type = "hysteria2"
 		proxy.password = get_server_field(sid, "hy2_auth", "")

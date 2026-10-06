@@ -1,0 +1,769 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Subject: [PATCH] proxy: add AnyTLS outbound with session reuse and UoT
+
+Use the outbound JSON schema proposed in Xray-core PR #5907 and the same
+AnyTLS implementation as sing-box at 580984e4d8cb. Adapt Xray's transport
+and lifecycle interfaces, preserving TLS, socket marks and dialer chains.
+Support TCP and UDP-over-TCP v2 without nesting Xray Mux.Cool. Close the
+session pool when the outbound is removed and interrupt pending copies
+on cancellation. Include protocol, lifecycle and configuration tests.
+
+Reference: https://github.com/XTLS/Xray-core/pull/5907
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/go.mod
++++ b/go.mod
+@@ -52,6 +52,8 @@
+ 	github.com/pion/logging v0.2.4 // indirect
+ 	github.com/pion/transport/v4 v4.1.0 // indirect
+ 	github.com/quic-go/qpack v0.6.0 // indirect
++	github.com/sagernet/sing v0.8.14
++	github.com/sagernet/sing-anytls v0.0.0-20260928104022-580984e4d8cb
+ 	github.com/vishvananda/netns v0.0.5 // indirect
+ 	github.com/wlynxg/anet v0.0.5 // indirect
+ 	go.yaml.in/yaml/v3 v3.0.5 // indirect
+--- a/go.sum
++++ b/go.sum
+@@ -70,6 +70,10 @@
+ github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzGIFLtro=
+ github.com/rogpeppe/go-internal v1.16.0 h1:O9DK+vNMDVGLr2BeZqmpLeMjiMNkuXfcqntWbZV6S5g=
+ github.com/rogpeppe/go-internal v1.16.0/go.mod h1:DrUVZyrJU+txYW5/1kwtXQSMFio52ZOxX7yM1VHvnxs=
++github.com/sagernet/sing v0.8.14 h1:S6Netv4F61uNAuD/sUbHnGuNUEPwtL08Ouk0//CVYgM=
++github.com/sagernet/sing v0.8.14/go.mod h1:olXxWQNqRW/l2Q6JI3b2Qmz8iQnIFlOeeH8bx6JhgUA=
++github.com/sagernet/sing-anytls v0.0.0-20260928104022-580984e4d8cb h1:n4sF2zv0CR1gcb4awh61t11t0FZmcP40x5enB8HARjE=
++github.com/sagernet/sing-anytls v0.0.0-20260928104022-580984e4d8cb/go.mod h1:VRKLnj0ObEsN228h+zuzf91p+6sjtYE8SBaLPVsBy5o=
+ github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
+ github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
+ github.com/vishvananda/netlink v1.3.1 h1:3AEMt62VKqz90r0tmNhog0r/PpWKmrEShJU0wJW6bV0=
+--- a/infra/conf/xray.go
++++ b/infra/conf/xray.go
+@@ -49,6 +49,7 @@
+ 		"vless":       func() interface{} { return new(VLessOutboundConfig) },
+ 		"vmess":       func() interface{} { return new(VMessOutboundConfig) },
+ 		"trojan":      func() interface{} { return new(TrojanClientConfig) },
++		"anytls":      func() interface{} { return new(AnyTLSClientConfig) },
+ 		"hysteria":    func() interface{} { return new(HysteriaClientConfig) },
+ 		"masque":      func() interface{} { return new(MasqueClientConfig) },
+ 		"dns":         func() interface{} { return new(DNSOutboundConfig) },
+--- a/main/distro/all/all.go
++++ b/main/distro/all/all.go
+@@ -35,6 +35,7 @@
+ 	_ "github.com/xtls/xray-core/app/observatory"
+ 
+ 	// Inbound and outbound proxies.
++	_ "github.com/xtls/xray-core/proxy/anytls"
+ 	_ "github.com/xtls/xray-core/proxy/blackhole"
+ 	_ "github.com/xtls/xray-core/proxy/dns"
+ 	_ "github.com/xtls/xray-core/proxy/dokodemo"
+--- a/infra/conf/anytls.go
++++ b/infra/conf/anytls.go
+@@ -0,0 +1,36 @@
++package conf
++
++import (
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/proxy/anytls"
++	"google.golang.org/protobuf/proto"
++)
++
++// AnyTLSClientConfig follows the outbound schema proposed in Xray-core#5907.
++// Session intervals are expressed in seconds, as in that proposal.
++type AnyTLSClientConfig struct {
++	Address                  *Address `json:"address"`
++	Port                     uint16   `json:"port"`
++	Password                 string   `json:"password"`
++	Level                    uint32   `json:"level"`
++	IdleSessionCheckInterval uint32   `json:"idleSessionCheckInterval"`
++	IdleSessionTimeout       uint32   `json:"idleSessionTimeout"`
++	MinIdleSession           int32    `json:"minIdleSession"`
++}
++
++func (c *AnyTLSClientConfig) Build() (proto.Message, error) {
++	if c.Address == nil || c.Port == 0 {
++		return nil, errors.New("anytls: server address and port are required")
++	}
++	if c.Password == "" {
++		return nil, errors.New("anytls: password is required")
++	}
++	if c.MinIdleSession < 0 {
++		return nil, errors.New("anytls: minIdleSession must be non-negative")
++	}
++	return &anytls.ClientConfig{
++		Address: c.Address.Build(), Port: uint32(c.Port), Password: c.Password, Level: c.Level,
++		IdleSessionCheckInterval: c.IdleSessionCheckInterval,
++		IdleSessionTimeout:       c.IdleSessionTimeout, MinIdleSession: uint32(c.MinIdleSession),
++	}, nil
++}
+--- a/infra/conf/anytls_test.go
++++ b/infra/conf/anytls_test.go
+@@ -0,0 +1,45 @@
++package conf_test
++
++import (
++	"encoding/json"
++	"github.com/xtls/xray-core/infra/conf"
++	"github.com/xtls/xray-core/proxy/anytls"
++	"google.golang.org/protobuf/proto"
++	"testing"
++)
++
++func TestAnyTLSConfig(t *testing.T) {
++	for _, tc := range []struct {
++		input string
++		valid bool
++	}{
++		{`{"address":"example.com","port":443,"password":"test","idleSessionCheckInterval":30,"idleSessionTimeout":60,"minIdleSession":2}`, true},
++		{`{"port":443,"password":"test"}`, false},
++		{`{"address":"example.com","password":"test"}`, false},
++		{`{"address":"example.com","port":443}`, false},
++		{`{"address":"example.com","port":443,"password":"test","minIdleSession":-1}`, false},
++	} {
++		var config conf.AnyTLSClientConfig
++		if err := json.Unmarshal([]byte(tc.input), &config); err != nil {
++			t.Fatal(err)
++		}
++		built, err := config.Build()
++		if (err == nil) != tc.valid {
++			t.Fatalf("Build(%s): %v", tc.input, err)
++		}
++		if !tc.valid {
++			continue
++		}
++		data, err := proto.Marshal(built)
++		if err != nil {
++			t.Fatal(err)
++		}
++		var result anytls.ClientConfig
++		if err = proto.Unmarshal(data, &result); err != nil {
++			t.Fatal(err)
++		}
++		if result.Password != "test" || result.Port != 443 || result.IdleSessionTimeout != 60 || result.MinIdleSession != 2 {
++			t.Fatal("configuration lost during protobuf serialization")
++		}
++	}
++}
+--- a/proxy/anytls/LICENSE.sing-anytls
++++ b/proxy/anytls/LICENSE.sing-anytls
+@@ -0,0 +1,14 @@
++Copyright (C) 2022 by nekohasekai <contact-sagernet@sekai.icu>
++
++This program is free software: you can redistribute it and/or modify
++it under the terms of the GNU General Public License as published by
++the Free Software Foundation, either version 3 of the License, or
++(at your option) any later version.
++
++This program is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++GNU General Public License for more details.
++
++You should have received a copy of the GNU General Public License
++along with this program. If not, see <http://www.gnu.org/licenses/>.
+\ No newline at end of file
+--- a/proxy/anytls/client.go
++++ b/proxy/anytls/client.go
+@@ -0,0 +1,156 @@
++package anytls
++
++import (
++	"context"
++	"sync"
++	"time"
++
++	singanytls "github.com/sagernet/sing-anytls"
++	M "github.com/sagernet/sing/common/metadata"
++	"github.com/sagernet/sing/common/uot"
++	"github.com/xtls/xray-core/common"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/session"
++	"github.com/xtls/xray-core/common/signal"
++	"github.com/xtls/xray-core/common/task"
++	"github.com/xtls/xray-core/core"
++	"github.com/xtls/xray-core/features/policy"
++	"github.com/xtls/xray-core/transport"
++	"github.com/xtls/xray-core/transport/internet"
++)
++
++// Client adapts the same AnyTLS implementation used by sing-box. The session
++// pool belongs to the outbound handler, not to an individual proxied request.
++type Client struct {
++	server  net.Destination
++	policy  policy.Session
++	options singanytls.ClientOptions
++	mu      sync.Mutex
++	client  *singanytls.Client
++	closed  bool
++}
++
++func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
++	if config.Address == nil || config.Port == 0 || config.Port > 65535 || config.Password == "" {
++		return nil, errors.New("anytls: invalid server or password")
++	}
++	manager := core.MustFromContext(ctx).GetFeature(policy.ManagerType()).(policy.Manager)
++	return &Client{
++		server: net.TCPDestination(config.Address.AsAddress(), net.Port(config.Port)),
++		policy: manager.ForLevel(config.Level),
++		options: singanytls.ClientOptions{
++			Password:                 config.Password,
++			IdleSessionCheckInterval: time.Duration(config.IdleSessionCheckInterval) * time.Second,
++			IdleSessionTimeout:       time.Duration(config.IdleSessionTimeout) * time.Second,
++			MinIdleSession:           int(config.MinIdleSession),
++		},
++	}, nil
++}
++
++func (c *Client) getClient(dialer internet.Dialer) (*singanytls.Client, error) {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	if c.closed {
++		return nil, errors.New("anytls: client closed")
++	}
++	if c.client == nil {
++		options := c.options
++		options.DialOut = func(ctx context.Context) (net.Conn, error) {
++			// Keep Xray's configured TLS/uTLS, socket mark, and outbound chaining.
++			return dialer.Dial(ctx, c.server)
++		}
++		client, err := singanytls.NewClient(options)
++		if err != nil {
++			return nil, err
++		}
++		c.client = client
++	}
++	return c.client, nil
++}
++
++func (c *Client) Close() error {
++	c.mu.Lock()
++	c.closed = true
++	client := c.client
++	c.mu.Unlock()
++	if client != nil {
++		return client.Close()
++	}
++	return nil
++}
++
++func (c *Client) Process(ctx context.Context, link *transport.Link, dialer internet.Dialer) error {
++	outbounds := session.OutboundsFromContext(ctx)
++	if len(outbounds) == 0 {
++		return errors.New("anytls: target not specified")
++	}
++	ob := outbounds[len(outbounds)-1]
++	target := ob.Target
++	if !target.IsValid() || (target.Network != net.Network_TCP && target.Network != net.Network_UDP) {
++		return errors.New("anytls: unsupported target")
++	}
++	ob.Name = "anytls"
++	ob.CanSpliceCopy = 3
++	client, err := c.getClient(dialer)
++	if err != nil {
++		return err
++	}
++	destination := socksaddr(target)
++	streamDestination := destination
++	if target.Network == net.Network_UDP {
++		streamDestination = uot.RequestDestination(uot.Version)
++	}
++	dialCtx, dialCancel := context.WithTimeout(ctx, c.policy.Timeouts.Handshake)
++	conn, err := client.DialContext(dialCtx, streamDestination)
++	dialCancel()
++	if err != nil {
++		return errors.New("anytls: failed to open stream").Base(err)
++	}
++	defer conn.Close()
++	errors.LogInfo(ctx, "tunneling request to ", target, " via ", c.server.NetAddr())
++
++	var reader buf.Reader = buf.NewReader(conn)
++	var writer buf.Writer = buf.NewWriter(conn)
++	if target.Network == net.Network_UDP {
++		// UoT v2, with an address per datagram for transparent UDP and SOCKS5.
++		conn.SetWriteDeadline(time.Now().Add(c.policy.Timeouts.Handshake))
++		packetConn, err := (&uot.Client{Version: uot.Version}).DialConn(conn, false, destination)
++		conn.SetWriteDeadline(time.Time{})
++		if err != nil {
++			return errors.New("anytls: failed to start UoT").Base(err)
++		}
++		reader = &packetReader{conn: packetConn}
++		writer = &packetWriter{conn: packetConn, destination: destination}
++	}
++	ctx, cancel := context.WithCancel(ctx)
++	defer cancel()
++	timer := signal.CancelAfterInactivity(ctx, cancel, c.policy.Timeouts.ConnectionIdle)
++	defer timer.SetTimeout(0)
++	request := func() error {
++		defer timer.SetTimeout(c.policy.Timeouts.DownlinkOnly)
++		return buf.Copy(link.Reader, writer, buf.UpdateActivity(timer))
++	}
++	response := func() error {
++		defer timer.SetTimeout(c.policy.Timeouts.UplinkOnly)
++		return buf.Copy(reader, link.Writer, buf.UpdateActivity(timer))
++	}
++	if err := task.Run(ctx, request, task.OnSuccess(response, task.Close(link.Writer))); err != nil {
++		// Unblock the other copy task on cancellation as well as I/O failures.
++		common.Interrupt(link.Reader)
++		common.Interrupt(link.Writer)
++		return errors.New("anytls: connection ends").Base(err)
++	}
++	return nil
++}
++
++func socksaddr(destination net.Destination) M.Socksaddr {
++	return M.ParseSocksaddrHostPort(destination.Address.String(), uint16(destination.Port))
++}
++
++func init() {
++	common.Must(common.RegisterConfig((*ClientConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
++		return NewClient(ctx, config.(*ClientConfig))
++	}))
++}
+--- a/proxy/anytls/client_test.go
++++ b/proxy/anytls/client_test.go
+@@ -0,0 +1,199 @@
++package anytls
++
++import (
++	"bytes"
++	"context"
++	"io"
++	stdnet "net"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	singanytls "github.com/sagernet/sing-anytls"
++	singbuf "github.com/sagernet/sing/common/buf"
++	M "github.com/sagernet/sing/common/metadata"
++	N "github.com/sagernet/sing/common/network"
++	"github.com/sagernet/sing/common/uot"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/session"
++	"github.com/xtls/xray-core/features/policy"
++	"github.com/xtls/xray-core/transport"
++	"github.com/xtls/xray-core/transport/internet/stat"
++	"github.com/xtls/xray-core/transport/pipe"
++)
++
++type echoHandler struct{}
++
++func (echoHandler) NewConnectionEx(ctx context.Context, conn net.Conn, source, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
++	defer conn.Close()
++	if destination.Fqdn != uot.MagicAddress {
++		io.Copy(conn, conn)
++		return
++	}
++	request, err := uot.ReadRequest(conn)
++	if err != nil {
++		return
++	}
++	packets := uot.NewConn(conn, *request)
++	data := singbuf.NewSize(65535)
++	defer data.Release()
++	for {
++		data.Reset()
++		address, err := packets.ReadPacket(data)
++		if err != nil {
++			return
++		}
++		if err := packets.WritePacket(data, address); err != nil {
++			return
++		}
++	}
++}
++
++type testDialer struct {
++	service *singanytls.Service
++	dialed  atomic.Int32
++	active  atomic.Int32
++}
++
++func (d *testDialer) Dial(ctx context.Context, dest net.Destination) (stat.Connection, error) {
++	a, b := stdnet.Pipe()
++	d.dialed.Add(1)
++	d.active.Add(1)
++	go func() {
++		defer d.active.Add(-1)
++		defer b.Close()
++		d.service.NewConnection(context.Background(), b, M.Socksaddr{}, nil)
++	}()
++	return a, nil
++}
++func (*testDialer) DestIpAddress() net.IP                                 { return nil }
++func (*testDialer) SetOutboundGateway(context.Context, *session.Outbound) {}
++
++func newTestClient(t *testing.T, password string) (*Client, *testDialer) {
++	t.Helper()
++	service, err := singanytls.NewService("test-password", singanytls.ServiceOptions{Handler: echoHandler{}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	c := &Client{server: net.TCPDestination(net.LocalHostIP, 443), policy: policy.SessionDefault(), options: singanytls.ClientOptions{Password: password}}
++	d := &testDialer{service: service}
++	t.Cleanup(func() {
++		c.Close()
++		deadline := time.Now().Add(3 * time.Second)
++		for d.active.Load() != 0 && time.Now().Before(deadline) {
++			time.Sleep(time.Millisecond)
++		}
++		if d.active.Load() != 0 {
++			t.Error("session connection leaked after Close")
++		}
++		if _, err := c.getClient(d); err == nil {
++			t.Error("client reopened after Close")
++		}
++	})
++	return c, d
++}
++
++func exchange(t *testing.T, c *Client, d *testDialer, udp bool) {
++	t.Helper()
++	target := net.TCPDestination(net.DomainAddress("echo.example"), 443)
++	if udp {
++		target = net.UDPDestination(net.DomainAddress("dns.example"), 53)
++	}
++	ctx, cancel := context.WithCancel(session.ContextWithOutbounds(context.Background(), []*session.Outbound{{Target: target}}))
++	uplink, input := pipe.New()
++	output, downlink := pipe.New()
++	done := make(chan error, 1)
++	go func() { done <- c.Process(ctx, &transport.Link{Reader: uplink, Writer: downlink}, d) }()
++	defer func() {
++		cancel()
++		input.Close()
++		output.Interrupt()
++		select {
++		case <-done:
++		case <-time.After(3 * time.Second):
++			t.Error("Process did not exit after cancellation")
++		}
++	}()
++	sizes := []int{13, 9000}
++	for i, size := range sizes {
++		payload := bytes.Repeat([]byte{byte(i + 1)}, size)
++		b := buf.FromBytes(payload)
++		address := target
++		if udp {
++			if i == 1 {
++				address = net.UDPDestination(net.ParseAddress("2001:db8::1"), 12345)
++			}
++			b.UDP = &address
++		}
++		if err := input.WriteMultiBuffer(buf.MultiBuffer{b}); err != nil {
++			t.Fatal(err)
++		}
++		received := []byte{}
++		for len(received) < len(payload) {
++			mb, err := output.ReadMultiBufferTimeout(3 * time.Second)
++			if err != nil {
++				t.Fatal(err)
++			}
++			for _, packet := range mb {
++				if udp && (packet.UDP == nil || *packet.UDP != address) {
++					t.Errorf("UDP source mismatch: %v != %v", packet.UDP, address)
++				}
++				received = append(received, packet.Bytes()...)
++			}
++			buf.ReleaseMulti(mb)
++		}
++		if !bytes.Equal(received, payload) {
++			t.Fatal("payload corrupted")
++		}
++	}
++}
++
++func TestAnyTLSProcess(t *testing.T) {
++	for _, udp := range []bool{false, true} {
++		name := "TCP"
++		if udp {
++			name = "UDP"
++		}
++		t.Run(name, func(t *testing.T) { c, d := newTestClient(t, "test-password"); exchange(t, c, d, udp) })
++	}
++}
++
++func TestAnyTLSReuseAndClose(t *testing.T) {
++	c, d := newTestClient(t, "test-password")
++	for i := 0; i < 10; i++ {
++		exchange(t, c, d, false)
++	}
++	if n := d.dialed.Load(); n > 2 {
++		t.Fatalf("sessions were not reused: %d dials for 10 requests", n)
++	}
++	c.Close()
++	c.Close()
++}
++
++func TestAnyTLSWrongPassword(t *testing.T) {
++	c, d := newTestClient(t, "wrong-password")
++	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
++	defer cancel()
++	ctx = session.ContextWithOutbounds(ctx, []*session.Outbound{{Target: net.TCPDestination(net.DomainAddress("echo.example"), 443)}})
++	uplink, input := pipe.New()
++	output, downlink := pipe.New()
++	defer input.Close()
++	defer output.Interrupt()
++	done := make(chan error, 1)
++	go func() { done <- c.Process(ctx, &transport.Link{Reader: uplink, Writer: downlink}, d) }()
++	input.WriteMultiBuffer(buf.MultiBuffer{buf.FromBytes([]byte("must not be echoed"))})
++	select {
++	case err := <-done:
++		if err == nil {
++			t.Fatal("wrong password accepted")
++		}
++	case <-ctx.Done():
++		t.Fatal("wrong password did not fail promptly")
++	}
++	mb, err := output.ReadMultiBufferTimeout(time.Second)
++	defer buf.ReleaseMulti(mb)
++	if err == nil && len(mb) > 0 {
++		t.Fatal("received payload with wrong password")
++	}
++}
+--- a/proxy/anytls/config.pb.go
++++ b/proxy/anytls/config.pb.go
+@@ -0,0 +1,179 @@
++// Code generated by protoc-gen-go. DO NOT EDIT.
++// versions:
++// 	protoc-gen-go v1.36.11
++// 	protoc        v3.21.12
++// source: proxy/anytls/config.proto
++
++package anytls
++
++import (
++	net "github.com/xtls/xray-core/common/net"
++	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
++	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
++	reflect "reflect"
++	sync "sync"
++	unsafe "unsafe"
++)
++
++const (
++	// Verify that this generated code is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
++	// Verify that runtime/protoimpl is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
++)
++
++type ClientConfig struct {
++	state                    protoimpl.MessageState `protogen:"open.v1"`
++	Address                  *net.IPOrDomain        `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
++	Port                     uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
++	Password                 string                 `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"`
++	Level                    uint32                 `protobuf:"varint,4,opt,name=level,proto3" json:"level,omitempty"`
++	IdleSessionCheckInterval uint32                 `protobuf:"varint,5,opt,name=idle_session_check_interval,json=idleSessionCheckInterval,proto3" json:"idle_session_check_interval,omitempty"`
++	IdleSessionTimeout       uint32                 `protobuf:"varint,6,opt,name=idle_session_timeout,json=idleSessionTimeout,proto3" json:"idle_session_timeout,omitempty"`
++	MinIdleSession           uint32                 `protobuf:"varint,7,opt,name=min_idle_session,json=minIdleSession,proto3" json:"min_idle_session,omitempty"`
++	unknownFields            protoimpl.UnknownFields
++	sizeCache                protoimpl.SizeCache
++}
++
++func (x *ClientConfig) Reset() {
++	*x = ClientConfig{}
++	mi := &file_proxy_anytls_config_proto_msgTypes[0]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *ClientConfig) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*ClientConfig) ProtoMessage() {}
++
++func (x *ClientConfig) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_anytls_config_proto_msgTypes[0]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use ClientConfig.ProtoReflect.Descriptor instead.
++func (*ClientConfig) Descriptor() ([]byte, []int) {
++	return file_proxy_anytls_config_proto_rawDescGZIP(), []int{0}
++}
++
++func (x *ClientConfig) GetAddress() *net.IPOrDomain {
++	if x != nil {
++		return x.Address
++	}
++	return nil
++}
++
++func (x *ClientConfig) GetPort() uint32 {
++	if x != nil {
++		return x.Port
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetPassword() string {
++	if x != nil {
++		return x.Password
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetLevel() uint32 {
++	if x != nil {
++		return x.Level
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetIdleSessionCheckInterval() uint32 {
++	if x != nil {
++		return x.IdleSessionCheckInterval
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetIdleSessionTimeout() uint32 {
++	if x != nil {
++		return x.IdleSessionTimeout
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetMinIdleSession() uint32 {
++	if x != nil {
++		return x.MinIdleSession
++	}
++	return 0
++}
++
++var File_proxy_anytls_config_proto protoreflect.FileDescriptor
++
++const file_proxy_anytls_config_proto_rawDesc = "" +
++	"\n" +
++	"\x19proxy/anytls/config.proto\x12\x11xray.proxy.anytls\x1a\x18common/net/address.proto\"\xa6\x02\n" +
++	"\fClientConfig\x125\n" +
++	"\aaddress\x18\x01 \x01(\v2\x1b.xray.common.net.IPOrDomainR\aaddress\x12\x12\n" +
++	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1a\n" +
++	"\bpassword\x18\x03 \x01(\tR\bpassword\x12\x14\n" +
++	"\x05level\x18\x04 \x01(\rR\x05level\x12=\n" +
++	"\x1bidle_session_check_interval\x18\x05 \x01(\rR\x18idleSessionCheckInterval\x120\n" +
++	"\x14idle_session_timeout\x18\x06 \x01(\rR\x12idleSessionTimeout\x12(\n" +
++	"\x10min_idle_session\x18\a \x01(\rR\x0eminIdleSessionB(Z&github.com/xtls/xray-core/proxy/anytlsb\x06proto3"
++
++var (
++	file_proxy_anytls_config_proto_rawDescOnce sync.Once
++	file_proxy_anytls_config_proto_rawDescData []byte
++)
++
++func file_proxy_anytls_config_proto_rawDescGZIP() []byte {
++	file_proxy_anytls_config_proto_rawDescOnce.Do(func() {
++		file_proxy_anytls_config_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proxy_anytls_config_proto_rawDesc), len(file_proxy_anytls_config_proto_rawDesc)))
++	})
++	return file_proxy_anytls_config_proto_rawDescData
++}
++
++var file_proxy_anytls_config_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
++var file_proxy_anytls_config_proto_goTypes = []any{
++	(*ClientConfig)(nil),   // 0: xray.proxy.anytls.ClientConfig
++	(*net.IPOrDomain)(nil), // 1: xray.common.net.IPOrDomain
++}
++var file_proxy_anytls_config_proto_depIdxs = []int32{
++	1, // 0: xray.proxy.anytls.ClientConfig.address:type_name -> xray.common.net.IPOrDomain
++	1, // [1:1] is the sub-list for method output_type
++	1, // [1:1] is the sub-list for method input_type
++	1, // [1:1] is the sub-list for extension type_name
++	1, // [1:1] is the sub-list for extension extendee
++	0, // [0:1] is the sub-list for field type_name
++}
++
++func init() { file_proxy_anytls_config_proto_init() }
++func file_proxy_anytls_config_proto_init() {
++	if File_proxy_anytls_config_proto != nil {
++		return
++	}
++	type x struct{}
++	out := protoimpl.TypeBuilder{
++		File: protoimpl.DescBuilder{
++			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
++			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proxy_anytls_config_proto_rawDesc), len(file_proxy_anytls_config_proto_rawDesc)),
++			NumEnums:      0,
++			NumMessages:   1,
++			NumExtensions: 0,
++			NumServices:   0,
++		},
++		GoTypes:           file_proxy_anytls_config_proto_goTypes,
++		DependencyIndexes: file_proxy_anytls_config_proto_depIdxs,
++		MessageInfos:      file_proxy_anytls_config_proto_msgTypes,
++	}.Build()
++	File_proxy_anytls_config_proto = out.File
++	file_proxy_anytls_config_proto_goTypes = nil
++	file_proxy_anytls_config_proto_depIdxs = nil
++}
+--- a/proxy/anytls/config.proto
++++ b/proxy/anytls/config.proto
+@@ -0,0 +1,14 @@
++syntax = "proto3";
++package xray.proxy.anytls;
++option go_package = "github.com/xtls/xray-core/proxy/anytls";
++import "common/net/address.proto";
++
++message ClientConfig {
++  xray.common.net.IPOrDomain address = 1;
++  uint32 port = 2;
++  string password = 3;
++  uint32 level = 4;
++  uint32 idle_session_check_interval = 5;
++  uint32 idle_session_timeout = 6;
++  uint32 min_idle_session = 7;
++}
+--- a/proxy/anytls/packet.go
++++ b/proxy/anytls/packet.go
+@@ -0,0 +1,44 @@
++package anytls
++
++import (
++	singbuf "github.com/sagernet/sing/common/buf"
++	M "github.com/sagernet/sing/common/metadata"
++	"github.com/sagernet/sing/common/uot"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/net"
++)
++
++type packetReader struct{ conn *uot.Conn }
++
++func (r *packetReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
++	// Read one whole datagram, including packets larger than Xray's 8K buffer.
++	packet := singbuf.NewSize(65535)
++	defer packet.Release()
++	address, err := r.conn.ReadPacket(packet)
++	if err != nil {
++		return nil, err
++	}
++	b := buf.FromBytes(append([]byte(nil), packet.Bytes()...))
++	destination := net.UDPDestination(net.ParseAddress(address.AddrString()), net.Port(address.Port))
++	b.UDP = &destination
++	return buf.MultiBuffer{b}, nil
++}
++
++type packetWriter struct {
++	conn        *uot.Conn
++	destination M.Socksaddr
++}
++
++func (w *packetWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
++	defer buf.ReleaseMulti(mb)
++	for _, b := range mb {
++		destination := w.destination
++		if b.UDP != nil {
++			destination = socksaddr(*b.UDP)
++		}
++		if err := w.conn.WritePacket(singbuf.As(b.Bytes()), destination); err != nil {
++			return err
++		}
++	}
++	return nil
++}

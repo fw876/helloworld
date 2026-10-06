@@ -1186,6 +1186,12 @@ normalize_xray_protocol_nodes() {
 				changed=1
 			fi
 		fi
+		if [ "$type" = "anytls" ]; then
+			uci -q set "$NAME.$section.type=v2ray"
+			uci -q set "$NAME.$section.v2ray_protocol=anytls"
+			[ -n "$(uci_get_by_name "$section" tls)" ] || uci -q set "$NAME.$section.tls=1"
+			changed=1
+		fi
 		if [ "$type" = "hysteria2" ]; then
 			echolog "提示：检测到原生 Hysteria2 节点，自动迁移为 Xray(Hysteria2)。"
 			uci -q set "$NAME.$section.type=v2ray"

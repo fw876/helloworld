@@ -76,7 +76,7 @@ msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client.lua:51
 msgid ""
-"<h3>Support SS/SSR/V2RAY/XRAY/TROJAN/TUIC/HYSTERIA2/NAIVEPROXY/SOCKS5/CLASH "
+"<h3>Support SS/SSR/V2RAY/XRAY/TROJAN/TUIC/HYSTERIA2/ANYTLS/NAIVEPROXY/SOCKS5/CLASH "
 "etc.</h3>"
 msgstr ""
 
@@ -3368,4 +3368,13 @@ msgstr ""
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:1678
 msgid "xudpProxyUDP443"
+msgstr ""
+
+msgid "Idle session check interval (seconds)"
+msgstr ""
+
+msgid "Idle session timeout (seconds)"
+msgstr ""
+
+msgid "Minimum idle sessions"
 msgstr ""

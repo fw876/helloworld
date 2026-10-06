@@ -47,6 +47,14 @@ end
 local chain_local_port = split(chain, "/")[2] or "0"
 
 local server = ucursor:get_all("shadowsocksr", server_section)
+-- AnyTLS subscriptions previously used a standalone type with no launcher.
+if server.type == "anytls" then
+	server.type = "v2ray"
+	server.v2ray_protocol = "anytls"
+end
+if server.v2ray_protocol == "anytls" and server.tls == nil then
+	server.tls = "1"
+end
 local socks_server = ucursor:get_all("shadowsocksr", "@socks5_proxy[0]") or {}
 local xray_fragment = ucursor:get_all("shadowsocksr", "@global_xray_fragment[0]") or {}
 local xray_noise = ucursor:get_all("shadowsocksr", "@xray_noise_packets[0]") or {}
@@ -362,6 +370,16 @@ function outbound:handleIndex(index)
 		end,
 		wireguard = function()
 			wireguard()
+		end,
+		anytls = function()
+			outbound_settings = {
+				address = server.server,
+				port = tonumber(server.server_port),
+				password = server.password,
+				idleSessionCheckInterval = tonumber(server.anytls_idle_session_check_interval),
+				idleSessionTimeout = tonumber(server.anytls_idle_session_timeout),
+				minIdleSession = tonumber(server.anytls_min_idle_session)
+			}
 		end,
 		hysteria2 = function()
 			xray_hysteria2()
@@ -846,7 +864,7 @@ Xray.outbounds = {
 				              ((remarks and remarks ~= "") and (node_id .. "." .. remarks) or ("direct" .. "." .. node_id)) or nil
 			}
 		} or nil,
-		mux = (server.v2ray_protocol ~= "hysteria2" and server.v2ray_protocol ~= "wireguard") and {
+		mux = (server.v2ray_protocol ~= "hysteria2" and server.v2ray_protocol ~= "wireguard" and server.v2ray_protocol ~= "anytls") and {
 			-- mux
 			enabled = (server.mux == "1"), -- Mux
 			concurrency = (server.mux == "1" and (tonumber(server.concurrency) or -1)) or nil, -- TCP 最大并发连接数

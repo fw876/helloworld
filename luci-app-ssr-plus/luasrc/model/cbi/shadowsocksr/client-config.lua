@@ -326,6 +326,13 @@ local function migrate_xray_protocol_nodes()
 			luci.sys.call(string.format("uci set shadowsocksr.%s.type='ss' && " .. "uci delete shadowsocksr.%s.v2ray_protocol", escaped_sid, escaped_sid))
 			changed = true
 		end
+		if stype == "anytls" then
+			uci:set("shadowsocksr", sid, "type", "v2ray")
+			uci:set("shadowsocksr", sid, "v2ray_protocol", "anytls")
+			if not section.tls then uci:set("shadowsocksr", sid, "tls", "1") end
+			uci:save("shadowsocksr")
+			changed = true
+		end
 		if stype == "hysteria2" then
 			luci.sys.call(string.format("uci set shadowsocksr.%s.type='v2ray' && " .. "uci set shadowsocksr.%s.v2ray_protocol='hysteria2'", escaped_sid, escaped_sid))
 			changed = true
@@ -459,6 +466,9 @@ o = s:option(ListValue, "v2ray_protocol", translate("V2Ray/XRay protocol"))
 o:value("vless", translate("VLESS"))
 o:value("vmess", translate("VMess"))
 o:value("trojan", translate("Trojan"))
+if is_finded("xray") or is_finded("mihomo") then
+	o:value("anytls", "AnyTLS")
+end
 o:value("shadowsocks", translate("ShadowSocks"))
 if is_finded("xray") then
 	o:value("wireguard", translate("WireGuard"))
@@ -551,6 +561,19 @@ o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "socks", socks_ver = "5", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o:depends({type = "v2ray", v2ray_protocol = "trojan"})
+o:depends({type = "v2ray", v2ray_protocol = "anytls"})
+
+for _, field in ipairs({
+	{"anytls_idle_session_check_interval", "Idle session check interval (seconds)", "30"},
+	{"anytls_idle_session_timeout", "Idle session timeout (seconds)", "30"},
+	{"anytls_min_idle_session", "Minimum idle sessions", "0"}
+}) do
+	o = s:option(Value, field[1], translate(field[2]))
+	o.placeholder = field[3]
+	o.datatype = "uinteger"
+	o.rmempty = true
+	o:depends({type = "v2ray", v2ray_protocol = "anytls"})
+end
 
 o = s:option(Value, "snell_psk", translate("Snell PSK"))
 o.password = true
@@ -1435,6 +1458,7 @@ o:depends({type = "v2ray", v2ray_protocol = "vmess", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "trojan", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "hysteria2", reality = false})
+o:depends({type = "v2ray", v2ray_protocol = "anytls", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "socks", socks_ver = "5", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "http", reality = false})
 o:depends("type", "trojan")
