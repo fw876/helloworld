@@ -1601,13 +1601,7 @@ o:depends("type", "hysteria2")
 o:depends("type", "trojan")
 o:depends("type", "tuic")
 o.description = translate("If true, allowss insecure connection at TLS client, e.g., TLS server uses unverifiable certificates.")
--- Xray 支持时间判断
--- if os.time() < os.time({year=2026,month=6,day=1}) then
-if os.date("%Y.%m.%d") < "2026.06.01" then
-	-- Xray 支持到 26.06.01
-	o:depends("tls", true)
-	o:depends({ type = "v2ray", v2ray_protocol = "vless", reality = true })
-end
+o:depends("tls", true)
 
 if xray_version_val >= 260131 then
 	-- Xray 版本大于等于 26.1.31
