@@ -175,7 +175,7 @@ start_dns2tcp() {
 
 supports_builtin_dns() {
 	case "$1" in
-	clash|tuic|v2ray|ss)
+	clash|tuic|anytls|v2ray|ss)
 		return 0
 		;;
 	*)
@@ -223,7 +223,7 @@ is_builtin_dns_active() {
 	local global_server_type
 	global_server_type="$(uci_get_by_name "$GLOBAL_SERVER" type)"
 	case "$global_server_type" in
-	clash|tuic|ss)
+	clash|tuic|anytls|ss)
 		ps_list | grep -v "grep" | grep -q "ssr-retcp"
 		;;
 	v2ray)
@@ -279,6 +279,14 @@ get_tuic_workdir() {
 
 get_tuic_runtime_file() {
 	echo "$(get_tuic_workdir "$1")/config.yaml"
+}
+
+get_anytls_workdir() {
+	echo "$TMP_PATH/anytls-$1"
+}
+
+get_anytls_runtime_file() {
+	echo "$(get_anytls_workdir "$1")/config.yaml"
 }
 
 get_ss_mihomo_workdir() {
@@ -363,6 +371,36 @@ prepare_tuic_runtime_config() {
 
 	# Reuse existing local geodata files so Mihomo does not have to fetch them.
 	link_mihomo_geodata "$workdir"
+}
+
+prepare_anytls_runtime_config() {
+	local sid="$1"
+	local local_port="$2"
+	local socks_port="$3"
+	local instance_key="${4:-$sid}"
+	local run_mode="${5:-redir}"
+	local runtime_file
+	local workdir
+
+	runtime_file="$(get_anytls_runtime_file "$instance_key")"
+	workdir="$(get_anytls_workdir "$instance_key")"
+
+	[ -n "$sid" ] || return 1
+	[ -n "$local_port" ] || return 1
+
+	mkdir -p "$workdir"
+	if ! /usr/bin/lua "$CLASH_YAML_HELPER" anytls "$sid" "$runtime_file" "$local_port" "$socks_port" "$run_mode" >/dev/null 2>&1; then
+		echolog "AnyTLS 节点运行配置生成失败：$sid"
+		return 1
+	fi
+
+	chmod 600 "$runtime_file"
+	# Reuse existing local geodata files so Mihomo does not have to fetch them.
+	link_mihomo_geodata "$workdir"
+	if ! "$(first_type mihomo)" -t -d "$workdir" -f "$runtime_file" >/dev/null 2>&1; then
+		echolog "AnyTLS Mihomo 运行配置校验失败：$sid"
+		return 1
+	fi
 }
 
 prepare_ss_mihomo_runtime_config() {
@@ -743,7 +781,7 @@ resolve_global_clash_socks_port() {
 
 supports_builtin_socks() {
 	case "$1" in
-	ss|clash|tuic|v2ray)
+	ss|clash|tuic|anytls|v2ray)
 		return 0
 		;;
 	*)
@@ -1785,6 +1823,11 @@ start_udp() {
 		redir_udp=0
 		ARG_UDP=""
 		;;
+	anytls)
+		redir_udp=0
+		ARG_UDP=""
+		echolog "AnyTLS UDP relay is handled by the main Mihomo instance."
+		;;
 	tuic)
 		# TUIC now uses Mihomo directly and should follow the native path.
 		redir_udp=0
@@ -1857,6 +1900,7 @@ start_local() {
 	local enable_mihomo
 	local xray_bin
 	local tuic_workdir
+	local anytls_workdir
 	local chain_type
 	local old_ss_program
 	local listenip
@@ -1959,6 +2003,19 @@ start_local() {
 		tuic_workdir="$(get_tuic_workdir "$instance_key")"
 		ln_start_bin "$mihomo_bin" tuic-local -d "$tuic_workdir" -f "$tuic_workdir/config.yaml"
 		echolog "Global_Socks5:Mihomo (TUIC) Started!"
+		;;
+	anytls)
+		mihomo_bin="$(first_type mihomo)"
+		instance_key="${LOCAL_SERVER}-local"
+		[ -n "$probe_instance_key" ] && instance_key="$probe_instance_key"
+		[ -x "$mihomo_bin" ] || {
+			echolog "Global_Socks5:Mihomo 内核不存在，请确认 /usr/bin/mihomo 或 /usr/libexec/mihomo 可执行。"
+			return 1
+		}
+		prepare_anytls_runtime_config "$LOCAL_SERVER" "$local_port" "$local_port" "$instance_key" "socks" || return 1
+		anytls_workdir="$(get_anytls_workdir "$instance_key")"
+		ln_start_bin "$mihomo_bin" anytls-local -d "$anytls_workdir" -f "$anytls_workdir/config.yaml"
+		echolog "Global_Socks5:Mihomo (AnyTLS) Started!"
 		;;
 	shadowtls)
 		#respective config for global socks and main node
@@ -2188,7 +2245,7 @@ get_udp_relay_mode() {
 	ss|ssr|hysteria2)
 		echo "native"
 		;;
-	clash|tuic)
+	clash|tuic|anytls)
 		echo "native"
 		;;
 	trojan|shadowtls)
@@ -2240,7 +2297,9 @@ Start_Run() {
 	local enable_mihomo
 	local xray_bin
 	local tuic_socks_port
+	local anytls_socks_port
 	local tuic_workdir
+	local anytls_workdir
 	local chain_type
 	local clash_socks_port
 	local clash_workdir
@@ -2381,6 +2440,21 @@ Start_Run() {
 		tuic_workdir="$(get_tuic_workdir "$GLOBAL_SERVER")"
 		ln_start_bin "$mihomo_bin" ssr-retcp -d "$tuic_workdir" -f "$tuic_workdir/config.yaml"
 		echolog "Main node:Mihomo (TUIC) Started!"
+		;;
+	anytls)
+		mihomo_bin="$(first_type mihomo)"
+		anytls_socks_port=0
+		[ -x "$mihomo_bin" ] || {
+			echolog "Main node:Mihomo 内核不存在，请确认 /usr/bin/mihomo 或 /usr/libexec/mihomo 可执行。"
+			return 1
+		}
+		if [ "$_local" = "1" ] && [ "$LOCAL_SERVER" = "$GLOBAL_SERVER" ]; then
+			anytls_socks_port=$(uci_get_by_type socks5_proxy local_port 1080)
+		fi
+		prepare_anytls_runtime_config "$GLOBAL_SERVER" "$tcp_port" "$anytls_socks_port" "$GLOBAL_SERVER" "redir" || return 1
+		anytls_workdir="$(get_anytls_workdir "$GLOBAL_SERVER")"
+		ln_start_bin "$mihomo_bin" ssr-retcp -d "$anytls_workdir" -f "$anytls_workdir/config.yaml"
+		echolog "Main node:Mihomo (AnyTLS) Started!"
 		;;
 	shadowtls)
 		if [ -z "$socks_port" ]; then
@@ -2830,7 +2904,7 @@ start_server() {
 }
 
 start_switch() {
-	if [ "$(uci_get_by_name "$GLOBAL_SERVER" type)" = "clash" ] || [ "$(uci_get_by_name "$GLOBAL_SERVER" type)" = "tuic" ]; then
+	if [ "$(uci_get_by_name "$GLOBAL_SERVER" type)" = "clash" ]; then
 		echolog "提示：Mihomo 托管节点不启用 SSR Plus 自动切换逻辑。"
 		return 0
 	fi
@@ -3188,6 +3262,7 @@ stop() {
 			"$TMP_PATH"/clash-* \
 			"$TMP_PATH"/v2ray-* \
 			"$TMP_PATH"/tuic-* \
+			"$TMP_PATH"/anytls-* \
 			"$TMP_PATH"/ss-* \
 			"$TMP_PATH"/ssr-server*.json \
 			"$TMP_PATH"/*-config-*.json
