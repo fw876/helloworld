@@ -1,0 +1,669 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Subject: [PATCH] vmess: restore legacy alterId outbound authentication
+
+Carry alterId through JSON, protobuf and memory accounts, restoring the
+legacy HMAC-MD5 authentication and AES-CFB request/response headers for
+explicitly configured nonzero alterId outbounds. Keep alterId=0 on AEAD
+and reject legacy inbound settings, whose server support is not restored.
+Initialize response keys before the concurrent request/response tasks.
+Use the current timestamp, as Mihomo does, for legacy server compatibility.
+
+Adapt the legacy client handshake from Xray v1.5.5. Cover alternative UUID
+vectors, config/protobuf round trips, TCP/UDP payloads, both AEAD payload
+ciphers and malformed legacy responses; retain existing AEAD header tests.
+
+Reference: https://github.com/XTLS/Xray-core/blob/v1.5.5/proxy/vmess/encoding/client.go
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/infra/conf/vmess.go
++++ b/infra/conf/vmess.go
+@@ -17,6 +17,7 @@
+ 
+ type VMessAccount struct {
+ 	ID          string `json:"id"`
++	AlterID     uint16 `json:"alterId"`
+ 	Security    string `json:"security"`
+ 	Experiments string `json:"experiments"`
+ }
+@@ -35,7 +36,8 @@
+ 		st = protocol.SecurityType_AUTO
+ 	}
+ 	return &vmess.Account{
+-		Id: a.ID,
++		Id:      a.ID,
++		AlterId: uint32(a.AlterID),
+ 		SecuritySettings: &protocol.SecurityConfig{
+ 			Type: st,
+ 		},
+@@ -85,6 +87,10 @@
+ 			return errors.New("invalid VMess user").Base(err)
+ 		}
+ 
++		if account.AlterID != 0 {
++			return errors.New("legacy VMess alterId is supported for outbounds only")
++		}
++
+ 		u, err := uuid.ParseString(account.ID)
+ 		if err != nil {
+ 			return err
+@@ -114,6 +120,7 @@
+ 	Level       uint32                 `json:"level"`
+ 	Email       string                 `json:"email"`
+ 	ID          string                 `json:"id"`
++	AlterID     uint16                 `json:"alterId"`
+ 	Security    string                 `json:"security"`
+ 	Experiments string                 `json:"experiments"`
+ 	Receivers   []*VMessOutboundTarget `json:"vnext"`
+@@ -160,6 +167,7 @@
+ 			account := new(VMessAccount)
+ 			if c.Address != nil {
+ 				account.ID = c.ID
++				account.AlterID = c.AlterID
+ 				account.Security = c.Security
+ 				account.Experiments = c.Experiments
+ 			} else {
+--- a/infra/conf/vmess_legacy_test.go
++++ b/infra/conf/vmess_legacy_test.go
+@@ -0,0 +1,69 @@
++package conf_test
++
++import (
++	"encoding/json"
++	"fmt"
++	"testing"
++
++	"github.com/xtls/xray-core/infra/conf"
++	"github.com/xtls/xray-core/proxy/vmess"
++	"github.com/xtls/xray-core/proxy/vmess/outbound"
++	"google.golang.org/protobuf/proto"
++)
++
++func TestVMessAlterIDConfig(t *testing.T) {
++	for _, aid := range []int{0, 1, 64} {
++		for _, flat := range []bool{false, true} {
++			t.Run(fmt.Sprintf("%d/flat=%v", aid, flat), func(t *testing.T) {
++				fields := fmt.Sprintf(`"id":"e641f5ad-9397-41e3-bf1a-e8740dfed019","alterId":%d`, aid)
++				raw := `{"address":"127.0.0.1","port":443,` + fields + `}`
++				if !flat {
++					raw = `{"vnext":[{"address":"127.0.0.1","port":443,"users":[{` + fields + `}]}]}`
++				}
++				var config conf.VMessOutboundConfig
++				if err := json.Unmarshal([]byte(raw), &config); err != nil {
++					t.Fatal(err)
++				}
++				message, err := config.Build()
++				if err != nil {
++					t.Fatal(err)
++				}
++				user, err := message.(*outbound.Config).Receiver.User.ToMemoryUser()
++				if err != nil {
++					t.Fatal(err)
++				}
++				account := user.Account.(*vmess.MemoryAccount)
++				if len(account.AlterIDs) != aid {
++					t.Fatalf("lost alterId: %d", len(account.AlterIDs))
++				}
++				wire, err := proto.Marshal(account.ToProto())
++				if err != nil {
++					t.Fatal(err)
++				}
++				var decoded vmess.Account
++				if err = proto.Unmarshal(wire, &decoded); err != nil {
++					t.Fatal(err)
++				}
++				if decoded.AlterId != uint32(aid) {
++					t.Fatal("protobuf round trip lost alterId")
++				}
++			})
++		}
++	}
++	for _, raw := range []string{`{"alterId":-1}`, `{"alterId":65536}`, `{"alterId":1.5}`} {
++		var c conf.VMessOutboundConfig
++		if err := json.Unmarshal([]byte(raw), &c); err == nil {
++			t.Fatalf("accepted %s", raw)
++		}
++	}
++	if _, err := (&vmess.Account{Id: "e641f5ad-9397-41e3-bf1a-e8740dfed019", AlterId: 65536}).AsAccount(); err == nil {
++		t.Fatal("accepted oversized protobuf alterId")
++	}
++	var inbound conf.VMessInboundConfig
++	if err := json.Unmarshal([]byte(`{"clients":[{"id":"e641f5ad-9397-41e3-bf1a-e8740dfed019","alterId":1}]}`), &inbound); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := inbound.Build(); err == nil {
++		t.Fatal("silently accepted unsupported legacy inbound")
++	}
++}
+--- a/proxy/vmess/account.proto
++++ b/proxy/vmess/account.proto
+@@ -12,6 +12,8 @@
+   // ID of the account, in the form of a UUID, e.g.,
+   // "66ad4540-b58c-4ad2-9926-ea63445a9b57".
+   string id = 1;
++  // Number of alternative IDs. Nonzero enables legacy outbound authentication.
++  uint32 alter_id = 2;
+   // Security settings. Only applies to client side.
+   xray.common.protocol.SecurityConfig security_settings = 3;
+   // Define tests enabled for this account
+--- a/proxy/vmess/account.pb.go
++++ b/proxy/vmess/account.pb.go
+@@ -27,6 +27,8 @@
+ 	// ID of the account, in the form of a UUID, e.g.,
+ 	// "66ad4540-b58c-4ad2-9926-ea63445a9b57".
+ 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
++	// Number of alternative IDs. Nonzero enables legacy outbound authentication.
++	AlterId uint32 `protobuf:"varint,2,opt,name=alter_id,json=alterId,proto3" json:"alter_id,omitempty"`
+ 	// Security settings. Only applies to client side.
+ 	SecuritySettings *protocol.SecurityConfig `protobuf:"bytes,3,opt,name=security_settings,json=securitySettings,proto3" json:"security_settings,omitempty"`
+ 	// Define tests enabled for this account
+@@ -72,6 +74,13 @@
+ 	return ""
+ }
+ 
++func (x *Account) GetAlterId() uint32 {
++	if x != nil {
++		return x.AlterId
++	}
++	return 0
++}
++
+ func (x *Account) GetSecuritySettings() *protocol.SecurityConfig {
+ 	if x != nil {
+ 		return x.SecuritySettings
+@@ -90,9 +99,10 @@
+ 
+ const file_proxy_vmess_account_proto_rawDesc = "" +
+ 	"\n" +
+-	"\x19proxy/vmess/account.proto\x12\x10xray.proxy.vmess\x1a\x1dcommon/protocol/headers.proto\"\x91\x01\n" +
++	"\x19proxy/vmess/account.proto\x12\x10xray.proxy.vmess\x1a\x1dcommon/protocol/headers.proto\"\xac\x01\n" +
+ 	"\aAccount\x12\x0e\n" +
+-	"\x02id\x18\x01 \x01(\tR\x02id\x12Q\n" +
++	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
++	"\balter_id\x18\x02 \x01(\rR\aalterId\x12Q\n" +
+ 	"\x11security_settings\x18\x03 \x01(\v2$.xray.common.protocol.SecurityConfigR\x10securitySettings\x12#\n" +
+ 	"\rtests_enabled\x18\x04 \x01(\tR\ftestsEnabledBR\n" +
+ 	"\x14com.xray.proxy.vmessP\x01Z%github.com/xtls/xray-core/proxy/vmess\xaa\x02\x10Xray.Proxy.Vmessb\x06proto3"
+--- a/proxy/vmess/account.go
++++ b/proxy/vmess/account.go
+@@ -1,8 +1,12 @@
+ package vmess
+ 
+ import (
++	"bytes"
++	"crypto/md5"
+ 	"strings"
+ 
++	"github.com/xtls/xray-core/common/dice"
++
+ 	"google.golang.org/protobuf/proto"
+ 
+ 	"github.com/xtls/xray-core/common/errors"
+@@ -14,6 +18,8 @@
+ type MemoryAccount struct {
+ 	// ID is the main ID of the account.
+ 	ID *protocol.ID
++	// AlterIDs are used only for legacy outbound authentication.
++	AlterIDs []*protocol.ID
+ 	// Security type of the account. Used for client connections.
+ 	Security protocol.SecurityType
+ 
+@@ -40,6 +46,7 @@
+ 	}
+ 	return &Account{
+ 		Id:               a.ID.String(),
++		AlterId:          uint32(len(a.AlterIDs)),
+ 		TestsEnabled:     test,
+ 		SecuritySettings: &protocol.SecurityConfig{Type: a.Security},
+ 	}
+@@ -51,6 +58,9 @@
+ 	if err != nil {
+ 		return nil, errors.New("failed to parse ID").Base(err)
+ 	}
++	if a.AlterId > 65535 {
++		return nil, errors.New("VMess alterId exceeds 65535")
++	}
+ 	protoID := protocol.NewID(id)
+ 	var AuthenticatedLength, NoTerminationSignal bool
+ 	if strings.Contains(a.TestsEnabled, "AuthenticatedLength") {
+@@ -61,8 +71,41 @@
+ 	}
+ 	return &MemoryAccount{
+ 		ID:                            protoID,
++		AlterIDs:                      newAlterIDs(id, a.AlterId),
+ 		Security:                      a.SecuritySettings.GetSecurityType(),
+ 		AuthenticatedLengthExperiment: AuthenticatedLength,
+ 		NoTerminationSignal:           NoTerminationSignal,
+ 	}, nil
+ }
++
++// AnyValidID chooses an authentication ID without changing the primary command key.
++func (a *MemoryAccount) AnyValidID() *protocol.ID {
++	if len(a.AlterIDs) == 0 {
++		return a.ID
++	}
++	return a.AlterIDs[dice.Roll(len(a.AlterIDs))]
++}
++
++// newAlterIDs follows the original VMess alternative UUID derivation.
++func newAlterIDs(previous uuid.UUID, count uint32) []*protocol.ID {
++	if count == 0 {
++		return nil
++	}
++	ids := make([]*protocol.ID, count)
++	for i := range ids {
++		h := md5.New()
++		h.Write(previous.Bytes())
++		h.Write([]byte("16167dc8-16b6-4e6d-b8bb-65dd68113a81"))
++		var next uuid.UUID
++		for {
++			h.Sum(next[:0])
++			if !bytes.Equal(next.Bytes(), previous.Bytes()) {
++				break
++			}
++			h.Write([]byte("533eff8a-4113-4b10-b5ce-0f5d76b98cd2"))
++		}
++		ids[i] = protocol.NewID(next)
++		previous = next
++	}
++	return ids
++}
+--- a/proxy/vmess/account_legacy_test.go
++++ b/proxy/vmess/account_legacy_test.go
+@@ -0,0 +1,19 @@
++package vmess
++
++import "testing"
++
++func TestLegacyAlterIDDerivation(t *testing.T) {
++	a, err := (&Account{Id: "e641f5ad-9397-41e3-bf1a-e8740dfed019", AlterId: 2}).AsAccount()
++	if err != nil {
++		t.Fatal(err)
++	}
++	m := a.(*MemoryAccount)
++	for i, want := range []string{"5c1ef6b5-fd16-7081-c694-c2308d07559b", "283b417b-0e6e-eda7-50b7-fded0002659a"} {
++		if got := m.AlterIDs[i].String(); got != want {
++			t.Fatalf("ID %d: %s != %s", i, got, want)
++		}
++	}
++	if m.ID.String() != "e641f5ad-9397-41e3-bf1a-e8740dfed019" {
++		t.Fatal("primary ID changed")
++	}
++}
+--- a/proxy/vmess/encoding/client.go
++++ b/proxy/vmess/encoding/client.go
+@@ -3,6 +3,8 @@
+ import (
+ 	"bytes"
+ 	"context"
++	"crypto/hmac"
++	"crypto/md5"
+ 	"crypto/rand"
+ 	"crypto/sha256"
+ 	"encoding/binary"
+@@ -24,6 +26,7 @@
+ 
+ // ClientSession stores connection session info for VMess client.
+ type ClientSession struct {
++	legacy          bool
+ 	requestBodyKey  [16]byte
+ 	requestBodyIV   [16]byte
+ 	responseBodyKey [16]byte
+@@ -35,8 +38,8 @@
+ }
+ 
+ // NewClientSession creates a new ClientSession.
+-func NewClientSession(ctx context.Context, behaviorSeed int64) *ClientSession {
+-	session := &ClientSession{}
++func NewClientSession(ctx context.Context, behaviorSeed int64, legacy bool) *ClientSession {
++	session := &ClientSession{legacy: legacy}
+ 
+ 	randomBytes := make([]byte, 33) // 16 + 16 + 1
+ 	common.Must2(rand.Read(randomBytes))
+@@ -44,10 +47,15 @@
+ 	copy(session.requestBodyIV[:], randomBytes[16:32])
+ 	session.responseHeader = randomBytes[32]
+ 
+-	BodyKey := sha256.Sum256(session.requestBodyKey[:])
+-	copy(session.responseBodyKey[:], BodyKey[:16])
+-	BodyIV := sha256.Sum256(session.requestBodyIV[:])
+-	copy(session.responseBodyIV[:], BodyIV[:16])
++	if legacy {
++		session.responseBodyKey = md5.Sum(session.requestBodyKey[:])
++		session.responseBodyIV = md5.Sum(session.requestBodyIV[:])
++	} else {
++		BodyKey := sha256.Sum256(session.requestBodyKey[:])
++		copy(session.responseBodyKey[:], BodyKey[:16])
++		BodyIV := sha256.Sum256(session.requestBodyIV[:])
++		copy(session.responseBodyIV[:], BodyIV[:16])
++	}
+ 	{
+ 		var err error
+ 		session.readDrainer, err = drain.NewBehaviorSeedLimitedDrainer(behaviorSeed, 18, 3266, 64)
+@@ -62,6 +70,15 @@
+ 
+ func (c *ClientSession) EncodeRequestHeader(header *protocol.RequestHeader, writer io.Writer) error {
+ 	account := header.User.Account.(*vmess.MemoryAccount)
++	var timestamp [8]byte
++	if c.legacy {
++		binary.BigEndian.PutUint64(timestamp[:], uint64(protocol.NowTime()))
++		auth := hmac.New(md5.New, account.AnyValidID().Bytes())
++		auth.Write(timestamp[:])
++		if _, err := writer.Write(auth.Sum(nil)); err != nil {
++			return err
++		}
++	}
+ 
+ 	buffer := buf.New()
+ 	defer buffer.Release()
+@@ -93,6 +110,17 @@
+ 		fnv1a.Sum(hashBytes[:0])
+ 	}
+ 
++	if c.legacy {
++		iv := md5.New()
++		for i := 0; i < 4; i++ {
++			iv.Write(timestamp[:])
++		}
++		stream := crypto.NewAesEncryptionStream(account.ID.CmdKey(), iv.Sum(nil))
++		stream.XORKeyStream(buffer.Bytes(), buffer.Bytes())
++		_, err := writer.Write(buffer.Bytes())
++		return err
++	}
++
+ 	var fixedLengthCmdKey [16]byte
+ 	copy(fixedLengthCmdKey[:], account.ID.CmdKey())
+ 	vmessout := vmessaead.SealVMessAEADHeader(fixedLengthCmdKey, buffer.Bytes())
+@@ -163,46 +191,51 @@
+ }
+ 
+ func (c *ClientSession) DecodeResponseHeader(reader io.Reader) (*protocol.ResponseHeader, error) {
+-	aeadResponseHeaderLengthEncryptionKey := vmessaead.KDF16(c.responseBodyKey[:], vmessaead.KDFSaltConstAEADRespHeaderLenKey)
+-	aeadResponseHeaderLengthEncryptionIV := vmessaead.KDF(c.responseBodyIV[:], vmessaead.KDFSaltConstAEADRespHeaderLenIV)[:12]
+-
+-	aeadResponseHeaderLengthEncryptionAEAD := crypto.NewAesGcm(aeadResponseHeaderLengthEncryptionKey)
+-
+-	var aeadEncryptedResponseHeaderLength [18]byte
+-	var decryptedResponseHeaderLength int
+-	var decryptedResponseHeaderLengthBinaryDeserializeBuffer uint16
+-
+-	if n, err := io.ReadFull(reader, aeadEncryptedResponseHeaderLength[:]); err != nil {
+-		c.readDrainer.AcknowledgeReceive(n)
+-		return nil, drain.WithError(c.readDrainer, reader, errors.New("Unable to Read Header Len").Base(err))
+-	} else { // nolint: golint
+-		c.readDrainer.AcknowledgeReceive(n)
+-	}
+-	if decryptedResponseHeaderLengthBinaryBuffer, err := aeadResponseHeaderLengthEncryptionAEAD.Open(nil, aeadResponseHeaderLengthEncryptionIV, aeadEncryptedResponseHeaderLength[:], nil); err != nil {
+-		return nil, drain.WithError(c.readDrainer, reader, errors.New("Failed To Decrypt Length").Base(err))
+-	} else { // nolint: golint
+-		common.Must(binary.Read(bytes.NewReader(decryptedResponseHeaderLengthBinaryBuffer), binary.BigEndian, &decryptedResponseHeaderLengthBinaryDeserializeBuffer))
+-		decryptedResponseHeaderLength = int(decryptedResponseHeaderLengthBinaryDeserializeBuffer)
+-	}
+-
+-	aeadResponseHeaderPayloadEncryptionKey := vmessaead.KDF16(c.responseBodyKey[:], vmessaead.KDFSaltConstAEADRespHeaderPayloadKey)
+-	aeadResponseHeaderPayloadEncryptionIV := vmessaead.KDF(c.responseBodyIV[:], vmessaead.KDFSaltConstAEADRespHeaderPayloadIV)[:12]
+-
+-	aeadResponseHeaderPayloadEncryptionAEAD := crypto.NewAesGcm(aeadResponseHeaderPayloadEncryptionKey)
+-
+-	encryptedResponseHeaderBuffer := make([]byte, decryptedResponseHeaderLength+16)
+-
+-	if n, err := io.ReadFull(reader, encryptedResponseHeaderBuffer); err != nil {
+-		c.readDrainer.AcknowledgeReceive(n)
+-		return nil, drain.WithError(c.readDrainer, reader, errors.New("Unable to Read Header Data").Base(err))
+-	} else { // nolint: golint
+-		c.readDrainer.AcknowledgeReceive(n)
+-	}
+-
+-	if decryptedResponseHeaderBuffer, err := aeadResponseHeaderPayloadEncryptionAEAD.Open(nil, aeadResponseHeaderPayloadEncryptionIV, encryptedResponseHeaderBuffer, nil); err != nil {
+-		return nil, drain.WithError(c.readDrainer, reader, errors.New("Failed To Decrypt Payload").Base(err))
+-	} else { // nolint: golint
+-		c.responseReader = bytes.NewReader(decryptedResponseHeaderBuffer)
++	if c.legacy {
++		stream := crypto.NewAesDecryptionStream(c.responseBodyKey[:], c.responseBodyIV[:])
++		c.responseReader = crypto.NewCryptionReader(stream, reader)
++	} else {
++		aeadResponseHeaderLengthEncryptionKey := vmessaead.KDF16(c.responseBodyKey[:], vmessaead.KDFSaltConstAEADRespHeaderLenKey)
++		aeadResponseHeaderLengthEncryptionIV := vmessaead.KDF(c.responseBodyIV[:], vmessaead.KDFSaltConstAEADRespHeaderLenIV)[:12]
++
++		aeadResponseHeaderLengthEncryptionAEAD := crypto.NewAesGcm(aeadResponseHeaderLengthEncryptionKey)
++
++		var aeadEncryptedResponseHeaderLength [18]byte
++		var decryptedResponseHeaderLength int
++		var decryptedResponseHeaderLengthBinaryDeserializeBuffer uint16
++
++		if n, err := io.ReadFull(reader, aeadEncryptedResponseHeaderLength[:]); err != nil {
++			c.readDrainer.AcknowledgeReceive(n)
++			return nil, drain.WithError(c.readDrainer, reader, errors.New("Unable to Read Header Len").Base(err))
++		} else { // nolint: golint
++			c.readDrainer.AcknowledgeReceive(n)
++		}
++		if decryptedResponseHeaderLengthBinaryBuffer, err := aeadResponseHeaderLengthEncryptionAEAD.Open(nil, aeadResponseHeaderLengthEncryptionIV, aeadEncryptedResponseHeaderLength[:], nil); err != nil {
++			return nil, drain.WithError(c.readDrainer, reader, errors.New("Failed To Decrypt Length").Base(err))
++		} else { // nolint: golint
++			common.Must(binary.Read(bytes.NewReader(decryptedResponseHeaderLengthBinaryBuffer), binary.BigEndian, &decryptedResponseHeaderLengthBinaryDeserializeBuffer))
++			decryptedResponseHeaderLength = int(decryptedResponseHeaderLengthBinaryDeserializeBuffer)
++		}
++
++		aeadResponseHeaderPayloadEncryptionKey := vmessaead.KDF16(c.responseBodyKey[:], vmessaead.KDFSaltConstAEADRespHeaderPayloadKey)
++		aeadResponseHeaderPayloadEncryptionIV := vmessaead.KDF(c.responseBodyIV[:], vmessaead.KDFSaltConstAEADRespHeaderPayloadIV)[:12]
++
++		aeadResponseHeaderPayloadEncryptionAEAD := crypto.NewAesGcm(aeadResponseHeaderPayloadEncryptionKey)
++
++		encryptedResponseHeaderBuffer := make([]byte, decryptedResponseHeaderLength+16)
++
++		if n, err := io.ReadFull(reader, encryptedResponseHeaderBuffer); err != nil {
++			c.readDrainer.AcknowledgeReceive(n)
++			return nil, drain.WithError(c.readDrainer, reader, errors.New("Unable to Read Header Data").Base(err))
++		} else { // nolint: golint
++			c.readDrainer.AcknowledgeReceive(n)
++		}
++
++		if decryptedResponseHeaderBuffer, err := aeadResponseHeaderPayloadEncryptionAEAD.Open(nil, aeadResponseHeaderPayloadEncryptionIV, encryptedResponseHeaderBuffer, nil); err != nil {
++			return nil, drain.WithError(c.readDrainer, reader, errors.New("Failed To Decrypt Payload").Base(err))
++		} else { // nolint: golint
++			c.responseReader = bytes.NewReader(decryptedResponseHeaderBuffer)
++		}
+ 	}
+ 
+ 	buffer := buf.StackNew()
+--- a/proxy/vmess/encoding/encoding_test.go
++++ b/proxy/vmess/encoding/encoding_test.go
+@@ -41,7 +41,7 @@
+ 	}
+ 
+ 	buffer := buf.New()
+-	client := NewClientSession(context.TODO(), 0)
++	client := NewClientSession(context.TODO(), 0, false)
+ 	common.Must(client.EncodeRequestHeader(expectedRequest, buffer))
+ 
+ 	buffer2 := buf.New()
+@@ -90,7 +90,7 @@
+ 	}
+ 
+ 	buffer := buf.New()
+-	client := NewClientSession(context.TODO(), 0)
++	client := NewClientSession(context.TODO(), 0, false)
+ 	common.Must(client.EncodeRequestHeader(expectedRequest, buffer))
+ 
+ 	buffer2 := buf.New()
+@@ -130,7 +130,7 @@
+ 	}
+ 
+ 	buffer := buf.New()
+-	client := NewClientSession(context.TODO(), 0)
++	client := NewClientSession(context.TODO(), 0, false)
+ 	common.Must(client.EncodeRequestHeader(expectedRequest, buffer))
+ 
+ 	buffer2 := buf.New()
+--- a/proxy/vmess/encoding/legacy_test.go
++++ b/proxy/vmess/encoding/legacy_test.go
+@@ -0,0 +1,159 @@
++package encoding
++
++import (
++	"bytes"
++	"context"
++	"crypto/aes"
++	"crypto/cipher"
++	"crypto/hmac"
++	"crypto/md5"
++	"encoding/binary"
++	"fmt"
++	"hash/fnv"
++	"io"
++	"testing"
++	"time"
++
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/protocol"
++	"github.com/xtls/xray-core/proxy/vmess"
++)
++
++func legacyRequest(t *testing.T, security protocol.SecurityType, command protocol.RequestCommand) (*ClientSession, *protocol.RequestHeader, []byte) {
++	t.Helper()
++	a, err := (&vmess.Account{Id: "e641f5ad-9397-41e3-bf1a-e8740dfed019", AlterId: 1}).AsAccount()
++	if err != nil {
++		t.Fatal(err)
++	}
++	req := &protocol.RequestHeader{Version: 1, User: &protocol.MemoryUser{Account: a}, Command: command, Address: net.DomainAddress("example.com"), Port: 443, Security: security, Option: protocol.RequestOptionChunkStream | protocol.RequestOptionChunkMasking | protocol.RequestOptionGlobalPadding}
++	c := NewClientSession(context.Background(), 0, true)
++	var wire bytes.Buffer
++	if err := c.EncodeRequestHeader(req, &wire); err != nil {
++		t.Fatal(err)
++	}
++	raw := wire.Bytes()
++	// Independently recover the timestamp from the legacy HMAC-MD5 authenticator.
++	var stamp [8]byte
++	found := false
++	for ts := time.Now().Unix() - 35; ts <= time.Now().Unix()+35; ts++ {
++		binary.BigEndian.PutUint64(stamp[:], uint64(ts))
++		auth := hmac.New(md5.New, a.(*vmess.MemoryAccount).AlterIDs[0].Bytes())
++		auth.Write(stamp[:])
++		if hmac.Equal(auth.Sum(nil), raw[:16]) {
++			found = true
++			break
++		}
++	}
++	if !found {
++		t.Fatal("legacy authentication ID or timestamp mismatch")
++	}
++	iv := md5.Sum(bytes.Repeat(stamp[:], 4))
++	block, err := aes.NewCipher(a.(*vmess.MemoryAccount).ID.CmdKey())
++	if err != nil {
++		t.Fatal(err)
++	}
++	header := append([]byte(nil), raw[16:]...)
++	cipher.NewCFBDecrypter(block, iv[:]).XORKeyStream(header, header)
++	h := fnv.New32a()
++	h.Write(header[:len(header)-4])
++	if binary.BigEndian.Uint32(header[len(header)-4:]) != h.Sum32() {
++		t.Fatal("invalid request header checksum")
++	}
++	if header[0] != 1 || header[37] != byte(command) || header[35]&15 != byte(security) {
++		t.Fatal("invalid request header fields")
++	}
++	return c, req, header
++}
++
++func TestLegacyVMessTCPAndUDP(t *testing.T) {
++	for _, security := range []protocol.SecurityType{protocol.SecurityType_AES128_GCM, protocol.SecurityType_CHACHA20_POLY1305} {
++		for _, command := range []protocol.RequestCommand{protocol.RequestCommandTCP, protocol.RequestCommandUDP} {
++			t.Run(fmt.Sprintf("%v/%v", security, command), func(t *testing.T) {
++				c, req, header := legacyRequest(t, security, command)
++				server := &ServerSession{}
++				copy(server.requestBodyIV[:], header[1:17])
++				copy(server.requestBodyKey[:], header[17:33])
++				server.responseBodyKey = md5.Sum(header[17:33])
++				server.responseBodyIV = md5.Sum(header[1:17])
++				var upload, download bytes.Buffer
++				writer, err := c.EncodeRequestBody(req, &upload)
++				if err != nil {
++					t.Fatal(err)
++				}
++				payload := bytes.Repeat([]byte("legacy vmess packet "), 40)
++				if err = writer.WriteMultiBuffer(buf.MultiBuffer{buf.FromBytes(payload)}); err != nil {
++					t.Fatal(err)
++				}
++				reader, err := server.DecodeRequestBody(req, &upload)
++				if err != nil {
++					t.Fatal(err)
++				}
++				assertPacket(t, reader, payload)
++				response := []byte{header[33], 0, 0, 0}
++				block, err := aes.NewCipher(server.responseBodyKey[:])
++				if err != nil {
++					t.Fatal(err)
++				}
++				cipher.NewCFBEncrypter(block, server.responseBodyIV[:]).XORKeyStream(response, response)
++				download.Write(response)
++				writer, err = server.EncodeResponseBody(req, &download)
++				if err != nil {
++					t.Fatal(err)
++				}
++				if err = writer.WriteMultiBuffer(buf.MultiBuffer{buf.FromBytes(payload)}); err != nil {
++					t.Fatal(err)
++				}
++				if _, err = c.DecodeResponseHeader(&download); err != nil {
++					t.Fatal(err)
++				}
++				reader, err = c.DecodeResponseBody(req, &download)
++				if err != nil {
++					t.Fatal(err)
++				}
++				assertPacket(t, reader, payload)
++			})
++		}
++	}
++}
++
++func assertPacket(t *testing.T, r buf.Reader, want []byte) {
++	t.Helper()
++	b, err := r.ReadMultiBuffer()
++	defer buf.ReleaseMulti(b)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var got []byte
++	for _, part := range b {
++		got = append(got, part.Bytes()...)
++	}
++	if !bytes.Equal(got, want) {
++		t.Fatal("payload mismatch")
++	}
++}
++
++func TestLegacyResponseRejectsInvalidHeader(t *testing.T) {
++	for _, truncated := range []bool{false, true} {
++		c, _, header := legacyRequest(t, protocol.SecurityType_AES128_GCM, protocol.RequestCommandTCP)
++		response := []byte{header[33] ^ 1, 0, 0, 0}
++		block, _ := aes.NewCipher(c.responseBodyKey[:])
++		cipher.NewCFBEncrypter(block, c.responseBodyIV[:]).XORKeyStream(response, response)
++		if truncated {
++			response = response[:2]
++		}
++		if _, err := c.DecodeResponseHeader(bytes.NewReader(response)); err == nil {
++			t.Fatal("accepted invalid response")
++		}
++	}
++}
++
++type failedLegacyWriter struct{}
++
++func (failedLegacyWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
++func TestLegacyRequestWriteError(t *testing.T) {
++	c, req, _ := legacyRequest(t, protocol.SecurityType_AES128_GCM, protocol.RequestCommandTCP)
++	if err := c.EncodeRequestHeader(req, failedLegacyWriter{}); err != io.ErrClosedPipe {
++		t.Fatalf("got %v", err)
++	}
++}
+--- a/proxy/vmess/outbound/outbound.go
++++ b/proxy/vmess/outbound/outbound.go
+@@ -132,7 +132,7 @@
+ 		newCtx, newCancel = context.WithCancel(context.Background())
+ 	}
+ 
+-	session := encoding.NewClientSession(ctx, int64(behaviorSeed))
++	session := encoding.NewClientSession(ctx, int64(behaviorSeed), len(account.AlterIDs) != 0)
+ 	sessionPolicy := h.policyManager.ForLevel(request.User.Level)
+ 
+ 	ctx, cancel := context.WithCancel(ctx)
