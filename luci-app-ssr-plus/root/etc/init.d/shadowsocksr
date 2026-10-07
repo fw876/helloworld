@@ -1224,6 +1224,12 @@ normalize_xray_protocol_nodes() {
 }
 
 add_dns_into_ipset() {
+	if [ "$USE_TABLES" = "nftables" ]; then
+		# GFW mode must proxy the resolver before any domain can populate the set.
+		# Other nft modes already proxy destinations outside the bypass sets.
+		[ "$1" = "gfw" ] && nft add element inet ss_spec gfwlist "{ ${2%:*} }" 2>/dev/null
+		return 0
+	fi
 	case "$1" in
 	gfw) ipset add gfwlist "${2%:*}" 2>/dev/null ;;
 	*) ipset add ss_spec_wan_ac "${2%:*}" nomatch 2>/dev/null ;;
@@ -1281,10 +1287,8 @@ start_dns() {
 	if [ "$builtin_dns_enabled" = "1" ]; then
 		pdnsd_enable_flag=7
 	elif [ "$ssrplus_dns" != "0" ]; then
-		if [ "$USE_TABLES" = "iptables" ]; then
-			if [ -n "$dnsserver" ]; then
-				add_dns_into_ipset "$run_mode" "$dnsserver"
-			fi
+		if [ -n "$dnsserver" ]; then
+			add_dns_into_ipset "$run_mode" "$dnsserver"
 		fi
 		case "$ssrplus_dns" in
 		1)
@@ -1297,9 +1301,7 @@ start_dns() {
 			output=$(for i in $(echo "$mosdns_dnsserver" | sed "s/,/ /g"); do
 				dnsserver="${i%:*}"
 				dnsserver="${i##*/}"
-				if [ "$USE_TABLES" = "iptables" ]; then
-					add_dns_into_ipset "$run_mode" "$dnsserver"
-				fi
+				add_dns_into_ipset "$run_mode" "$dnsserver"
 				echo "            - addr: $i"
 				echo "              enable_pipeline: true"
 			done)
