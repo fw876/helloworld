@@ -3870,3 +3870,18 @@ msgstr "空闲会话超时（秒）"
 
 msgid "Minimum idle sessions"
 msgstr "最小空闲会话数"
+
+msgid "IPv6 Traffic Proxy"
+msgstr "IPv6 流量代理"
+
+msgid "Proxy IPv6 traffic using the selected running mode (requires nftables). Allow AAAA replies while enabled and restore the DNS filter when stopped."
+msgstr "按照所选运行模式代理 IPv6 流量（需要 nftables）。启用时允许 AAAA 解析，停止后恢复原有 DNS 过滤设置。"
+
+msgid "IPv6 proxy requires nftables."
+msgstr "IPv6 代理需要 nftables。"
+
+msgid "China IPv6 list update URL"
+msgstr "国内 IPv6 地址库更新地址"
+
+msgid "China IPv6 Data"
+msgstr "国内 IPv6 地址库"

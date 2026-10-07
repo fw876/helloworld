@@ -21,6 +21,14 @@ esac
 mkdir -p $TMP_DNSMASQ_PATH
 
 run_mode=$(normalize_run_mode)
+gfw_set="4#inet#ss_spec#gfwlist"
+black_set="4#inet#ss_spec#blacklist"
+white_set="4#inet#ss_spec#whitelist_domain"
+if ipv6_enabled; then
+	gfw_set="$gfw_set,6#inet#ss_spec#gfwlist6"
+	black_set="$black_set,6#inet#ss_spec#blacklist6"
+	white_set="$white_set,6#inet#ss_spec#whitelist_domain6"
+fi
 
 cp -rf /etc/ssrplus/gfw_list.conf $TMP_DNSMASQ_PATH/
 cp -rf /etc/ssrplus/gfw_base.conf $TMP_DNSMASQ_PATH/
@@ -32,12 +40,11 @@ for conf_file in gfw_base.conf gfw_list.conf; do
 	if [ "$run_mode" = "gfw" ]; then
 		if [ "$nft_support" = "1" ]; then
 			# gfw + nft：ipset → nftset
-			sed -i 's|ipset=/\([^/]*\)/\([^[:space:]]*\)|nftset=/\1/inet#ss_spec#\2|g' "$conf"
+			sed -i "s|^ipset=/\\([^/]*\\)/gfwlist$|nftset=/\\1/$gfw_set|" "$conf"
 		fi
 	else
 		# 非 gfw：无条件清理所有分流引用
-		# sed -i '/^[[:space:]]*\(ipset=\|nftset=\)/d' "$conf"
-		sed -i '/^[[:space:]]*ipset=/d' "$conf"
+		sed -i '/^[[:space:]]*\(ipset=\|nftset=\)/d' "$conf"
 	fi
 done
 
@@ -65,12 +72,14 @@ for list_file in /etc/ssrplus/black.list /etc/ssrplus/white.list /etc/ssrplus/de
 				}
 				{
 					# 提取 server=/domain/xxx
-					if (match($0, /^server=\/([^\/]+)\//, m)) {
-						if (m[1] in domain) next
+					if ($0 ~ /^server=\//) {
+						split($0, m, "/")
+						if (m[2] in domain) next
 					}
 					# 提取 ipset=/domain/xxx
-					if (match($0, /^ipset=\/([^\/]+)\//, m)) {
-						if (m[1] in domain) next
+					if ($0 ~ /^(ipset|nftset)=\//) {
+						split($0, m, "/")
+						if (m[2] in domain) next
 					}
 					print
 				}
@@ -84,8 +93,8 @@ done
 
 # 此处直接使用 cat 因为有 sed '/#/d' 删除了 数据
 if [ "$nft_support" = "1" ]; then
-	sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e "s/.*/server=\/&\/127.0.0.1#$dns_port\nnftset=\/&\/inet#ss_spec#blacklist/" /etc/ssrplus/black.list > "$TMP_DNSMASQ_PATH/blacklist_forward.conf"
-	sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e "s/.*/nftset=\/&\/4#inet#ss_spec#whitelist_domain/" /etc/ssrplus/white.list > "$TMP_DNSMASQ_PATH/whitelist_forward.conf"
+	sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e "s/.*/server=\/&\/127.0.0.1#$dns_port\nnftset=\/&\/$black_set/" /etc/ssrplus/black.list > "$TMP_DNSMASQ_PATH/blacklist_forward.conf"
+	sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e "s/.*/nftset=\/&\/$white_set/" /etc/ssrplus/white.list > "$TMP_DNSMASQ_PATH/whitelist_forward.conf"
 elif [ "$nft_support" = "0" ]; then
 	sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e "s/.*/server=\/&\/127.0.0.1#$dns_port\nipset=\/&\/blacklist/" /etc/ssrplus/black.list > "$TMP_DNSMASQ_PATH/blacklist_forward.conf"
 	sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' -e "s/.*/ipset=\/&\/whitelist/" /etc/ssrplus/white.list > "$TMP_DNSMASQ_PATH/whitelist_forward.conf"
@@ -117,12 +126,14 @@ if [ "$(uci_get_by_type global adblock 0)" == "1" ]; then
 					{
 						keep = 1
 						# 精确匹配 server=/domain/
-						if (match($0, /^server=\/([^\/]+)\//, m)) {
-							if (m[1] in domain) keep = 0
+						if ($0 ~ /^server=\//) {
+							split($0, m, "/")
+							if (m[2] in domain) keep = 0
 						}
 						# 精确匹配 ipset=/domain/
-						if (match($0, /^ipset=\/([^\/]+)\//, m)) {
-							if (m[1] in domain) keep = 0
+						if ($0 ~ /^(ipset|nftset)=\//) {
+							split($0, m, "/")
+							if (m[2] in domain) keep = 0
 						}
 						if (keep) print
 					}

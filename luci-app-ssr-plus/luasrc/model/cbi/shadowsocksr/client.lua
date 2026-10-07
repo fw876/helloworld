@@ -108,6 +108,17 @@ o:value("router", translate("IP Route Mode"))
 o:value("all", translate("Global Mode"))
 o.default = gfw
 
+o = s:option(Flag, "ipv6_support", translate("IPv6 Traffic Proxy"))
+o.description = translate("Proxy IPv6 traffic using the selected running mode (requires nftables). Allow AAAA replies while enabled and restore the DNS filter when stopped.")
+o.default = "0"
+o.rmempty = false
+function o.validate(self, value, section)
+	if value == "1" and not is_finded("nft") then
+		return nil, translate("IPv6 proxy requires nftables.")
+	end
+	return value
+end
+
 o = s:option(ListValue, "dports", translate("Proxy Ports"))
 o:value("1", translate("All Ports"))
 o:value("2", translate("Only Common Ports"))
@@ -161,11 +172,15 @@ o.description = translate("Custom DNS Server format as tcp://IP:PORT or tls://DO
 o.default = "tcp://8.8.4.4:53,tcp://8.8.8.8:53"
 
 o = s:option(Flag, "filter_aaaa", translate("Disable IPv6 for Overseas FQDN"))
-o:depends("pdnsd_enable", "1")
-o:depends("pdnsd_enable", "4")
-o:depends("pdnsd_enable", "7")
+o:depends({pdnsd_enable = "1", ipv6_support = false})
+o:depends({pdnsd_enable = "4", ipv6_support = false})
+o:depends({pdnsd_enable = "7", ipv6_support = false})
 o.rmempty = false
 o.default = "1"
+
+-- Dependency hiding must not delete the saved IPv4-mode preference.
+function o.remove(self, section)
+end
 
 if is_finded("chinadns-ng") then
 	o = s:option(Value, "chinadns_ng_tunnel_forward", translate("Anti-pollution DNS Server"))

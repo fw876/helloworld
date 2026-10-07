@@ -8,6 +8,18 @@ check_run_environment
 china_ip="${1:-${china_ip:-/etc/ssrplus/china_ssr.txt}}"
 [ -f "$china_ip" ] || exit 1
 
+if [ "$2" = "6" ]; then
+	[ "$USE_TABLES" = "nftables" ] || exit 0
+	nft list set inet ss_spec china6 >/dev/null 2>&1 || exit 0
+	{
+		echo 'flush set inet ss_spec china6'
+		echo 'add element inet ss_spec china6 {'
+		sed -e 's/#.*//' -e '/^[[:space:]]*$/d' -e 's/$/,/' "$china_ip"
+		echo '}'
+	} | nft -f -
+	exit $?
+fi
+
 case "$USE_TABLES" in
 	nftables)
 		skip_inet="${SKIP_INET:-0}"

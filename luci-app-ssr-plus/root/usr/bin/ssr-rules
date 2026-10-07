@@ -8,6 +8,7 @@
 #
 
 . $IPKG_INSTROOT/etc/init.d/shadowsocksr
+. $IPKG_INSTROOT/usr/share/shadowsocksr/ipv6.sh
 
 # Detect firewall version and set appropriate tools
 detect_firewall() {
@@ -246,6 +247,7 @@ flush_r() {
 }
 
 flush_nftables() {
+	ipv6_policy_cleanup
 	# Delete inet ss_spec table
 	if $NFT list table inet ss_spec >/dev/null 2>&1; then
 		# Delete all chains
@@ -618,6 +620,7 @@ ac_rule_nft() {
 		$NFT add chain inet ss_spec ss_spec_prerouting '{ type nat hook prerouting priority 0; policy accept; }'
 	fi
 	$NFT flush chain inet ss_spec ss_spec_prerouting 2>/dev/null
+	$NFT add rule inet ss_spec ss_spec_prerouting meta nfproto ipv6 return
 
 	# Exclude special local addresses
 	if $NFT list chain inet ss_spec ss_spec_prerouting >/dev/null 2>&1; then
@@ -695,6 +698,7 @@ ac_rule_nft() {
 				$NFT add chain inet ss_spec ss_spec_output '{ type nat hook output priority 0; policy accept; }'
 			fi
 			$NFT flush chain inet ss_spec ss_spec_output 2>/dev/null
+			$NFT add rule inet ss_spec ss_spec_output meta nfproto ipv6 return
 			$NFT add rule inet ss_spec ss_spec_output meta mark 255 return 2>/dev/null
 		
 		# Exclude special local addresses
@@ -720,6 +724,7 @@ ac_rule_nft() {
 				$NFT add chain inet ss_spec ss_spec_output '{ type nat hook output priority 0; policy accept; }'
 			fi
 			$NFT flush chain inet ss_spec ss_spec_output 2>/dev/null
+			$NFT add rule inet ss_spec ss_spec_output meta nfproto ipv6 return
 			$NFT add rule inet ss_spec ss_spec_output meta mark 255 return 2>/dev/null
 		
 		# Exclude special local addresses
@@ -1309,7 +1314,9 @@ persist_nftables_rules() {
 	EOF
 
 	echo "# Auto-updated: $(date)" >> "$NFTABLES_RULES_FILE"
-	echo "# Runmode: ${RUNMODE:-router}" >> "$NFTABLES_RULES_FILE"
+	echo "# IPv6 schema: 1" >> "$NFTABLES_RULES_FILE"
+	echo "# IPv6 support: $(uci_get_by_type global ipv6_support 0)" >> "$NFTABLES_RULES_FILE"
+	echo "# Runmode: ${RUNMODE:-$(normalize_run_mode)}" >> "$NFTABLES_RULES_FILE"
 	echo "# Server: $server, Port: $local_port" >> "$NFTABLES_RULES_FILE"
 	append_nftables_comment "WAN_BP_IP" "$WAN_BP_IP"
 	append_nftables_comment "LAN_AC_IP" "$LAN_AC_IP"
@@ -1464,6 +1471,13 @@ restore_from_persistence() {
 		return 1
 	fi
 
+	if grep -q 'set gfwlist6 {' "$NFTABLES_RULES_FILE" ||
+	   ! grep -q '^# IPv6 schema: 1$' "$NFTABLES_RULES_FILE" ||
+	   ! grep -q "^# IPv6 support: $(uci_get_by_type global ipv6_support 0)$" "$NFTABLES_RULES_FILE" || ipv6_enabled; then
+		loger 6 "Rebuilding IPv6 rules and policy routes"
+		return 1
+	fi
+
 	loger 6 "Restoring rules from persistence file"
 
 	# Cleanup existing rules
@@ -1471,6 +1485,10 @@ restore_from_persistence() {
 
 	# Restore rules from file
 	if $NFT -f "$NFTABLES_RULES_FILE" 2>/dev/null; then
+		if $NFT list chain ip ss_spec_mangle ss_spec_tproxy >/dev/null 2>&1; then
+			ip rule add fwmark "$FWMARK" table 999 priority 999 2>/dev/null
+			ip route replace local 0.0.0.0/0 dev lo table 999
+		fi
 		loger 5 "Rules restored successfully from persistence file"
 		return 0
 	else
@@ -1937,7 +1955,7 @@ if [ -n "$local_port" ]; then
 		# STEP 7: FORCE_RECREATE priority → must rebuild rules
 		if [ "$FORCE_RECREATE" = "1" ]; then
 			loger 5 "Forced regeneration of NFTables rules"
-			if flush_r && ipset_r && fw_rule && ac_rule && tp_rule && gen_include; then
+			if flush_r && ipset_r && fw_rule && ac_rule && tp_rule && ipv6_rules_apply && gen_include; then
 				loger 5 "NFT rules applied successfully (forced rebuild)"
 				persist_nftables_rules
 				[ "$ENABLE_AUTO_UPDATE" = "1" ] && start_auto_update_daemon
@@ -1963,7 +1981,7 @@ if [ -n "$local_port" ]; then
 		fi
 
 		# STEP 9: Persistence doesn't exist or restore failed → generate new rules
-		if flush_r && ipset_r && fw_rule && ac_rule && tp_rule && gen_include; then
+		if flush_r && ipset_r && fw_rule && ac_rule && tp_rule && ipv6_rules_apply && gen_include; then
 			loger 5 "NFTables rules applied successfully"
 			persist_nftables_rules
 			[ "$ENABLE_AUTO_UPDATE" = "1" ] && start_auto_update_daemon
@@ -1974,7 +1992,7 @@ if [ -n "$local_port" ]; then
 		fi
 	else
 		# iptables
-		if flush_r && fw_rule && ipset_r && ac_rule && tp_rule && gen_include; then
+		if flush_r && fw_rule && ipset_r && ac_rule && tp_rule && ipv6_rules_apply && gen_include; then
 			loger 5 "iptables rules applied successfully"
 			exit 0
 		else

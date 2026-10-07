@@ -266,6 +266,11 @@ s.rawhtml = true
 s.template = "shadowsocksr/refresh"
 s.value = ip_count .. " " .. translate("Records")
 
+s = m:field(DummyValue, "ip6_data", translate("China IPv6 Data"))
+s.rawhtml = true
+s.template = "shadowsocksr/refresh"
+s.value = (tonumber(luci.sys.exec("wc -l < /etc/ssrplus/china6_ssr.txt 2>/dev/null")) or 0) .. " " .. translate("Records")
+
 if uci:get_first("shadowsocksr", 'global', 'apple_optimization', '0') ~= '0' then
 	s = m:field(DummyValue, "apple_data", translate("Apple Domains Data"))
 	s.rawhtml = true

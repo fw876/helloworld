@@ -151,6 +151,29 @@ local function update(url, file, type, file2)
 	local refresh_cmd = "curl -sSL --insecure -o /tmp/ssr-update." .. type .. " " .. url
 	local sret = luci.sys.call(refresh_cmd)
 	if sret == 0 then
+		if type == "ip6_data" then
+			local ip = require "luci.ip"
+			local entries = {}
+			for line in io.lines("/tmp/ssr-update." .. type) do
+				line = line:gsub("#.*$", ""):match("^%s*(.-)%s*$")
+				if line ~= "" then
+					if not ip.IPv6(line) then
+						os.remove("/tmp/ssr-update." .. type)
+						log(-1)
+						return
+					end
+					table.insert(entries, line)
+				end
+			end
+			if #entries == 0 then
+				os.remove("/tmp/ssr-update." .. type)
+				log(-1)
+				return
+			end
+			local out = io.open("/tmp/ssr-update." .. type, "w")
+			out:write(table.concat(entries, "\n"), "\n")
+			out:close()
+		end
 		if type == "gfw_data" then
 			local gfwlist = io.open("/tmp/ssr-update." .. type, "r")
 			local decode = gfwlist:read("*a")
@@ -210,7 +233,9 @@ local function update(url, file, type, file2)
 			if file2 then
 				luci.sys.exec("cp -f /tmp/ssr-update." .. type .. " " .. file2)
 			end
-			if type == "gfw_data" or type == "ad_data" then
+			if type == "ip6_data" then
+				luci.sys.call("/usr/share/shadowsocksr/chinaipset.sh /etc/ssrplus/china6_ssr.txt 6")
+			elseif type == "gfw_data" or type == "ad_data" then
 				luci.sys.call("/usr/share/shadowsocksr/gfw2ipset.sh")
 			else
 				if luci.sys.call("command -v ipset >/dev/null 2>&1") == 0 then
@@ -233,7 +258,17 @@ local function update(url, file, type, file2)
 	os.remove("/tmp/ssr-update." .. type)
 end
 
+local function update_ipv6()
+	update(uci:get_first("shadowsocksr", "global", "chnroute6_url",
+		"https://raw.githubusercontent.com/1715173329/IPCIDR-CHINA/master/ipv6.txt"),
+		"/etc/ssrplus/china6_ssr.txt", "ip6_data")
+end
+
 if args then
+	if args == "ip6_data" then
+		update_ipv6()
+		os.exit(0)
+	end
 	if args == "gfw_data" then
 		update(uci:get_first("shadowsocksr", "global", "gfwlist_url"), "/etc/ssrplus/gfw_list.conf", args, TMP_DNSMASQ_PATH .. "/gfw_list.conf")
 		os.exit(0)
@@ -253,6 +288,10 @@ if args then
 else
 	log("正在更新【GFW列表】数据库")
 	update(uci:get_first("shadowsocksr", "global", "gfwlist_url"), "/etc/ssrplus/gfw_list.conf", "gfw_data", TMP_DNSMASQ_PATH .. "/gfw_list.conf")
+	if uci:get_first("shadowsocksr", "global", "ipv6_support", "0") == "1" then
+		log("正在更新【国内IPv6段】数据库")
+		update_ipv6()
+	end
 	log("正在更新【国内IP段】数据库")
 	update(uci:get_first("shadowsocksr", "global", "chnroute_url"), "/etc/ssrplus/china_ssr.txt", "ip_data", TMP_PATH .. "/china_ssr.txt")
 	if uci:get_first("shadowsocksr", "global", "apple_optimization", "0") == "1" then

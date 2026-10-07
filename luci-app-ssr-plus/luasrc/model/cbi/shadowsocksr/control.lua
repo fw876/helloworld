@@ -21,10 +21,10 @@ o.description = translate("Listen only on the given interface or, if unspecified
 s:tab("wan_ac", translate("WAN IP AC"))
 
 o = s:taboption("wan_ac", DynamicList, "wan_bp_ips", translate("WAN White List IP"))
-o.datatype = "ip4addr"
+o.datatype = "ipaddr"
 
 o = s:taboption("wan_ac", DynamicList, "wan_fw_ips", translate("WAN Force Proxy IP"))
-o.datatype = "ip4addr"
+o.datatype = "ipaddr"
 
 -- Part of LAN
 s:tab("lan_ac", translate("LAN IP AC"))
@@ -37,7 +37,7 @@ o.rmempty = false
 
 o = s:taboption("lan_ac", DynamicList, "lan_ac_ips", translate("LAN Host List"))
 o.datatype = "ipaddr"
-luci.ip.neighbors({family = 4}, function(entry)
+luci.ip.neighbors({}, function(entry)
 	if entry.reachable then
 		o:value(entry.dest:string())
 	end
@@ -47,7 +47,7 @@ o:depends("lan_ac_mode", "b")
 
 o = s:taboption("lan_ac", DynamicList, "lan_bp_ips", translate("LAN Bypassed Host List"))
 o.datatype = "ipaddr"
-luci.ip.neighbors({family = 4}, function(entry)
+luci.ip.neighbors({}, function(entry)
 	if entry.reachable then
 		o:value(entry.dest:string())
 	end
@@ -55,7 +55,7 @@ end)
 
 o = s:taboption("lan_ac", DynamicList, "lan_fp_ips", translate("LAN Force Proxy Host List"))
 o.datatype = "ipaddr"
-luci.ip.neighbors({family = 4}, function(entry)
+luci.ip.neighbors({}, function(entry)
 	if entry.reachable then
 		o:value(entry.dest:string())
 	end
@@ -63,7 +63,7 @@ end)
 
 o = s:taboption("lan_ac", DynamicList, "lan_gm_ips", translate("Game Mode Host List"))
 o.datatype = "ipaddr"
-luci.ip.neighbors({family = 4}, function(entry)
+luci.ip.neighbors({}, function(entry)
 	if entry.reachable then
 		o:value(entry.dest:string())
 	end

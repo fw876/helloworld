@@ -127,7 +127,39 @@ uci_get_by_cfgid() {
 	echo "${ret:=$3}"
 }
 
+ipv6_enabled() {
+	[ "$(uci_get_by_type global ipv6_support 0)" = "1" ] && [ "$USE_TABLES" = "nftables" ]
+}
+
+ipt2socks_listen_args() {
+	if ipv6_enabled; then
+		echo "-b 0.0.0.0 -B ::"
+	else
+		echo "-b 0.0.0.0 -4"
+	fi
+}
+
+# Restore the user's global AAAA filter when IPv6 proxying is stopped.
+set_ipv6_dns_filter() {
+	local saved
+	saved="$(uci -q get 'dhcp.@dnsmasq[0]._ssrp_filter_aaaa')"
+	if [ "$1" = "start" ] && ipv6_enabled; then
+		if [ "$(uci -q get 'dhcp.@dnsmasq[0].filter_aaaa')" = "1" ]; then
+			uci set 'dhcp.@dnsmasq[0]._ssrp_filter_aaaa=1'
+			uci set 'dhcp.@dnsmasq[0].filter_aaaa=0'
+			uci commit dhcp
+		fi
+	elif [ -n "$saved" ]; then
+		if [ "$(uci -q get 'dhcp.@dnsmasq[0].filter_aaaa')" = "0" ]; then
+			uci set "dhcp.@dnsmasq[0].filter_aaaa=$saved"
+		fi
+		uci delete 'dhcp.@dnsmasq[0]._ssrp_filter_aaaa'
+		uci commit dhcp
+	fi
+}
+
 get_filter_aaaa() {
+	ipv6_enabled && { echo 0; return; }
 	local ret
 	ret="$(uci get "$NAME.@global[0].filter_aaaa" 2>/dev/null)"
 	[ -z "$ret" ] && ret="$(uci get "$NAME.@global[0].mosdns_ipv6" 2>/dev/null)"
@@ -636,7 +668,8 @@ prepare_clash_runtime_config() {
 		external-controller: 127.0.0.1:$CLASH_API_PORT
 		secret: $clash_secret
 		allow-lan: true
-		bind-address: 0.0.0.0
+		bind-address: "$(ipv6_enabled && echo '*' || echo '0.0.0.0')"
+		ipv6: $(ipv6_enabled && echo true || echo false)
 		routing-mark: $CLASH_OUTBOUND_MARK
 		profile:
 		  store-selected: true
@@ -780,7 +813,12 @@ get_host_ip() {
 		ip="$host"
 	elif ! echo "$host" | grep -q ':'; then
 		ip=$(resolveip -4 -t 3 "$host" | awk 'NR==1{print}')
+		if [ -z "$ip" ] && ipv6_enabled; then
+			ip=$(resolveip -6 -t 3 "$host" | awk 'NR==1{print}')
+		fi
 		[ -z "$ip" ] && ip=$(curl -sSL "http://119.29.29.29/d?dn=$host" | awk -F ';' '{print $1}')
+	elif ipv6_enabled; then
+		ip="$host"
 	fi
 	[ -z "$ip" ] || uci_set_by_name "$1" ip "$ip"
 	[ -n "$ip" ] || ip=""
@@ -1000,7 +1038,7 @@ start_socks5_udp_with_ipt2socks() {
 			-k "$(uci_get_by_name "$sid" password)"
 	fi
 	for _i in $(seq 1 "$threads"); do
-		ln_start_bin "$ipt2socks_bin" ipt2socks -U -r -b 0.0.0.0 -4 \
+		ln_start_bin "$ipt2socks_bin" ipt2socks -U -r $(ipt2socks_listen_args) \
 			-s "$server_ip" \
 			-p "$(uci_get_by_name "$sid" server_port)" \
 			-l "$local_port" "$@"
@@ -1032,7 +1070,7 @@ start_socks5_redir_with_ipt2socks() {
 	fi
 	for _i in $(seq 1 "$threads"); do
 		ln_start_bin "$ipt2socks_bin" ipt2socks \
-			-T -R -r -b 0.0.0.0 -4 \
+			-T -R -r $(ipt2socks_listen_args) \
 			-s "$server_ip" \
 			-p "$(uci_get_by_name "$sid" server_port)" \
 			-l "$local_port" "$@"
@@ -1785,7 +1823,7 @@ start_udp() {
 	trojan) #client
 		gen_config_file "$UDP_RELAY_SERVER" "$type" 2 "$tmp_udp_local_port"
 		ln_start_bin "$(first_type trojan)" "$type" --config "$udp_config_file"
-		ln_start_bin "$(first_type ipt2socks)" ipt2socks -U -b 0.0.0.0 -4 -s 127.0.0.1 -p "$tmp_udp_local_port" -l "$tmp_udp_port"
+		ln_start_bin "$(first_type ipt2socks)" ipt2socks -U $(ipt2socks_listen_args) -s 127.0.0.1 -p "$tmp_udp_local_port" -l "$tmp_udp_port"
 		echolog "UDP TPROXY Relay:$($(first_type trojan) --version 2>&1 | head -1) Started!"
 		;;
 	naiveproxy)
@@ -2996,6 +3034,11 @@ start() {
 	mkdir -p /var/run /var/lock /var/log "$DNSMASQ_CONF_DIR" "$TMP_BIN_PATH" "$TMP_DNSMASQ_PATH" "$CLASH_CONFIG_DIR"
 	echo "conf-dir=${TMP_DNSMASQ_PATH}" >"$DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf"
 	check_run_environment
+	if [ "$(uci_get_by_type global ipv6_support 0)" = "1" ] && [ "$USE_TABLES" != "nftables" ]; then
+		echolog "ERROR: IPv6 透明代理需要 nftables 后端。"
+		unset_lock
+		return 1
+	fi
 	normalize_run_mode >/dev/null
 	normalize_xray_protocol_nodes
 
@@ -3005,8 +3048,18 @@ start() {
 		Start_Run
 		start_http_proxy
 		start_xhttp_addr
-		start_rules
+		if ! start_rules; then
+			echolog "ERROR: 无法安装透明代理规则，启动中止。"
+			unset_lock
+			stop
+			return 1
+		fi
+		set_ipv6_dns_filter start
 		start_dns
+		# Include resolver bootstrap addresses in the firewall reload snapshot.
+		if [ "$USE_TABLES" = "nftables" ]; then
+			/usr/bin/ssr-rules -P >/dev/null 2>&1
+		fi
 		# Restore ipsets after rules creation
 		if [ "$USE_TABLES" = "iptables" ]; then
 			for setname in gfwlist china blacklist whitelist; do
@@ -3188,6 +3241,7 @@ stop() {
 		uci -q del "dhcp.@dnsmasq[0]._unused_ssrp_changed"
 		uci -q commit "dhcp"
 	fi
+	set_ipv6_dns_filter stop
 	if [ -f "$DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf" ]; then
 		rm -rf "$DNSMASQ_CONF_DIR/dnsmasq-ssrplus.conf" \
 			"$TMP_DNSMASQ_PATH" \
