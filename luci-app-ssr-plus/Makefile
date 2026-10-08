@@ -129,8 +129,7 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_Mihomo
 	bool "Include Mihomo (Clash Support)"
 	select PACKAGE_mihomo
 	select PACKAGE_v2ray-geoip
-	depends on aarch64||arm||i386||loongarch64||riscv64||x86_64
-	default y if aarch64||arm||i386||loongarch64||riscv64||x86_64
+	default y if i386||loongarch64||riscv64||x86_64
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_GeoData
 	bool "Include GeoData (GeoIP and GeoSite)"
