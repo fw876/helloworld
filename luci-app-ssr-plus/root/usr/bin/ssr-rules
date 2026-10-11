@@ -111,7 +111,7 @@ usage() {
 
 loger() {
 	# 1.alert 2.crit 3.err 4.warn 5.notice 6.info 7.debug
-	logger -st ssr-rules[$$] -p$1 $2
+	logger -st "ssr-rules[$$]" -p "$1" -- "$2"
 }
 
 # IP list normalization function (for comparison)
