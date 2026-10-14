@@ -62,6 +62,7 @@ ipv6_policy_rules() {
 		;;
 	router)
 		echo "add rule inet ss_spec $chain ip6 daddr @china6 return"
+		echo "add rule inet ss_spec $chain ip6 saddr @gmlan6 ip6 daddr != @china6 goto $target"
 		echo "add rule inet ss_spec $chain goto $target"
 		;;
 	all) echo "add rule inet ss_spec $chain goto $target" ;;
