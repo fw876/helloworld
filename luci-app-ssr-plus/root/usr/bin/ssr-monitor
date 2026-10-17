@@ -87,7 +87,7 @@ while [ "1" == "1" ]; do #死循环
 	#redir tcp
 	if [ "$redir_tcp_process" -gt 0 ]; then
 		icount=$(redir_tcp_running)
-		local tcp_expected="$redir_tcp_process"
+		tcp_expected="$redir_tcp_process"
 		if [ "$GLOBAL_TYPE" = "socks5" ]; then
 			tcp_expected="$EXPECTED_THREADS"
 		fi
@@ -101,7 +101,7 @@ while [ "1" == "1" ]; do #死循环
 	#redir udp
 	if [ "$redir_udp_process" -gt 0 ]; then
 		icount=$(redir_udp_running)
-		local udp_expected="$redir_udp_process"
+		udp_expected="$redir_udp_process"
 		if [ "$GLOBAL_TYPE" = "socks5" ]; then
 			udp_expected="$EXPECTED_THREADS"
 		fi
@@ -172,12 +172,12 @@ while [ "1" == "1" ]; do #死循环
 			echolog "chinadns-ng $dnsserver tunnel error.restart!"
 			dnsserver=$(uci_get_by_type global chinadns_ng_tunnel_forward 8.8.4.4:53)
 			kill -9 $(ps_list | grep "chinadns-ng -b 127.0.0.1 -l $tmp_dns_port" | grep -v grep | awk '{print $1}') >/dev/null 2>&1
-			local chinadns_ng_proto="$(uci_get_by_type global chinadns_ng_proto)"
-			local chinadns_ng_dns=""
+			chinadns_ng_proto="$(uci_get_by_type global chinadns_ng_proto)"
+			chinadns_ng_dns=""
 			IFS=','
 			for chinadns_ng_server in $dnsserver; do
-				local chinadns_ng_ip="${chinadns_ng_server%%:*}"
-				local chinadns_ng_port="${chinadns_ng_server##*:}"
+				chinadns_ng_ip="${chinadns_ng_server%%:*}"
+				chinadns_ng_port="${chinadns_ng_server##*:}"
 				[ "$chinadns_ng_ip" = "$chinadns_ng_port" ] && chinadns_ng_port="53"
 				chinadns_ng_tls_port="853"
 				case "$chinadns_ng_proto" in
