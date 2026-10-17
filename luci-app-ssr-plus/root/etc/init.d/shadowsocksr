@@ -2974,8 +2974,8 @@ start_rules() {
 		esac
 	}
 
-	if [ "$(uci_get_by_type global dports)" = "3" ]; then
-		custom_ports=$(uci_get_by_name "$GLOBAL_SERVER" custom_ports)  #  custom_ports 存储了用户自定义的端口
+	if [ "$(uci_get_by_type global dports 1)" = "3" ]; then
+		custom_ports=$(uci_get_by_type global custom_ports)  #  custom_ports 存储了用户自定义的端口
 		if [ -n "$custom_ports" ]; then
 			proxyport="-m multiport --dports $custom_ports"
 		fi
