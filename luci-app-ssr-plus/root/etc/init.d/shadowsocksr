@@ -3017,7 +3017,7 @@ start_rules() {
 			-G "$(uci_get_by_type access_control lan_gm_ips)" \
 			-m "$(uci_get_by_type access_control Interface)" \
 			-D "$proxyport" \
-			"$(get_arg_out)" "$(gfwmode)" "$ARG_UDP" "$ARG_UDP_RULES" "$ARG_A"
+			$(get_arg_out) $(gfwmode) $ARG_UDP $ARG_UDP_RULES $ARG_A
 
 		return $?
 	}
