@@ -1,6 +1,6 @@
 --- a/build/gen.py
 +++ b/build/gen.py
-@@ -254,6 +254,23 @@ def is_gcc(cxx):
+@@ -258,6 +258,23 @@ def is_gcc(cxx):
  
    return ret.returncode == 0 and "#define __GNUC__" in ret.stdout and not "#define __clang__" in ret.stdout
  
@@ -21,10 +21,10 @@
 +  return int(match.group(1)) if match else None
 +
 +
- def GenerateLastCommitPosition(host, header):
+ def GenerateLastCommitPosition(host, header, generate_dummy):
    ROOT_TAG = 'initial-commit'
-   if os.path.isdir(os.path.join(REPO_ROOT, '.git')):
-@@ -553,6 +570,12 @@ def WriteGNNinja(path, platform, host, o
+   if not generate_dummy and os.path.isdir(os.path.join(REPO_ROOT, '.git')):
+@@ -557,6 +574,12 @@ def WriteGNNinja(path, platform, host, o
    libs = []
  
    if not platform.is_msvc():
@@ -37,7 +37,7 @@
      if options.debug:
        cflags.extend(['-O0', '-g'])
        # Enable libc++ or libstdc++ assertions in debug mode.
-@@ -625,9 +648,13 @@ def WriteGNNinja(path, platform, host, o
+@@ -629,9 +652,13 @@ def WriteGNNinja(path, platform, host, o
          '-Wextra-semi',
          '-Wundef',
  
@@ -52,20 +52,3 @@
      if is_gcc(cxx):
        cflags.append('-Wno-redundant-move')
        # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=104336
---- a/src/gn/command_suggest.cc
-+++ b/src/gn/command_suggest.cc
-@@ -566,7 +566,14 @@ SuggestResult OutputSuggestions(const st
-     }
-     return SuggestResult::kFailure;
-   }
-+#if defined(GN_CLANG_BEFORE_16)
-+  const auto& [structured_includer, structured_dep_kind] =
-+      includer_targets.front();
-+  const auto includer = structured_includer;
-+  const auto dep_kind = structured_dep_kind;
-+#else
-   const auto& [includer, dep_kind] = includer_targets.front();
-+#endif
-   current_toolchain = includer->label().GetToolchainLabel();
- 
-   std::string_view dep_field =

@@ -1,6 +1,6 @@
 --- a/build/gen.py
 +++ b/build/gen.py
-@@ -490,12 +490,6 @@
+@@ -494,12 +494,6 @@ def WriteGenericNinja(path, static_libra
        'check_all',
        inputs=[
            ninja.RunBinary(
