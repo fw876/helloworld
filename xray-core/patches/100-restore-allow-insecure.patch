@@ -9,7 +9,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 
 --- a/infra/conf/transport_security.go
 +++ b/infra/conf/transport_security.go
-@@ -358,9 +358,7 @@
+@@ -359,9 +359,7 @@ func (c *TLSConfig) Build() (proto.Messa
  	config.RejectUnknownSni = c.RejectUnknownSNI
  	config.MasterKeyLog = c.MasterKeyLog
  
@@ -20,7 +20,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	if c.PinnedPeerCertSha256 != "" {
  		for v := range strings.SplitSeq(c.PinnedPeerCertSha256, ",") {
  			v = strings.TrimSpace(v)
---- a/infra/conf/tls_allow_insecure_test.go
+--- /dev/null
 +++ b/infra/conf/tls_allow_insecure_test.go
 @@ -0,0 +1,70 @@
 +package conf_test
@@ -95,7 +95,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +}
 --- a/transport/internet/tls/config.proto
 +++ b/transport/internet/tls/config.proto
-@@ -38,7 +38,8 @@
+@@ -38,7 +38,8 @@ message Certificate {
  }
  
  message Config {
@@ -116,7 +116,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  // source: transport/internet/tls/config.proto
  
  package tls
-@@ -178,6 +178,8 @@
+@@ -178,6 +178,8 @@ func (x *Certificate) GetBuildChain() bo
  
  type Config struct {
  	state protoimpl.MessageState `protogen:"open.v1"`
@@ -125,7 +125,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	// List of certificates to be served on server.
  	Certificate []*Certificate `protobuf:"bytes,2,rep,name=certificate,proto3" json:"certificate,omitempty"`
  	// Override server name.
-@@ -240,6 +242,13 @@
+@@ -241,6 +243,13 @@ func (*Config) Descriptor() ([]byte, []i
  	return file_transport_internet_tls_config_proto_rawDescGZIP(), []int{1}
  }
  
@@ -139,11 +139,11 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  func (x *Config) GetCertificate() []*Certificate {
  	if x != nil {
  		return x.Certificate
-@@ -377,8 +386,9 @@
+@@ -385,8 +394,9 @@ const file_transport_internet_tls_config
  	"\x05Usage\x12\x10\n" +
  	"\fENCIPHERMENT\x10\x00\x12\x14\n" +
  	"\x10AUTHORITY_VERIFY\x10\x01\x12\x13\n" +
--	"\x0fAUTHORITY_ISSUE\x10\x02\"\xa6\x06\n" +
+-	"\x0fAUTHORITY_ISSUE\x10\x02\"\xca\x06\n" +
 -	"\x06Config\x12J\n" +
 +	"\x0fAUTHORITY_ISSUE\x10\x02\"\xcd\x06\n" +
 +	"\x06Config\x12%\n" +
@@ -153,7 +153,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	"serverName\x12#\n" +
 --- a/transport/internet/tls/config.go
 +++ b/transport/internet/tls/config.go
-@@ -384,6 +384,7 @@
+@@ -385,6 +385,7 @@ func (c *Config) GetTLSConfig(opts ...Op
  		PinnedPeerCertSha256: c.PinnedPeerCertSha256,
  	}
  	config := &tls.Config{
