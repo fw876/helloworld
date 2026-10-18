@@ -1,0 +1,122 @@
+<script type="text/javascript">
+//<![CDATA[
+(function() {
+	'use strict';
+
+	// 这些字段在 Clash 节点作为主服务器时不生效，需要整行隐藏
+	var clashHideFields = [
+		'threads',
+		'run_mode',
+		'ipv6_support',
+		'dports',
+		'custom_ports',
+		'pdnsd_enable',
+		'tunnel_forward',
+		'tunnel_forward_mosdns',
+		'filter_aaaa',
+		'chinadns_ng_tunnel_forward',
+		'chinadns_ng_proto',
+		'chinadns_forward'
+	];
+
+	function getField(name) {
+		return document.querySelector('select[name$=".' + name + '"], input[name$=".' + name + '"]');
+	}
+
+	function getClashHideRows() {
+		var rows = [];
+		clashHideFields.forEach(function(name) {
+			var el = getField(name);
+			if (el) {
+				var row = el.closest('.cbi-value');
+				if (row && rows.indexOf(row) < 0) {
+					rows.push(row);
+				}
+			}
+		});
+		return rows;
+	}
+
+	function isClashSelected() {
+		var select = getField('global_server');
+		if (!select) {
+			return false;
+		}
+		var option = select.options[select.selectedIndex];
+		if (!option) {
+			return false;
+		}
+		var text = (option.textContent || '').trim();
+		// Clash 节点显示为 [CLASH]:... 或 [CLASH]
+		return text.indexOf('[CLASH]') === 0;
+	}
+
+	function updateClashVisibility() {
+		var isClash = isClashSelected();
+		getClashHideRows().forEach(function(row) {
+			row.style.display = isClash ? 'none' : '';
+		});
+	}
+
+	function bindClashHide() {
+		var select = getField('global_server');
+		if (!select || select.dataset.ssrClashHideBound) {
+			return;
+		}
+		select.dataset.ssrClashHideBound = '1';
+		select.addEventListener('change', function() {
+			window.setTimeout(updateClashVisibility, 0);
+		});
+		updateClashVisibility();
+	}
+
+	function bindDependsWatcher() {
+		var pdnsd = getField('pdnsd_enable');
+		if (pdnsd && !pdnsd.dataset.ssrClashDependsBound) {
+			pdnsd.dataset.ssrClashDependsBound = '1';
+			pdnsd.addEventListener('change', function() {
+				// depends 字段显示/隐藏有短暂延迟，稍后重新应用
+				window.setTimeout(updateClashVisibility, 50);
+			});
+		}
+	}
+
+	function observeDynamicRows() {
+		var container = document.getElementById('cbi-shadowsocksr') || document.querySelector('.cbi-map') || document.body;
+		if (!container || container.dataset.ssrClashObserveBound) {
+			return;
+		}
+		container.dataset.ssrClashObserveBound = '1';
+
+		var observer = new MutationObserver(function(mutations) {
+			var shouldUpdate = false;
+			for (var i = 0; i < mutations.length; i++) {
+				var m = mutations[i];
+				if (m.type === 'childList' && m.addedNodes.length) {
+					shouldUpdate = true;
+					break;
+				}
+			}
+			if (shouldUpdate) {
+				window.setTimeout(updateClashVisibility, 0);
+			}
+		});
+
+		observer.observe(container, { childList: true, subtree: true });
+	}
+
+	function init() {
+		bindClashHide();
+		bindDependsWatcher();
+		observeDynamicRows();
+	}
+
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', init);
+		window.addEventListener('load', init);
+	} else {
+		init();
+	}
+})();
+//]]>
+</script>

@@ -265,4 +265,7 @@ end
 local dns_defaults_section = m:section(SimpleSection)
 dns_defaults_section.template = "shadowsocksr/client_dns_defaults"
 
+local clash_hide_section = m:section(SimpleSection)
+clash_hide_section.template = "shadowsocksr/client_clash_hide"
+
 return m
