@@ -1,0 +1,53 @@
+Subject: [PATCH] metrics: use Python 3.9-compatible union annotations
+
+Python 3.9 cannot evaluate PEP 604 union annotations at import time.
+Use typing.Union for all four minidom/ElementTree annotations without
+changing the accepted types or histogram generation logic.
+
+--- a/src/tools/metrics/histograms/extract_histograms.py
++++ b/src/tools/metrics/histograms/extract_histograms.py
+@@ -13,7 +13,7 @@ import datetime
+ import itertools
+ import logging
+ import re
+-from typing import Optional, TypedDict
++from typing import Optional, TypedDict, Union
+ import xml.dom.minidom
+ import xml.etree.ElementTree as ET
+ 
+@@ -106,7 +106,7 @@ class HistogramDict(TypedDict, total=Fal
+   enum_attr: str
+ 
+ 
+-def _XmlToET(tree: xml.dom.minidom.Node | ET.Element) -> ET.Element:
++def _XmlToET(tree: Union[xml.dom.minidom.Node, ET.Element]) -> ET.Element:
+   """Converts a minidom Node to an ElementTree Element if needed."""
+   if isinstance(tree, ET.Element):
+     return tree
+@@ -407,7 +407,7 @@ def _ValidateMilestoneString(milestone_s
+ 
+ 
+ def ExtractTokens(
+-  histogram: xml.dom.minidom.Element | ET.Element,
++  histogram: Union[xml.dom.minidom.Element, ET.Element],
+   variants_dict: dict[str, list[VariantDict]],
+ ) -> tuple[list[TokenDict], ExtractionErrors]:
+   """Extracts tokens and variants from the given histogram element.
+@@ -685,7 +685,7 @@ def ExtractHistogramsFromXmlTree(
+ 
+ 
+ def ExtractVariantsFromXmlTree(
+-  tree: xml.dom.minidom.Node | ET.Element,
++  tree: Union[xml.dom.minidom.Node, ET.Element],
+ ) -> tuple[dict[str, list[VariantDict]], ExtractionErrors]:
+   """Extracts all <variants> nodes in the tree into a dictionary.
+ 
+@@ -1055,7 +1055,7 @@ def ExtractHistogramsFromDom(
+ 
+ 
+ def ExtractHistogramsFromXmlET(
+-  tree: xml.dom.minidom.Node | ET.Element,
++  tree: Union[xml.dom.minidom.Node, ET.Element],
+ ) -> tuple[dict[str, HistogramDict], ExtractionErrors]:
+   """Computes the histogram names and descriptions from the XML representation.
+ 

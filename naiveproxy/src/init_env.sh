@@ -41,6 +41,7 @@ export TMPDIR="$PWD/tmp"
 export DEPOT_TOOLS_WIN_TOOLCHAIN=0
 export naive_flags="
 is_official_build=true
+is_chrome_branded=true
 exclude_unwind_tables=true
 enable_resource_allowlist_generation=false
 chrome_pgo_phase=2
@@ -87,6 +88,9 @@ target_cpu=\"${naive_arch}\"
 target_sysroot=\"${toolchain_dir}\""
 
 case "${target_arch}" in
+"aarch64")
+	[ -n "${cpu_type}" ] && naive_flags+=" arm_cpu=\"${cpu_type}\""
+	;;
 "arm")
 	naive_flags+=" arm_version=0 arm_cpu=\"${cpu_type}\""
 	case "${cpu_type}" in "arm1176jzf-s"|"arm926ej-s"|"mpcore"|"xscale") naive_flags+=" arm_use_thumb=false" ;; esac
@@ -105,9 +109,6 @@ case "${target_arch}" in
 	if [ -d "$toolchain_dir/lib/gcc/arm-openwrt-linux-muslgnueabi" ] && [ ! -d "$toolchain_dir/lib/gcc/arm-openwrt-linux-musleabi" ]; then
 		ln -sf "$toolchain_dir/lib/gcc/arm-openwrt-linux-muslgnueabi" "$toolchain_dir/lib/gcc/arm-openwrt-linux-musleabi"
 	fi
-	;;
-"arm64")
-	[ -n "${cpu_type}" ] && naive_flags+=" arm_cpu=\"${cpu_type}\""
 	;;
 "mipsel"|"mips64el")
 	if [ -z "${cpu_type}" ] || [ "${cpu_type}" == "mips32" ]; then
