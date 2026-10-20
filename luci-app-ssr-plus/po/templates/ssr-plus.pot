@@ -3378,3 +3378,18 @@ msgstr ""
 
 msgid "Minimum idle sessions"
 msgstr ""
+
+msgid "Naive HTTP/3 (QUIC)"
+msgstr ""
+
+msgid "Naive UDP over TCP (server support required)"
+msgstr ""
+
+msgid "Naive trusted CA certificate file"
+msgstr ""
+
+msgid "Naive ECH config list (base64)"
+msgstr ""
+
+msgid "Naive transport"
+msgstr ""

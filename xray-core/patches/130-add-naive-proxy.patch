@@ -1,0 +1,1648 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Subject: [PATCH] proxy: add Naive inbound and Chromium/Cronet outbound
+
+Adapt sing-box Naive CONNECT authentication, padding and UoT to Xray.
+Use the same cronet-go revision and Chromium 154 native libraries for
+outbound HTTP/2 and HTTP/3, preserving the actual browser network stack.
+Route tunneled TCP/UDP through Xray, retain outbound socket options and
+dialer chains, and keep TLS verification mandatory in Cronet.
+
+Add an HTTP/1.1, HTTP/2 and HTTP/3 inbound transport with per-stream
+lifecycle handling. Match Xray's default private-target restrictions.
+Naive outbound is opt-in with with_naive_outbound; with_musl selects
+static OpenWrt archives. Inbound needs no native library.
+
+Port source: sing-box dfb80349bf5779ec0a3f834c9ec2794345bff8f0
+Cronet: 4d18a60dc3a8 (native libraries a1cafd93eb1f)
+Sing-box-derived code is GPL-3.0-or-later; include its license.
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/go.mod
++++ b/go.mod
+@@ -17,6 +17,23 @@
+ 	github.com/pires/go-proxyproto v0.15.0
+ 	github.com/refraction-networking/utls v1.8.3-0.20260301010127-aa6edf4b11af
+ 	github.com/robfig/cron/v3 v3.0.1
++	github.com/sagernet/cronet-go v0.0.0-20260929213745-4d18a60dc3a8
++	github.com/sagernet/cronet-go/lib/linux_386 v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/cronet-go/lib/linux_386_musl v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/cronet-go/lib/linux_amd64 v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/cronet-go/lib/linux_amd64_musl v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/cronet-go/lib/linux_arm v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/cronet-go/lib/linux_arm64 v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/cronet-go/lib/linux_arm64_musl v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/cronet-go/lib/linux_arm_musl v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/cronet-go/lib/linux_loong64 v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/cronet-go/lib/linux_loong64_musl v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/cronet-go/lib/linux_mipsle v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/cronet-go/lib/linux_mipsle_musl v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/cronet-go/lib/linux_riscv64 v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/cronet-go/lib/linux_riscv64_musl v0.0.0-20260929213014-a1cafd93eb1f
++	github.com/sagernet/sing v0.8.14
++	github.com/sagernet/sing-anytls v0.0.0-20260928104022-580984e4d8cb
+ 	github.com/stretchr/testify v1.12.1
+ 	github.com/vishvananda/netlink v1.3.1
+ 	github.com/xtls/reality v0.0.0-20261014101318-83f621788ca8
+@@ -41,6 +58,7 @@
+ 
+ require (
+ 	github.com/andybalholm/brotli v1.2.3 // indirect
++	github.com/ebitengine/purego v0.10.0 // indirect
+ 	github.com/google/gopacket v1.1.19 // indirect
+ 	github.com/huin/goupnp v1.2.0 // indirect
+ 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
+@@ -52,8 +70,6 @@
+ 	github.com/pion/logging v0.2.4 // indirect
+ 	github.com/pion/transport/v4 v4.1.0 // indirect
+ 	github.com/quic-go/qpack v0.6.0 // indirect
+-	github.com/sagernet/sing v0.8.14
+-	github.com/sagernet/sing-anytls v0.0.0-20260928104022-580984e4d8cb
+ 	github.com/vishvananda/netns v0.0.5 // indirect
+ 	github.com/wlynxg/anet v0.0.5 // indirect
+ 	go.yaml.in/yaml/v3 v3.0.5 // indirect
+--- a/go.sum
++++ b/go.sum
+@@ -5,6 +5,8 @@
+ github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
+ github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
+ github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMnBNeIyt5eFwwo7qiLfzFZmjNmxjkiQlU=
++github.com/ebitengine/purego v0.10.0 h1:QIw4xfpWT6GWTzaW5XEKy3HXoqrJGx1ijYHzTF0/ISU=
++github.com/ebitengine/purego v0.10.0/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
+ github.com/ghodss/yaml v1.0.1-0.20220118164431-d8423dcdf344 h1:Arcl6UOIS/kgO2nW3A65HN+7CMjSDP/gofXL4CZt1V4=
+ github.com/ghodss/yaml v1.0.1-0.20220118164431-d8423dcdf344/go.mod h1:GIjDIg/heH5DOkXY3YJ/wNhfHsQHoXGjl8G8amsYQ1I=
+ github.com/go-quicktest/qt v1.102.0 h1:HSQxCeh5YZH3EL3W39ixjtyaEhcWSXQHtHnMBzSs474=
+@@ -71,6 +73,36 @@
+ github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzGIFLtro=
+ github.com/rogpeppe/go-internal v1.16.0 h1:O9DK+vNMDVGLr2BeZqmpLeMjiMNkuXfcqntWbZV6S5g=
+ github.com/rogpeppe/go-internal v1.16.0/go.mod h1:DrUVZyrJU+txYW5/1kwtXQSMFio52ZOxX7yM1VHvnxs=
++github.com/sagernet/cronet-go v0.0.0-20260929213745-4d18a60dc3a8 h1:yW/KNhSxWxllsPjLx5EUPohHLa4Kvzl2Qt9kHkB0ZIc=
++github.com/sagernet/cronet-go v0.0.0-20260929213745-4d18a60dc3a8/go.mod h1:T/mwtrpC4JlWfScw73CmSBvHzIvc7BatQ1MhRr+cYNw=
++github.com/sagernet/cronet-go/lib/linux_386 v0.0.0-20260929213014-a1cafd93eb1f h1:YKTs7860q5YC+arXDoxuAuCq4Ba7hcJnau7/QtkVgcs=
++github.com/sagernet/cronet-go/lib/linux_386 v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:cGh5hO6eljCo6KMQ/Cel8Xgq4+etL0awZLRBDVG1EZQ=
++github.com/sagernet/cronet-go/lib/linux_386_musl v0.0.0-20260929213014-a1cafd93eb1f h1:GbLerpkeRw1SGLHkwSNZXzR02f4aecpOBscKOp2vRkE=
++github.com/sagernet/cronet-go/lib/linux_386_musl v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:JFE0/cxaKkx0wqPMZU7MgaplQlU0zudv82dROJjClKU=
++github.com/sagernet/cronet-go/lib/linux_amd64 v0.0.0-20260929213014-a1cafd93eb1f h1:dAbYhebHYrOBOvJux8hcuj4yTEIT+UqZmuTBKsLs6cQ=
++github.com/sagernet/cronet-go/lib/linux_amd64 v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:vU8VftFeSt7fURCa3JXD6+k6ss1YAX+idQjPvHmJ2tI=
++github.com/sagernet/cronet-go/lib/linux_amd64_musl v0.0.0-20260929213014-a1cafd93eb1f h1:PAK8bwbOxhTdyjnAX/UNLEtbwtN9Hyry4N7RRG8lq30=
++github.com/sagernet/cronet-go/lib/linux_amd64_musl v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:vCe4OUuL+XOUge9v3MyTD45BnuAXiH+DkjN9quDXJzQ=
++github.com/sagernet/cronet-go/lib/linux_arm v0.0.0-20260929213014-a1cafd93eb1f h1:1z4WrEbt5eB6Arpltl/x4pL/cooe6sn+grHrXk0lDCw=
++github.com/sagernet/cronet-go/lib/linux_arm v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:w9amBWrvjtohQzBGCKJ7LCh22LhTIJs4sE7cYaKQzM0=
++github.com/sagernet/cronet-go/lib/linux_arm64 v0.0.0-20260929213014-a1cafd93eb1f h1:ka6fV7nmcXuxxxViMv3lcO1VZQ7og9BWDTsChbdOs5o=
++github.com/sagernet/cronet-go/lib/linux_arm64 v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:TqlsFtcYS/etTeck46kHBeT8Le0Igw1Q/AV88UnMS3s=
++github.com/sagernet/cronet-go/lib/linux_arm64_musl v0.0.0-20260929213014-a1cafd93eb1f h1:+ZJPetIdQY6gSB3oEXcFuN803z7hsochw63LUVNbAAw=
++github.com/sagernet/cronet-go/lib/linux_arm64_musl v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:B6Qd0vys8sv9OKVRN6J9RqDzYRGE938Fb2zrYdBDyTQ=
++github.com/sagernet/cronet-go/lib/linux_arm_musl v0.0.0-20260929213014-a1cafd93eb1f h1:6h/hBfvE9xr+FszN4fvHPlRuMQmkhveOVnlfPiJcNW0=
++github.com/sagernet/cronet-go/lib/linux_arm_musl v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:3tXMMFY7AHugOVBZ5Al7cL7JKsnFOe5bMVr0hZPk3ow=
++github.com/sagernet/cronet-go/lib/linux_loong64 v0.0.0-20260929213014-a1cafd93eb1f h1:/Vy00lZZkG5usxUMAD/9vRTT93KvJh8NAO4lP1IZEVU=
++github.com/sagernet/cronet-go/lib/linux_loong64 v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:Wt5uFdU3tnmm8YzobYewwdF7Mt6SucRQg6xeTNWC3Tk=
++github.com/sagernet/cronet-go/lib/linux_loong64_musl v0.0.0-20260929213014-a1cafd93eb1f h1:r6u8oKJ19t4gNtmggIgFgybaMLa3bliALxFTNN/OUy0=
++github.com/sagernet/cronet-go/lib/linux_loong64_musl v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:lyIF6wKBLwWa5ZXaAKbAoewewl+yCHo2iYev39Mbj4E=
++github.com/sagernet/cronet-go/lib/linux_mipsle v0.0.0-20260929213014-a1cafd93eb1f h1:kYGMQ9qe7MyK8qpTuFaleAxVrQx9DAez1jNKFCFMLVQ=
++github.com/sagernet/cronet-go/lib/linux_mipsle v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:RBhSUDAKWq7fswtV4nQUQhuaTLcX3ettR7teA7/yf2w=
++github.com/sagernet/cronet-go/lib/linux_mipsle_musl v0.0.0-20260929213014-a1cafd93eb1f h1:a2/KeGNQagO+eexS97/qykr68YLr616QRFot4aV4sJ4=
++github.com/sagernet/cronet-go/lib/linux_mipsle_musl v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:wRzoIOGG4xbpp3Gh3triLKwMwYriScXzFtunLYhY4w0=
++github.com/sagernet/cronet-go/lib/linux_riscv64 v0.0.0-20260929213014-a1cafd93eb1f h1:lxJLDTBemaS8j+xdOeK+EdxH4FSEndxNG321AO7f/ds=
++github.com/sagernet/cronet-go/lib/linux_riscv64 v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:LNiZXmWil1OPwKCheqQjtakZlJuKGFz+iv2eGF76Hhs=
++github.com/sagernet/cronet-go/lib/linux_riscv64_musl v0.0.0-20260929213014-a1cafd93eb1f h1:1ycIIAvgJsm6opK1nrXgle7QVCo9lOtyUGEDEeDOJQQ=
++github.com/sagernet/cronet-go/lib/linux_riscv64_musl v0.0.0-20260929213014-a1cafd93eb1f/go.mod h1:YFDGKTkpkJGc5+hnX/RYosZyTWg9h+68VB55fYRRLYc=
+ github.com/sagernet/sing v0.8.14 h1:S6Netv4F61uNAuD/sUbHnGuNUEPwtL08Ouk0//CVYgM=
+ github.com/sagernet/sing v0.8.14/go.mod h1:olXxWQNqRW/l2Q6JI3b2Qmz8iQnIFlOeeH8bx6JhgUA=
+ github.com/sagernet/sing-anytls v0.0.0-20260928104022-580984e4d8cb h1:n4sF2zv0CR1gcb4awh61t11t0FZmcP40x5enB8HARjE=
+--- a/infra/conf/naive.go
++++ b/infra/conf/naive.go
+@@ -0,0 +1,87 @@
++package conf
++
++import (
++	"encoding/base64"
++	"fmt"
++	"github.com/xtls/xray-core/proxy/naive"
++	"golang.org/x/net/http/httpguts"
++	"google.golang.org/protobuf/proto"
++	"os"
++	"strings"
++)
++
++type NaiveAccount struct {
++	Username string `json:"username"`
++	Password string `json:"password"`
++}
++type NaiveServerConfig struct {
++	Users []NaiveAccount `json:"users"`
++	Level uint32         `json:"level"`
++}
++
++func (c *NaiveServerConfig) Build() (proto.Message, error) {
++	if len(c.Users) == 0 {
++		return nil, fmt.Errorf("naive: users required")
++	}
++	out := &naive.ServerConfig{Level: c.Level}
++	seen := map[string]bool{}
++	for _, u := range c.Users {
++		if u.Username == "" || strings.Contains(u.Username, ":") || u.Password == "" || seen[u.Username] {
++			return nil, fmt.Errorf("naive: invalid or duplicate user")
++		}
++		seen[u.Username] = true
++		out.Users = append(out.Users, &naive.Account{Username: u.Username, Password: u.Password})
++	}
++	return out, nil
++}
++
++type NaiveClientConfig struct {
++	Address                  *Address          `json:"address"`
++	Port                     uint16            `json:"port"`
++	Username                 string            `json:"username"`
++	Password                 string            `json:"password"`
++	ServerName               string            `json:"serverName"`
++	Certificate              []string          `json:"certificate"`
++	CertificateFile          string            `json:"certificateFile"`
++	QUIC                     bool              `json:"quic"`
++	UDPOverTCP               bool              `json:"udpOverTcp"`
++	Level                    uint32            `json:"level"`
++	InsecureConcurrency      uint32            `json:"insecureConcurrency"`
++	ExtraHeaders             map[string]string `json:"extraHeaders"`
++	ReceiveWindow            uint64            `json:"receiveWindow"`
++	QUICCongestionControl    string            `json:"quicCongestionControl"`
++	QUICSessionReceiveWindow uint64            `json:"quicSessionReceiveWindow"`
++	ECHConfigList            string            `json:"echConfigList"`
++}
++
++func (c *NaiveClientConfig) Build() (proto.Message, error) {
++	if c.Address == nil || c.Port == 0 || c.Username == "" || strings.Contains(c.Username, ":") || c.Password == "" {
++		return nil, fmt.Errorf("naive: address, port, username and password required")
++	}
++	switch c.QUICCongestionControl {
++	case "", "bbr", "bbr2", "cubic", "reno":
++	default:
++		return nil, fmt.Errorf("naive: invalid QUIC congestion control")
++	}
++	for k, v := range c.ExtraHeaders {
++		if !httpguts.ValidHeaderFieldName(k) || !httpguts.ValidHeaderFieldValue(v) || strings.ContainsAny(k+v, "\r\n") || strings.EqualFold(k, "Proxy-Authorization") || strings.EqualFold(k, "Padding") || strings.EqualFold(k, "Host") {
++			return nil, fmt.Errorf("naive: invalid or reserved extra header %q", k)
++		}
++	}
++	cert := strings.Join(c.Certificate, "\n")
++	if c.CertificateFile != "" {
++		if cert != "" {
++			return nil, fmt.Errorf("naive: specify certificate or certificateFile")
++		}
++		b, e := os.ReadFile(c.CertificateFile)
++		if e != nil {
++			return nil, e
++		}
++		cert = string(b)
++	}
++	ech, e := base64.StdEncoding.DecodeString(c.ECHConfigList)
++	if e != nil {
++		return nil, fmt.Errorf("naive: invalid ECH config: %w", e)
++	}
++	return &naive.ClientConfig{Address: c.Address.Build(), Port: uint32(c.Port), Username: c.Username, Password: c.Password, ServerName: c.ServerName, TrustedRootCertificates: cert, Quic: c.QUIC, UdpOverTcp: c.UDPOverTCP, Level: c.Level, Concurrency: c.InsecureConcurrency, ExtraHeaders: c.ExtraHeaders, ReceiveWindow: c.ReceiveWindow, QuicCongestionControl: c.QUICCongestionControl, QuicSessionReceiveWindow: c.QUICSessionReceiveWindow, EchConfigList: ech}, nil
++}
+--- a/infra/conf/transport_internet.go
++++ b/infra/conf/transport_internet.go
+@@ -38,6 +38,8 @@
+ 		return "", errors.PrintRemovedFeatureError("QUIC transport (without web service, etc.)", "XHTTP stream-one H3")
+ 	case "hysteria":
+ 		return "hysteria", nil
++	case "naive":
++		return "naive", nil
+ 	case "masque":
+ 		return "masque", nil
+ 	case "xdrive":
+--- a/infra/conf/xray.go
++++ b/infra/conf/xray.go
+@@ -27,6 +27,7 @@
+ var (
+ 	inboundConfigLoader = NewJSONConfigLoader(ConfigCreatorCache{
+ 		"tunnel":        func() interface{} { return new(DokodemoConfig) },
++		"naive":         func() interface{} { return new(NaiveServerConfig) },
+ 		"dokodemo-door": func() interface{} { return new(DokodemoConfig) },
+ 		"http":          func() interface{} { return new(HTTPServerConfig) },
+ 		"shadowsocks":   func() interface{} { return new(ShadowsocksServerConfig) },
+@@ -53,6 +54,7 @@
+ 		"vless":       func() interface{} { return new(VLessOutboundConfig) },
+ 		"vmess":       func() interface{} { return new(VMessOutboundConfig) },
+ 		"trojan":      func() interface{} { return new(TrojanClientConfig) },
++		"naive":       func() interface{} { return new(NaiveClientConfig) },
+ 		"anytls":      func() interface{} { return new(AnyTLSClientConfig) },
+ 		"hysteria":    func() interface{} { return new(HysteriaClientConfig) },
+ 		"masque":      func() interface{} { return new(MasqueClientConfig) },
+--- a/main/distro/all/all.go
++++ b/main/distro/all/all.go
+@@ -43,6 +43,7 @@
+ 	_ "github.com/xtls/xray-core/proxy/http"
+ 	_ "github.com/xtls/xray-core/proxy/loopback"
+ 	_ "github.com/xtls/xray-core/proxy/masque"
++	_ "github.com/xtls/xray-core/proxy/naive"
+ 	_ "github.com/xtls/xray-core/proxy/shadowsocks"
+ 	_ "github.com/xtls/xray-core/proxy/socks"
+ 	_ "github.com/xtls/xray-core/proxy/trojan"
+--- a/proxy/freedom/freedom.go
++++ b/proxy/freedom/freedom.go
+@@ -164,7 +164,7 @@
+ 	switch inbound.Name {
+ 	case "vless-reverse":
+ 		return defaultBlockAllRule
+-	case "vless", "vmess", "trojan", "hysteria", "wireguard":
++	case "vless", "vmess", "trojan", "hysteria", "wireguard", "naive":
+ 		return defaultBlockPrivateRule
+ 	default:
+ 		if strings.HasPrefix(inbound.Name, "shadowsocks") {
+--- a/proxy/naive/LICENSE.sing-box
++++ b/proxy/naive/LICENSE.sing-box
+@@ -0,0 +1,17 @@
++Copyright (C) 2022 by nekohasekai <contact-sagernet@sekai.icu>
++
++This program is free software: you can redistribute it and/or modify
++it under the terms of the GNU General Public License as published by
++the Free Software Foundation, either version 3 of the License, or
++(at your option) any later version.
++
++This program is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++GNU General Public License for more details.
++
++You should have received a copy of the GNU General Public License
++along with this program. If not, see <http://www.gnu.org/licenses/>.
++
++In addition, no derivative work may use the name or imply association
++with this application without prior consent.
+--- a/proxy/naive/address.go
++++ b/proxy/naive/address.go
+@@ -0,0 +1,10 @@
++package naive
++
++import (
++	M "github.com/sagernet/sing/common/metadata"
++	"github.com/xtls/xray-core/common/net"
++)
++
++func socksaddr(d net.Destination) M.Socksaddr {
++	return M.ParseSocksaddrHostPort(d.Address.String(), uint16(d.Port))
++}
+--- a/proxy/naive/client.go
++++ b/proxy/naive/client.go
+@@ -0,0 +1,175 @@
++//go:build with_naive_outbound
++
++// Adapted from sing-box protocol/naive/outbound.go (GPL-3.0-or-later).
++package naive
++
++import (
++	"context"
++	"fmt"
++	"strings"
++	"sync"
++	"time"
++
++	mdns "github.com/miekg/dns"
++	"github.com/sagernet/cronet-go"
++	M "github.com/sagernet/sing/common/metadata"
++	"github.com/sagernet/sing/common/uot"
++	"github.com/xtls/xray-core/common"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/session"
++	"github.com/xtls/xray-core/core"
++	"github.com/xtls/xray-core/features/dns"
++	"github.com/xtls/xray-core/features/policy"
++	"github.com/xtls/xray-core/transport"
++	"github.com/xtls/xray-core/transport/internet"
++)
++
++type Client struct {
++	config  *ClientConfig
++	options cronet.NaiveClientOptions
++	policy  policy.Session
++	mu      sync.Mutex
++	client  *cronet.NaiveClient
++	closed  bool
++	cancel  context.CancelFunc
++}
++
++func NewClient(ctx context.Context, c *ClientConfig) (*Client, error) {
++	if c.Address == nil || c.Port == 0 || c.Port > 65535 || c.Username == "" || c.Password == "" {
++		return nil, fmt.Errorf("naive: invalid server or credentials")
++	}
++	settings, _ := session.StreamSettingsFromContext(ctx).(*internet.MemoryStreamConfig)
++	if settings != nil && (settings.ProtocolName != "tcp" || settings.SecurityType != "") {
++		return nil, fmt.Errorf("naive: use raw/tcp transport without stream security; Cronet handles TLS")
++	}
++	v := core.MustFromContext(ctx)
++	resolver := v.GetFeature(dns.ClientType()).(dns.Client)
++	lifetime, cancel := context.WithCancel(ctx)
++	cc := map[string]cronet.QUICCongestionControl{"": cronet.QUICCongestionControlDefault, "bbr": cronet.QUICCongestionControlBBR, "bbr2": cronet.QUICCongestionControlBBRv2, "cubic": cronet.QUICCongestionControlCubic, "reno": cronet.QUICCongestionControlReno}
++	congestion, ok := cc[c.QuicCongestionControl]
++	if !ok {
++		cancel()
++		return nil, fmt.Errorf("invalid QUIC congestion control")
++	}
++	return &Client{config: c, cancel: cancel, policy: v.GetFeature(policy.ManagerType()).(policy.Manager).ForLevel(c.Level), options: cronet.NaiveClientOptions{
++		Context: lifetime, ServerAddress: M.ParseSocksaddrHostPort(c.Address.AsAddress().String(), uint16(c.Port)), ServerName: c.ServerName, Username: c.Username, Password: c.Password, TrustedRootCertificates: c.TrustedRootCertificates, QUIC: c.Quic, InsecureConcurrency: int(c.Concurrency), ExtraHeaders: c.ExtraHeaders, ReceiveWindow: c.ReceiveWindow, QUICCongestionControl: congestion, QUICSessionReceiveWindow: c.QuicSessionReceiveWindow, ECHEnabled: len(c.EchConfigList) > 0, ECHConfigList: c.EchConfigList,
++		DNSResolver: func(ctx context.Context, q *mdns.Msg) *mdns.Msg {
++			r := new(mdns.Msg)
++			r.SetReply(q)
++			for _, question := range q.Question {
++				if question.Qtype != mdns.TypeA && question.Qtype != mdns.TypeAAAA {
++					continue
++				}
++				ips, ttl, err := resolver.LookupIP(strings.TrimSuffix(question.Name, "."), dns.IPOption{IPv4Enable: question.Qtype == mdns.TypeA, IPv6Enable: question.Qtype == mdns.TypeAAAA})
++				if err != nil {
++					r.Rcode = mdns.RcodeServerFailure
++					return r
++				}
++				for _, ip := range ips {
++					h := mdns.RR_Header{Name: question.Name, Rrtype: question.Qtype, Class: mdns.ClassINET, Ttl: ttl}
++					if question.Qtype == mdns.TypeA && ip.To4() != nil {
++						r.Answer = append(r.Answer, &mdns.A{Hdr: h, A: ip.To4()})
++					} else if question.Qtype == mdns.TypeAAAA && ip.To4() == nil {
++						r.Answer = append(r.Answer, &mdns.AAAA{Hdr: h, AAAA: ip})
++					}
++				}
++			}
++			return r
++		}}}, nil
++}
++func (c *Client) getClient(d internet.Dialer) (*cronet.NaiveClient, error) {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	if c.closed {
++		return nil, fmt.Errorf("naive client closed")
++	}
++	if c.client == nil {
++		options := c.options
++		options.Dialer = &cronetDialer{d}
++		cl, e := cronet.NewNaiveClient(options)
++		if e != nil {
++			return nil, e
++		}
++		if e = cl.Start(); e != nil {
++			cl.Close()
++			return nil, e
++		}
++		c.client = cl
++	}
++	return c.client, nil
++}
++func (c *Client) Close() error {
++	c.cancel()
++	c.mu.Lock()
++	c.closed = true
++	cl := c.client
++	c.mu.Unlock()
++	if cl != nil {
++		return cl.Close()
++	}
++	return nil
++}
++func (c *Client) Process(ctx context.Context, link *transport.Link, d internet.Dialer) error {
++	obs := session.OutboundsFromContext(ctx)
++	if len(obs) == 0 {
++		return fmt.Errorf("naive: missing target")
++	}
++	ob := obs[len(obs)-1]
++	target := ob.Target
++	if !target.IsValid() || (target.Network != net.Network_TCP && target.Network != net.Network_UDP) {
++		return fmt.Errorf("naive: invalid target")
++	}
++	if target.Network == net.Network_UDP && !c.config.UdpOverTcp {
++		return fmt.Errorf("naive: UDP requires udpOverTcp")
++	}
++	ob.Name = "naive"
++	ob.CanSpliceCopy = 3
++	client, err := c.getClient(d)
++	if err != nil {
++		return err
++	}
++	destination := socksaddr(target)
++	streamDestination := destination
++	if target.Network == net.Network_UDP {
++		streamDestination = uot.RequestDestination(uot.Version)
++	}
++	dialCtx, cancelDial := context.WithTimeout(ctx, c.policy.Timeouts.Handshake)
++	conn, err := client.DialContext(dialCtx, "tcp", streamDestination)
++	cancelDial()
++	if err != nil {
++		return err
++	}
++	defer conn.Close()
++	var reader buf.Reader = buf.NewReader(conn)
++	var writer buf.Writer = buf.NewWriter(conn)
++	if target.Network == net.Network_UDP {
++		conn.SetWriteDeadline(time.Now().Add(c.policy.Timeouts.Handshake))
++		pc, e := (&uot.Client{Version: uot.Version}).DialConn(conn, false, destination)
++		conn.SetWriteDeadline(time.Time{})
++		if e != nil {
++			return e
++		}
++		reader = &packetReader{conn: pc}
++		writer = &packetWriter{conn: pc, destination: destination}
++	}
++	return relay(ctx, link.Reader, writer, reader, link.Writer, conn, c.policy)
++}
++
++type cronetDialer struct{ internet.Dialer }
++
++func (d *cronetDialer) DialContext(ctx context.Context, network string, a M.Socksaddr) (net.Conn, error) {
++	dest := net.TCPDestination(net.ParseAddress(a.AddrString()), net.Port(a.Port))
++	if network == "udp" {
++		dest.Network = net.Network_UDP
++	}
++	return d.Dial(ctx, dest)
++}
++func (d *cronetDialer) ListenPacket(context.Context, M.Socksaddr) (net.PacketConn, error) {
++	return nil, fmt.Errorf("unconnected UDP is not used by Cronet")
++}
++func init() {
++	common.Must(common.RegisterConfig((*ClientConfig)(nil), func(ctx context.Context, c interface{}) (interface{}, error) {
++		return NewClient(ctx, c.(*ClientConfig))
++	}))
++}
+--- a/proxy/naive/client_stub.go
++++ b/proxy/naive/client_stub.go
+@@ -0,0 +1,15 @@
++//go:build !with_naive_outbound
++
++package naive
++
++import (
++	"context"
++	"fmt"
++	"github.com/xtls/xray-core/common"
++)
++
++func init() {
++	common.Must(common.RegisterConfig((*ClientConfig)(nil), func(context.Context, interface{}) (interface{}, error) {
++		return nil, fmt.Errorf("Naive outbound requires a Cronet-enabled build (with_naive_outbound)")
++	}))
++}
+--- a/proxy/naive/config.pb.go
++++ b/proxy/naive/config.pb.go
+@@ -0,0 +1,372 @@
++// Code generated by protoc-gen-go. DO NOT EDIT.
++// versions:
++// 	protoc-gen-go v1.36.12
++// 	protoc        v3.21.12
++// source: proxy/naive/config.proto
++
++package naive
++
++import (
++	net "github.com/xtls/xray-core/common/net"
++	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
++	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
++	reflect "reflect"
++	sync "sync"
++	unsafe "unsafe"
++)
++
++const (
++	// Verify that this generated code is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
++	// Verify that runtime/protoimpl is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
++)
++
++type Account struct {
++	state         protoimpl.MessageState `protogen:"open.v1"`
++	Username      string                 `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
++	Password      string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *Account) Reset() {
++	*x = Account{}
++	mi := &file_proxy_naive_config_proto_msgTypes[0]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *Account) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*Account) ProtoMessage() {}
++
++func (x *Account) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_naive_config_proto_msgTypes[0]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use Account.ProtoReflect.Descriptor instead.
++func (*Account) Descriptor() ([]byte, []int) {
++	return file_proxy_naive_config_proto_rawDescGZIP(), []int{0}
++}
++
++func (x *Account) GetUsername() string {
++	if x != nil {
++		return x.Username
++	}
++	return ""
++}
++
++func (x *Account) GetPassword() string {
++	if x != nil {
++		return x.Password
++	}
++	return ""
++}
++
++type ServerConfig struct {
++	state         protoimpl.MessageState `protogen:"open.v1"`
++	Users         []*Account             `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
++	Level         uint32                 `protobuf:"varint,2,opt,name=level,proto3" json:"level,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *ServerConfig) Reset() {
++	*x = ServerConfig{}
++	mi := &file_proxy_naive_config_proto_msgTypes[1]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *ServerConfig) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*ServerConfig) ProtoMessage() {}
++
++func (x *ServerConfig) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_naive_config_proto_msgTypes[1]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use ServerConfig.ProtoReflect.Descriptor instead.
++func (*ServerConfig) Descriptor() ([]byte, []int) {
++	return file_proxy_naive_config_proto_rawDescGZIP(), []int{1}
++}
++
++func (x *ServerConfig) GetUsers() []*Account {
++	if x != nil {
++		return x.Users
++	}
++	return nil
++}
++
++func (x *ServerConfig) GetLevel() uint32 {
++	if x != nil {
++		return x.Level
++	}
++	return 0
++}
++
++type ClientConfig struct {
++	state                    protoimpl.MessageState `protogen:"open.v1"`
++	Address                  *net.IPOrDomain        `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
++	Port                     uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
++	Username                 string                 `protobuf:"bytes,3,opt,name=username,proto3" json:"username,omitempty"`
++	Password                 string                 `protobuf:"bytes,4,opt,name=password,proto3" json:"password,omitempty"`
++	ServerName               string                 `protobuf:"bytes,5,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`
++	TrustedRootCertificates  string                 `protobuf:"bytes,6,opt,name=trusted_root_certificates,json=trustedRootCertificates,proto3" json:"trusted_root_certificates,omitempty"`
++	Quic                     bool                   `protobuf:"varint,7,opt,name=quic,proto3" json:"quic,omitempty"`
++	UdpOverTcp               bool                   `protobuf:"varint,8,opt,name=udp_over_tcp,json=udpOverTcp,proto3" json:"udp_over_tcp,omitempty"`
++	Level                    uint32                 `protobuf:"varint,9,opt,name=level,proto3" json:"level,omitempty"`
++	Concurrency              uint32                 `protobuf:"varint,10,opt,name=concurrency,proto3" json:"concurrency,omitempty"`
++	ExtraHeaders             map[string]string      `protobuf:"bytes,11,rep,name=extra_headers,json=extraHeaders,proto3" json:"extra_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
++	ReceiveWindow            uint64                 `protobuf:"varint,12,opt,name=receive_window,json=receiveWindow,proto3" json:"receive_window,omitempty"`
++	QuicCongestionControl    string                 `protobuf:"bytes,13,opt,name=quic_congestion_control,json=quicCongestionControl,proto3" json:"quic_congestion_control,omitempty"`
++	QuicSessionReceiveWindow uint64                 `protobuf:"varint,14,opt,name=quic_session_receive_window,json=quicSessionReceiveWindow,proto3" json:"quic_session_receive_window,omitempty"`
++	EchConfigList            []byte                 `protobuf:"bytes,15,opt,name=ech_config_list,json=echConfigList,proto3" json:"ech_config_list,omitempty"`
++	unknownFields            protoimpl.UnknownFields
++	sizeCache                protoimpl.SizeCache
++}
++
++func (x *ClientConfig) Reset() {
++	*x = ClientConfig{}
++	mi := &file_proxy_naive_config_proto_msgTypes[2]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *ClientConfig) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*ClientConfig) ProtoMessage() {}
++
++func (x *ClientConfig) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_naive_config_proto_msgTypes[2]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use ClientConfig.ProtoReflect.Descriptor instead.
++func (*ClientConfig) Descriptor() ([]byte, []int) {
++	return file_proxy_naive_config_proto_rawDescGZIP(), []int{2}
++}
++
++func (x *ClientConfig) GetAddress() *net.IPOrDomain {
++	if x != nil {
++		return x.Address
++	}
++	return nil
++}
++
++func (x *ClientConfig) GetPort() uint32 {
++	if x != nil {
++		return x.Port
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetUsername() string {
++	if x != nil {
++		return x.Username
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetPassword() string {
++	if x != nil {
++		return x.Password
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetServerName() string {
++	if x != nil {
++		return x.ServerName
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetTrustedRootCertificates() string {
++	if x != nil {
++		return x.TrustedRootCertificates
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetQuic() bool {
++	if x != nil {
++		return x.Quic
++	}
++	return false
++}
++
++func (x *ClientConfig) GetUdpOverTcp() bool {
++	if x != nil {
++		return x.UdpOverTcp
++	}
++	return false
++}
++
++func (x *ClientConfig) GetLevel() uint32 {
++	if x != nil {
++		return x.Level
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetConcurrency() uint32 {
++	if x != nil {
++		return x.Concurrency
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetExtraHeaders() map[string]string {
++	if x != nil {
++		return x.ExtraHeaders
++	}
++	return nil
++}
++
++func (x *ClientConfig) GetReceiveWindow() uint64 {
++	if x != nil {
++		return x.ReceiveWindow
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetQuicCongestionControl() string {
++	if x != nil {
++		return x.QuicCongestionControl
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetQuicSessionReceiveWindow() uint64 {
++	if x != nil {
++		return x.QuicSessionReceiveWindow
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetEchConfigList() []byte {
++	if x != nil {
++		return x.EchConfigList
++	}
++	return nil
++}
++
++var File_proxy_naive_config_proto protoreflect.FileDescriptor
++
++const file_proxy_naive_config_proto_rawDesc = "" +
++	"\n" +
++	"\x18proxy/naive/config.proto\x12\x10xray.proxy.naive\x1a\x18common/net/address.proto\"A\n" +
++	"\aAccount\x12\x1a\n" +
++	"\busername\x18\x01 \x01(\tR\busername\x12\x1a\n" +
++	"\bpassword\x18\x02 \x01(\tR\bpassword\"U\n" +
++	"\fServerConfig\x12/\n" +
++	"\x05users\x18\x01 \x03(\v2\x19.xray.proxy.naive.AccountR\x05users\x12\x14\n" +
++	"\x05level\x18\x02 \x01(\rR\x05level\"\xba\x05\n" +
++	"\fClientConfig\x125\n" +
++	"\aaddress\x18\x01 \x01(\v2\x1b.xray.common.net.IPOrDomainR\aaddress\x12\x12\n" +
++	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1a\n" +
++	"\busername\x18\x03 \x01(\tR\busername\x12\x1a\n" +
++	"\bpassword\x18\x04 \x01(\tR\bpassword\x12\x1f\n" +
++	"\vserver_name\x18\x05 \x01(\tR\n" +
++	"serverName\x12:\n" +
++	"\x19trusted_root_certificates\x18\x06 \x01(\tR\x17trustedRootCertificates\x12\x12\n" +
++	"\x04quic\x18\a \x01(\bR\x04quic\x12 \n" +
++	"\fudp_over_tcp\x18\b \x01(\bR\n" +
++	"udpOverTcp\x12\x14\n" +
++	"\x05level\x18\t \x01(\rR\x05level\x12 \n" +
++	"\vconcurrency\x18\n" +
++	" \x01(\rR\vconcurrency\x12U\n" +
++	"\rextra_headers\x18\v \x03(\v20.xray.proxy.naive.ClientConfig.ExtraHeadersEntryR\fextraHeaders\x12%\n" +
++	"\x0ereceive_window\x18\f \x01(\x04R\rreceiveWindow\x126\n" +
++	"\x17quic_congestion_control\x18\r \x01(\tR\x15quicCongestionControl\x12=\n" +
++	"\x1bquic_session_receive_window\x18\x0e \x01(\x04R\x18quicSessionReceiveWindow\x12&\n" +
++	"\x0fech_config_list\x18\x0f \x01(\fR\rechConfigList\x1a?\n" +
++	"\x11ExtraHeadersEntry\x12\x10\n" +
++	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
++	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B'Z%github.com/xtls/xray-core/proxy/naiveb\x06proto3"
++
++var (
++	file_proxy_naive_config_proto_rawDescOnce sync.Once
++	file_proxy_naive_config_proto_rawDescData []byte
++)
++
++func file_proxy_naive_config_proto_rawDescGZIP() []byte {
++	file_proxy_naive_config_proto_rawDescOnce.Do(func() {
++		file_proxy_naive_config_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proxy_naive_config_proto_rawDesc), len(file_proxy_naive_config_proto_rawDesc)))
++	})
++	return file_proxy_naive_config_proto_rawDescData
++}
++
++var file_proxy_naive_config_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
++var file_proxy_naive_config_proto_goTypes = []any{
++	(*Account)(nil),        // 0: xray.proxy.naive.Account
++	(*ServerConfig)(nil),   // 1: xray.proxy.naive.ServerConfig
++	(*ClientConfig)(nil),   // 2: xray.proxy.naive.ClientConfig
++	nil,                    // 3: xray.proxy.naive.ClientConfig.ExtraHeadersEntry
++	(*net.IPOrDomain)(nil), // 4: xray.common.net.IPOrDomain
++}
++var file_proxy_naive_config_proto_depIdxs = []int32{
++	0, // 0: xray.proxy.naive.ServerConfig.users:type_name -> xray.proxy.naive.Account
++	4, // 1: xray.proxy.naive.ClientConfig.address:type_name -> xray.common.net.IPOrDomain
++	3, // 2: xray.proxy.naive.ClientConfig.extra_headers:type_name -> xray.proxy.naive.ClientConfig.ExtraHeadersEntry
++	3, // [3:3] is the sub-list for method output_type
++	3, // [3:3] is the sub-list for method input_type
++	3, // [3:3] is the sub-list for extension type_name
++	3, // [3:3] is the sub-list for extension extendee
++	0, // [0:3] is the sub-list for field type_name
++}
++
++func init() { file_proxy_naive_config_proto_init() }
++func file_proxy_naive_config_proto_init() {
++	if File_proxy_naive_config_proto != nil {
++		return
++	}
++	type x struct{}
++	out := protoimpl.TypeBuilder{
++		File: protoimpl.DescBuilder{
++			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
++			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proxy_naive_config_proto_rawDesc), len(file_proxy_naive_config_proto_rawDesc)),
++			NumEnums:      0,
++			NumMessages:   4,
++			NumExtensions: 0,
++			NumServices:   0,
++		},
++		GoTypes:           file_proxy_naive_config_proto_goTypes,
++		DependencyIndexes: file_proxy_naive_config_proto_depIdxs,
++		MessageInfos:      file_proxy_naive_config_proto_msgTypes,
++	}.Build()
++	File_proxy_naive_config_proto = out.File
++	file_proxy_naive_config_proto_goTypes = nil
++	file_proxy_naive_config_proto_depIdxs = nil
++}
+--- a/proxy/naive/config.proto
++++ b/proxy/naive/config.proto
+@@ -0,0 +1,23 @@
++syntax = "proto3";
++package xray.proxy.naive;
++option go_package = "github.com/xtls/xray-core/proxy/naive";
++import "common/net/address.proto";
++message Account { string username = 1; string password = 2; }
++message ServerConfig { repeated Account users = 1; uint32 level = 2; }
++message ClientConfig {
++ xray.common.net.IPOrDomain address = 1;
++ uint32 port = 2;
++ string username = 3;
++ string password = 4;
++ string server_name = 5;
++ string trusted_root_certificates = 6;
++ bool quic = 7;
++ bool udp_over_tcp = 8;
++ uint32 level = 9;
++ uint32 concurrency = 10;
++ map<string,string> extra_headers = 11;
++ uint64 receive_window = 12;
++ string quic_congestion_control = 13;
++ uint64 quic_session_receive_window = 14;
++ bytes ech_config_list = 15;
++}
+--- a/proxy/naive/cronet_linux_386.go
++++ b/proxy/naive/cronet_linux_386.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && 386 && !with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_386"
+--- a/proxy/naive/cronet_linux_386_musl.go
++++ b/proxy/naive/cronet_linux_386_musl.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && 386 && with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_386_musl"
+--- a/proxy/naive/cronet_linux_amd64.go
++++ b/proxy/naive/cronet_linux_amd64.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && amd64 && !with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_amd64"
+--- a/proxy/naive/cronet_linux_amd64_musl.go
++++ b/proxy/naive/cronet_linux_amd64_musl.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && amd64 && with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_amd64_musl"
+--- a/proxy/naive/cronet_linux_arm.go
++++ b/proxy/naive/cronet_linux_arm.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && arm && !with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_arm"
+--- a/proxy/naive/cronet_linux_arm64.go
++++ b/proxy/naive/cronet_linux_arm64.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && arm64 && !with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_arm64"
+--- a/proxy/naive/cronet_linux_arm64_musl.go
++++ b/proxy/naive/cronet_linux_arm64_musl.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && arm64 && with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_arm64_musl"
+--- a/proxy/naive/cronet_linux_arm_musl.go
++++ b/proxy/naive/cronet_linux_arm_musl.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && arm && with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_arm_musl"
+--- a/proxy/naive/cronet_linux_loong64.go
++++ b/proxy/naive/cronet_linux_loong64.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && loong64 && !with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_loong64"
+--- a/proxy/naive/cronet_linux_loong64_musl.go
++++ b/proxy/naive/cronet_linux_loong64_musl.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && loong64 && with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_loong64_musl"
+--- a/proxy/naive/cronet_linux_mipsle.go
++++ b/proxy/naive/cronet_linux_mipsle.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && mipsle && !with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_mipsle"
+--- a/proxy/naive/cronet_linux_mipsle_musl.go
++++ b/proxy/naive/cronet_linux_mipsle_musl.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && mipsle && with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_mipsle_musl"
+--- a/proxy/naive/cronet_linux_riscv64.go
++++ b/proxy/naive/cronet_linux_riscv64.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && riscv64 && !with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_riscv64"
+--- a/proxy/naive/cronet_linux_riscv64_musl.go
++++ b/proxy/naive/cronet_linux_riscv64_musl.go
+@@ -0,0 +1,5 @@
++//go:build with_naive_outbound && linux && !android && riscv64 && with_musl
++
++package naive
++
++import _ "github.com/sagernet/cronet-go/lib/linux_riscv64_musl"
+--- a/proxy/naive/packet.go
++++ b/proxy/naive/packet.go
+@@ -0,0 +1,44 @@
++package naive
++
++import (
++	singbuf "github.com/sagernet/sing/common/buf"
++	M "github.com/sagernet/sing/common/metadata"
++	"github.com/sagernet/sing/common/uot"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/net"
++)
++
++type packetReader struct{ conn *uot.Conn }
++
++func (r *packetReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
++	// Read one whole datagram, including packets larger than Xray's 8K buffer.
++	packet := singbuf.NewSize(65535)
++	defer packet.Release()
++	address, err := r.conn.ReadPacket(packet)
++	if err != nil {
++		return nil, err
++	}
++	b := buf.FromBytes(append([]byte(nil), packet.Bytes()...))
++	destination := net.UDPDestination(net.ParseAddress(address.AddrString()), net.Port(address.Port))
++	b.UDP = &destination
++	return buf.MultiBuffer{b}, nil
++}
++
++type packetWriter struct {
++	conn        *uot.Conn
++	destination M.Socksaddr
++}
++
++func (w *packetWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
++	defer buf.ReleaseMulti(mb)
++	for _, b := range mb {
++		destination := w.destination
++		if b.UDP != nil {
++			destination = socksaddr(*b.UDP)
++		}
++		if err := w.conn.WritePacket(singbuf.As(b.Bytes()), destination); err != nil {
++			return err
++		}
++	}
++	return nil
++}
+--- a/proxy/naive/padding.go
++++ b/proxy/naive/padding.go
+@@ -0,0 +1,93 @@
++// Adapted from sing-box protocol/naive/inbound_conn.go (GPL-3.0-or-later).
++package naive
++
++import (
++	"encoding/binary"
++	"io"
++	"math/rand"
++	"net"
++)
++
++const paddingCount = 8
++
++func generatePaddingHeader() string {
++	p := make([]byte, 30+rand.Intn(32))
++	bits := rand.Uint64()
++	for i := range 16 {
++		p[i] = "!#$()+<>?@[]^`{}"[bits&15]
++		bits >>= 4
++	}
++	for i := 16; i < len(p); i++ {
++		p[i] = '~'
++	}
++	return string(p)
++}
++
++type paddingConn struct {
++	net.Conn
++	readPadding, writePadding, remaining, skip int
++}
++
++func (c *paddingConn) Read(p []byte) (int, error) {
++	if len(p) == 0 {
++		return 0, nil
++	}
++	for {
++		if c.remaining > 0 {
++			if len(p) > c.remaining {
++				p = p[:c.remaining]
++			}
++			n, e := c.Conn.Read(p)
++			c.remaining -= n
++			if e == io.EOF && c.remaining > 0 {
++				e = io.ErrUnexpectedEOF
++			}
++			return n, e
++		}
++		if c.skip > 0 {
++			_, e := io.CopyN(io.Discard, c.Conn, int64(c.skip))
++			if e != nil {
++				if e == io.EOF {
++					e = io.ErrUnexpectedEOF
++				}
++				return 0, e
++			}
++			c.skip = 0
++		}
++		if c.readPadding >= paddingCount {
++			return c.Conn.Read(p)
++		}
++		var h [3]byte
++		if _, e := io.ReadFull(c.Conn, h[:]); e != nil {
++			return 0, e
++		}
++		c.remaining = int(binary.BigEndian.Uint16(h[:2]))
++		c.skip = int(h[2])
++		c.readPadding++
++	}
++}
++func (c *paddingConn) Write(p []byte) (n int, err error) {
++	for len(p) > 0 {
++		if c.writePadding >= paddingCount {
++			k, e := c.Conn.Write(p)
++			return n + k, e
++		}
++		k := min(len(p), 65535)
++		pad := rand.Intn(256)
++		frame := make([]byte, 3+k+pad)
++		binary.BigEndian.PutUint16(frame[:2], uint16(k))
++		frame[2] = byte(pad)
++		copy(frame[3:], p[:k])
++		written, e := c.Conn.Write(frame)
++		if e == nil && written != len(frame) {
++			e = io.ErrShortWrite
++		}
++		if e != nil {
++			return n, e
++		}
++		c.writePadding++
++		n += k
++		p = p[k:]
++	}
++	return
++}
+--- a/proxy/naive/relay.go
++++ b/proxy/naive/relay.go
+@@ -0,0 +1,62 @@
++package naive
++
++import (
++	"context"
++	"github.com/xtls/xray-core/common"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/signal"
++	"github.com/xtls/xray-core/features/policy"
++	"io"
++)
++
++// Wait for BOTH copy loops before returning: HTTP response writers cease to be
++// valid when ServeHTTP returns. task.Run alone returns before its other task.
++func relay(ctx context.Context, upR buf.Reader, upW buf.Writer, downR buf.Reader, downW buf.Writer, conn io.Closer, p policy.Session) error {
++	ctx, cancel := context.WithCancel(ctx)
++	defer cancel()
++	timer := signal.CancelAfterInactivity(ctx, cancel, p.Timeouts.ConnectionIdle)
++	defer timer.SetTimeout(0)
++	results := make(chan error, 2)
++	go func() {
++		e := buf.Copy(upR, upW, buf.UpdateActivity(timer))
++		if e == nil {
++			common.Close(upW)
++		}
++		timer.SetTimeout(p.Timeouts.DownlinkOnly)
++		results <- e
++	}()
++	go func() {
++		e := buf.Copy(downR, downW, buf.UpdateActivity(timer))
++		if e == nil {
++			common.Close(downW)
++		}
++		timer.SetTimeout(p.Timeouts.UplinkOnly)
++		results <- e
++	}()
++	var first error
++	count := 0
++	for count < 2 {
++		select {
++		case e := <-results:
++			count++
++			if e != nil {
++				first = e
++			}
++		case <-ctx.Done():
++			first = ctx.Err()
++		}
++		if first != nil || count == 2 {
++			break
++		}
++	}
++	conn.Close()
++	common.Interrupt(upR)
++	common.Interrupt(upW)
++	common.Interrupt(downR)
++	common.Interrupt(downW)
++	for count < 2 {
++		<-results
++		count++
++	}
++	return first
++}
+--- a/proxy/naive/server.go
++++ b/proxy/naive/server.go
+@@ -0,0 +1,122 @@
++package naive
++
++import (
++	"context"
++	"crypto/subtle"
++	"encoding/base64"
++	"errors"
++	"net/http"
++	"strings"
++
++	"github.com/sagernet/sing/common/uot"
++	"github.com/xtls/xray-core/common"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/protocol"
++	"github.com/xtls/xray-core/common/session"
++	"github.com/xtls/xray-core/core"
++	"github.com/xtls/xray-core/features/policy"
++	"github.com/xtls/xray-core/features/routing"
++	"github.com/xtls/xray-core/transport/internet"
++	nt "github.com/xtls/xray-core/transport/internet/naive"
++	"github.com/xtls/xray-core/transport/internet/stat"
++)
++
++type Server struct {
++	config *ServerConfig
++	policy policy.Session
++}
++
++func NewServer(ctx context.Context, c *ServerConfig) (*Server, error) {
++	settings, _ := session.StreamSettingsFromContext(ctx).(*internet.MemoryStreamConfig)
++	if settings == nil || settings.ProtocolName != "naive" {
++		return nil, errors.New("naive inbound requires naive transport")
++	}
++	if len(c.Users) == 0 {
++		return nil, errors.New("naive requires users")
++	}
++	return &Server{config: c, policy: core.MustFromContext(ctx).GetFeature(policy.ManagerType()).(policy.Manager).ForLevel(c.Level)}, nil
++}
++func (*Server) Network() []net.Network { return []net.Network{net.Network_TCP} }
++func (s *Server) Process(ctx context.Context, _ net.Network, conn stat.Connection, d routing.Dispatcher) error {
++	c, ok := stat.TryUnwrapStatsConn(conn).(*nt.Conn)
++	if !ok {
++		return errors.New("naive requires HTTP CONNECT transport")
++	}
++	defer c.Finish()
++	r := c.Request
++	if r.Method != http.MethodConnect || r.Header.Get("Padding") == "" {
++		c.Respond(400, "")
++		return errors.New("invalid naive CONNECT")
++	}
++	raw, e := base64.StdEncoding.DecodeString(strings.TrimPrefix(r.Header.Get("Proxy-Authorization"), "Basic "))
++	user, pass, valid := strings.Cut(string(raw), ":")
++	auth := 0
++	if e == nil && valid && strings.HasPrefix(r.Header.Get("Proxy-Authorization"), "Basic ") {
++		for _, a := range s.config.Users {
++			auth |= subtle.ConstantTimeCompare([]byte(user), []byte(a.Username)) & subtle.ConstantTimeCompare([]byte(pass), []byte(a.Password))
++		}
++	}
++	if auth != 1 {
++		c.Respond(407, "")
++		return errors.New("naive authentication failed")
++	}
++	host := r.Header.Get("-connect-authority")
++	if host == "" {
++		host = r.Host
++	}
++	dest, e := net.ParseDestination("tcp:" + host)
++	if e != nil || dest.Address == nil {
++		c.Respond(400, "")
++		return errors.New("invalid CONNECT authority")
++	}
++	isUOT := dest.Address.String() == uot.MagicAddress || dest.Address.String() == uot.LegacyMagicAddress
++	if dest.Port == 0 && !isUOT {
++		c.Respond(400, "")
++		return errors.New("invalid CONNECT port")
++	}
++	// HTTP/2 requests share a physical connection: copy session state per stream.
++	if in := session.InboundFromContext(ctx); in != nil {
++		copyIn := *in
++		copyIn.Name = "naive"
++		copyIn.CanSpliceCopy = 3
++		copyIn.User = &protocol.MemoryUser{Email: user, Level: s.config.Level}
++		ctx = session.ContextWithInbound(ctx, &copyIn)
++	}
++	ctx, cancel := context.WithCancel(ctx)
++	defer cancel()
++	stop := context.AfterFunc(r.Context(), cancel)
++	defer stop()
++	if e = c.Respond(200, generatePaddingHeader()); e != nil {
++		return e
++	}
++	padded := &paddingConn{Conn: conn}
++	var reader buf.Reader = buf.NewReader(padded)
++	var writer buf.Writer = buf.NewWriter(padded)
++	if isUOT {
++		req := &uot.Request{}
++		if dest.Address.String() == uot.MagicAddress {
++			req, e = uot.ReadRequest(padded)
++			if e != nil {
++				return e
++			}
++		}
++		pc := uot.NewConn(padded, *req)
++		reader = &packetReader{conn: pc}
++		writer = &packetWriter{conn: pc, destination: req.Destination}
++		dest = net.UDPDestination(net.ParseAddress("127.0.0.1"), 1)
++		if req.Destination.IsValid() {
++			dest = net.UDPDestination(net.ParseAddress(req.Destination.AddrString()), net.Port(req.Destination.Port))
++		}
++	}
++	link, err := d.Dispatch(ctx, dest)
++	if err != nil {
++		return err
++	}
++	return relay(ctx, reader, link.Writer, link.Reader, writer, padded, s.policy)
++}
++func init() {
++	common.Must(common.RegisterConfig((*ServerConfig)(nil), func(ctx context.Context, c interface{}) (interface{}, error) {
++		return NewServer(ctx, c.(*ServerConfig))
++	}))
++}
+--- a/transport/internet/naive/config.pb.go
++++ b/transport/internet/naive/config.pb.go
+@@ -0,0 +1,113 @@
++// Code generated by protoc-gen-go. DO NOT EDIT.
++// versions:
++// 	protoc-gen-go v1.36.12
++// 	protoc        v3.21.12
++// source: transport/internet/naive/config.proto
++
++package naive
++
++import (
++	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
++	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
++	reflect "reflect"
++	sync "sync"
++	unsafe "unsafe"
++)
++
++const (
++	// Verify that this generated code is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
++	// Verify that runtime/protoimpl is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
++)
++
++type Config struct {
++	state         protoimpl.MessageState `protogen:"open.v1"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *Config) Reset() {
++	*x = Config{}
++	mi := &file_transport_internet_naive_config_proto_msgTypes[0]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *Config) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*Config) ProtoMessage() {}
++
++func (x *Config) ProtoReflect() protoreflect.Message {
++	mi := &file_transport_internet_naive_config_proto_msgTypes[0]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use Config.ProtoReflect.Descriptor instead.
++func (*Config) Descriptor() ([]byte, []int) {
++	return file_transport_internet_naive_config_proto_rawDescGZIP(), []int{0}
++}
++
++var File_transport_internet_naive_config_proto protoreflect.FileDescriptor
++
++const file_transport_internet_naive_config_proto_rawDesc = "" +
++	"\n" +
++	"%transport/internet/naive/config.proto\x12\x1dxray.transport.internet.naive\"\b\n" +
++	"\x06ConfigB4Z2github.com/xtls/xray-core/transport/internet/naiveb\x06proto3"
++
++var (
++	file_transport_internet_naive_config_proto_rawDescOnce sync.Once
++	file_transport_internet_naive_config_proto_rawDescData []byte
++)
++
++func file_transport_internet_naive_config_proto_rawDescGZIP() []byte {
++	file_transport_internet_naive_config_proto_rawDescOnce.Do(func() {
++		file_transport_internet_naive_config_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_transport_internet_naive_config_proto_rawDesc), len(file_transport_internet_naive_config_proto_rawDesc)))
++	})
++	return file_transport_internet_naive_config_proto_rawDescData
++}
++
++var file_transport_internet_naive_config_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
++var file_transport_internet_naive_config_proto_goTypes = []any{
++	(*Config)(nil), // 0: xray.transport.internet.naive.Config
++}
++var file_transport_internet_naive_config_proto_depIdxs = []int32{
++	0, // [0:0] is the sub-list for method output_type
++	0, // [0:0] is the sub-list for method input_type
++	0, // [0:0] is the sub-list for extension type_name
++	0, // [0:0] is the sub-list for extension extendee
++	0, // [0:0] is the sub-list for field type_name
++}
++
++func init() { file_transport_internet_naive_config_proto_init() }
++func file_transport_internet_naive_config_proto_init() {
++	if File_transport_internet_naive_config_proto != nil {
++		return
++	}
++	type x struct{}
++	out := protoimpl.TypeBuilder{
++		File: protoimpl.DescBuilder{
++			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
++			RawDescriptor: unsafe.Slice(unsafe.StringData(file_transport_internet_naive_config_proto_rawDesc), len(file_transport_internet_naive_config_proto_rawDesc)),
++			NumEnums:      0,
++			NumMessages:   1,
++			NumExtensions: 0,
++			NumServices:   0,
++		},
++		GoTypes:           file_transport_internet_naive_config_proto_goTypes,
++		DependencyIndexes: file_transport_internet_naive_config_proto_depIdxs,
++		MessageInfos:      file_transport_internet_naive_config_proto_msgTypes,
++	}.Build()
++	File_transport_internet_naive_config_proto = out.File
++	file_transport_internet_naive_config_proto_goTypes = nil
++	file_transport_internet_naive_config_proto_depIdxs = nil
++}
+--- a/transport/internet/naive/config.proto
++++ b/transport/internet/naive/config.proto
+@@ -0,0 +1,4 @@
++syntax = "proto3";
++package xray.transport.internet.naive;
++option go_package = "github.com/xtls/xray-core/transport/internet/naive";
++message Config {}
+--- a/transport/internet/naive/hub.go
++++ b/transport/internet/naive/hub.go
+@@ -0,0 +1,197 @@
++// Naive HTTP CONNECT transport. Protocol authentication belongs to proxy/naive.
++package naive
++
++import (
++	"bufio"
++	"context"
++	"crypto/tls"
++	"errors"
++	"io"
++	"net"
++	"net/http"
++	"slices"
++	"sync"
++	"time"
++
++	"github.com/apernet/quic-go/http3"
++	"github.com/xtls/xray-core/common"
++	xnet "github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/transport/internet"
++	xtls "github.com/xtls/xray-core/transport/internet/tls"
++	"golang.org/x/net/http2"
++)
++
++type Conn struct {
++	Request   *http.Request
++	writer    http.ResponseWriter
++	done      chan struct{}
++	once      sync.Once
++	closeOnce sync.Once
++	local     net.Addr
++	raw       net.Conn
++	buffered  *bufio.ReadWriter
++}
++
++func (c *Conn) Respond(status int, padding string) error {
++	if padding != "" {
++		c.writer.Header().Set("Padding", padding)
++	}
++	c.writer.WriteHeader(status)
++	if err := http.NewResponseController(c.writer).Flush(); err != nil {
++		return err
++	}
++	if c.Request.ProtoMajor == 1 && status == 200 {
++		var err error
++		c.raw, c.buffered, err = http.NewResponseController(c.writer).Hijack()
++		return err
++	}
++	return nil
++}
++
++func (c *Conn) Read(p []byte) (int, error) {
++	if c.raw != nil {
++		return c.buffered.Read(p)
++	}
++	return c.Request.Body.Read(p)
++}
++
++func (c *Conn) Write(p []byte) (int, error) {
++	if c.raw != nil {
++		return c.raw.Write(p)
++	}
++	n, err := c.writer.Write(p)
++	if err == nil {
++		err = http.NewResponseController(c.writer).Flush()
++	}
++	return n, err
++}
++func (c *Conn) Close() error {
++	c.closeOnce.Do(func() {
++		if c.raw != nil {
++			c.raw.Close()
++			return
++		}
++		c.SetReadDeadline(time.Now())
++		c.Request.Body.Close()
++		c.SetWriteDeadline(time.Now())
++	})
++	return nil
++}
++func (c *Conn) Finish() { c.Close(); c.once.Do(func() { close(c.done) }) }
++
++func (c *Conn) LocalAddr() net.Addr { return c.local }
++func (c *Conn) RemoteAddr() net.Addr {
++	a, _ := net.ResolveTCPAddr("tcp", c.Request.RemoteAddr)
++	return a
++}
++func (c *Conn) SetReadDeadline(t time.Time) error {
++	if c.raw != nil {
++		return c.raw.SetReadDeadline(t)
++	}
++	return http.NewResponseController(c.writer).SetReadDeadline(t)
++}
++func (c *Conn) SetWriteDeadline(t time.Time) error {
++	if c.raw != nil {
++		return c.raw.SetWriteDeadline(t)
++	}
++	return http.NewResponseController(c.writer).SetWriteDeadline(t)
++}
++func (c *Conn) SetDeadline(t time.Time) error {
++	return errors.Join(c.SetReadDeadline(t), c.SetWriteDeadline(t))
++}
++
++type Listener struct {
++	tcp    net.Listener
++	udp    net.PacketConn
++	h2     *http.Server
++	h3     *http3.Server
++	add    internet.ConnHandler
++	ctx    context.Context
++	cancel context.CancelFunc
++	addr   net.Addr
++}
++
++func (l *Listener) Addr() net.Addr { return l.addr }
++func (l *Listener) Close() error {
++	l.cancel()
++	if l.h2 != nil {
++		l.h2.Close()
++	}
++	if l.h3 != nil {
++		l.h3.Close()
++	}
++	if l.tcp != nil {
++		l.tcp.Close()
++	}
++	if l.udp != nil {
++		l.udp.Close()
++	}
++	return nil
++}
++func (l *Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
++
++	c := &Conn{Request: r, writer: w, done: make(chan struct{}), local: l.addr}
++	l.add(c)
++	select {
++	case <-c.done:
++	case <-r.Context().Done():
++		r.Body.Close()
++		<-c.done
++	case <-l.ctx.Done():
++		r.Body.Close()
++		<-c.done
++	}
++}
++func Listen(ctx context.Context, address xnet.Address, port xnet.Port, settings *internet.MemoryStreamConfig, add internet.ConnHandler) (internet.Listener, error) {
++	tc := xtls.ConfigFromStreamSettings(settings)
++	if tc == nil {
++		return nil, errors.New("naive transport requires TLS")
++	}
++	if address.Family().IsDomain() {
++		return nil, errors.New("naive listen address must be an IP")
++	}
++	l := &Listener{add: add, addr: &net.TCPAddr{IP: address.IP(), Port: int(port)}}
++	l.ctx, l.cancel = context.WithCancel(ctx)
++	h2 := len(tc.NextProtocol) == 0 || slices.Contains(tc.NextProtocol, "h2") || slices.Contains(tc.NextProtocol, "http/1.1")
++	h3 := slices.Contains(tc.NextProtocol, "h3")
++	if !h2 && !h3 {
++		l.Close()
++		return nil, errors.New("naive ALPN must include h2 or h3")
++	}
++	if h2 {
++		raw, err := internet.ListenSystem(ctx, l.addr, settings.SocketSettings)
++		if err != nil {
++			l.Close()
++			return nil, err
++		}
++		cfg := tc.GetTLSConfig()
++		cfg.NextProtos = []string{"h2", "http/1.1"}
++		l.tcp = tls.NewListener(raw, cfg)
++		l.h2 = &http.Server{Handler: l, ReadHeaderTimeout: 15 * time.Second, BaseContext: func(net.Listener) context.Context { return l.ctx }}
++		if err = http2.ConfigureServer(l.h2, &http2.Server{}); err != nil {
++			l.Close()
++			return nil, err
++		}
++		go l.h2.Serve(l.tcp)
++	}
++	if h3 {
++		pc, err := internet.ListenSystemPacket(ctx, &net.UDPAddr{IP: address.IP(), Port: int(port)}, settings.SocketSettings)
++		if err != nil {
++			l.Close()
++			return nil, err
++		}
++		l.udp = pc
++		cfg := tc.GetTLSConfig()
++		cfg.NextProtos = []string{"h3"}
++		l.h3 = &http3.Server{Handler: l, TLSConfig: cfg}
++		go l.h3.Serve(pc)
++	}
++	return l, nil
++}
++
++var _ io.ReadWriteCloser = (*Conn)(nil)
++
++func init() {
++	common.Must(internet.RegisterProtocolConfigCreator("naive", func() interface{} { return &Config{} }))
++	common.Must(internet.RegisterTransportListener("naive", Listen))
++}

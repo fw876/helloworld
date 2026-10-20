@@ -472,6 +472,7 @@ end
 o:value("shadowsocks", translate("ShadowSocks"))
 if is_finded("xray") then
 	o:value("wireguard", translate("WireGuard"))
+	o:value("naive", "NaiveProxy (Xray / Cronet)")
 end
 if is_finded("xray") then
 	o:value("hysteria2", translate("Hysteria2"))
@@ -543,6 +544,7 @@ o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o = s:option(Value, "username", translate("Username"))
 o.rmempty = true
 o:depends("type", "naiveproxy")
+o:depends({type = "v2ray", v2ray_protocol = "naive"})
 o:depends({type = "socks5", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "socks", auth_enable = true})
@@ -562,6 +564,7 @@ o:depends({type = "v2ray", v2ray_protocol = "socks", socks_ver = "5", auth_enabl
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o:depends({type = "v2ray", v2ray_protocol = "trojan"})
 o:depends({type = "v2ray", v2ray_protocol = "anytls"})
+o:depends({type = "v2ray", v2ray_protocol = "naive"})
 
 for _, field in ipairs({
 	{"anytls_idle_session_check_interval", "Idle session check interval (seconds)", "30"},
@@ -1584,7 +1587,10 @@ o:depends("xtls", true)
 o:depends("reality", true)
 o.rmempty = true
 
+o:depends({type = "v2ray", v2ray_protocol = "naive"})
+
 -- TLS ALPN
+
 o = s:option(ListValue, "tls_alpn", translate("TLS ALPN"))
 o.default = ""
 o:value("", translate("Default"))
@@ -1850,6 +1856,25 @@ if is_finded("kcptun-client") then
 	o:depends("type", "ssr")
 	o:depends("type", "ss-rust")
 	o:depends("type", "ss")
+end
+
+
+-- Naive uses Cronet TLS and multiplexing, independently of Xray stream TLS.
+for _, field in ipairs({
+    {"naive_quic", "Naive HTTP/3 (QUIC)"},
+    {"naive_udp_over_tcp", "Naive UDP over TCP (server support required)"}
+}) do
+    o = s:option(Flag, field[1], translate(field[2]))
+    o.default = "0"
+    o:depends({type = "v2ray", v2ray_protocol = "naive"})
+end
+for _, field in ipairs({
+    {"naive_certificate_file", "Naive trusted CA certificate file"},
+    {"naive_ech_config", "Naive ECH config list (base64)"}
+}) do
+    o = s:option(Value, field[1], translate(field[2]))
+    o.rmempty = true
+    o:depends({type = "v2ray", v2ray_protocol = "naive"})
 end
 
 return m
