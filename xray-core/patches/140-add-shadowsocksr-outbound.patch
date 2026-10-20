@@ -1,0 +1,4029 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Subject: [PATCH] proxy: add Mihomo ShadowsocksR outbound
+
+Port Mihomo v1.19.32 SSR client protocols, obfuscation and stream ciphers.
+Support TCP and native UDP through Xray's routing, socket options and
+outbound chaining. Preserve protocol and obfuscation parameters.
+Handle fragmented HTTP camouflage responses and reject malformed packet
+lengths before slicing authenticated data.
+
+Port source: MetaCubeX/mihomo v1.19.32 (transport/ssr and shadowstream).
+Mihomo-derived code is GPL-3.0-or-later; include its license.
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/go.mod
++++ b/go.mod
+@@ -11,6 +11,7 @@
+ 	github.com/gorilla/websocket v1.5.3
+ 	github.com/klauspost/cpuid/v2 v2.4.0
+ 	github.com/libp2p/go-nat v1.0.1-0.20250821073202-01afc089f138
++	github.com/metacubex/chacha v0.1.5
+ 	github.com/miekg/dns v1.1.73
+ 	github.com/pelletier/go-toml v1.9.5
+ 	github.com/pion/stun/v3 v3.1.7
+--- a/go.sum
++++ b/go.sum
+@@ -47,6 +47,8 @@
+ github.com/libp2p/go-nat v1.0.1-0.20250821073202-01afc089f138/go.mod h1:TXQg5tfSy+bUjnhT5728j5j/MBj7keIYqqZ1+8k/ui8=
+ github.com/libp2p/go-netroute v0.2.1 h1:V8kVrpD8GK0Riv15/7VN6RbUQ3URNZVosw7H2v9tksU=
+ github.com/libp2p/go-netroute v0.2.1/go.mod h1:hraioZr0fhBjG0ZRXJJ6Zj2IVEVNx6tDTFQfSmcq7mQ=
++github.com/metacubex/chacha v0.1.5 h1:fKWMb/5c7ZrY8Uoqi79PPFxl+qwR7X/q0OrsAubyX2M=
++github.com/metacubex/chacha v0.1.5/go.mod h1:Djn9bPZxLTXbJFSeyo0/qzEzQI+gUSSzttuzZM75GH8=
+ github.com/miekg/dns v1.1.73 h1:uhT8nJxmTrPJYClxVxTCX+CVn6qnzSiybRk72Z6DgrE=
+ github.com/miekg/dns v1.1.73/go.mod h1:RW2Obtfd5NZHvOFe3zYG0W8koWOQtAzyHaLo8vASBuQ=
+ github.com/pelletier/go-toml v1.9.5 h1:4yBQzkHv+7BHq2PQUZF3Mx0IYxG7LsP222s7Agd3ve8=
+--- a/infra/conf/shadowsocksr.go
++++ b/infra/conf/shadowsocksr.go
+@@ -0,0 +1,38 @@
++package conf
++
++import (
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/proxy/shadowsocksr"
++	"google.golang.org/protobuf/proto"
++)
++
++type ShadowsocksRClientConfig struct {
++	Address       *Address `json:"address"`
++	Port          uint16   `json:"port"`
++	Password      string   `json:"password"`
++	Method        string   `json:"method"`
++	Protocol      string   `json:"protocol"`
++	ProtocolParam string   `json:"protocolParam"`
++	Obfs          string   `json:"obfs"`
++	ObfsParam     string   `json:"obfsParam"`
++	Level         uint32   `json:"level"`
++}
++
++func (c *ShadowsocksRClientConfig) Build() (proto.Message, error) {
++	if c.Address == nil {
++		return nil, errors.New("shadowsocksr: address is required")
++	}
++	p := c.Protocol
++	if p == "" {
++		p = "origin"
++	}
++	o := c.Obfs
++	if o == "" {
++		o = "plain"
++	}
++	config := &shadowsocksr.ClientConfig{Address: c.Address.Build(), Port: uint32(c.Port), Password: c.Password, Method: c.Method, Protocol: p, ProtocolParam: c.ProtocolParam, Obfs: o, ObfsParam: c.ObfsParam, Level: c.Level}
++	if err := shadowsocksr.Validate(config); err != nil {
++		return nil, err
++	}
++	return config, nil
++}
+--- a/infra/conf/xray.go
++++ b/infra/conf/xray.go
+@@ -43,23 +43,24 @@
+ 	}, "protocol", "settings")
+ 
+ 	outboundConfigLoader = NewJSONConfigLoader(ConfigCreatorCache{
+-		"block":       func() interface{} { return new(BlackholeConfig) },
+-		"blackhole":   func() interface{} { return new(BlackholeConfig) },
+-		"loopback":    func() interface{} { return new(LoopbackConfig) },
+-		"direct":      func() interface{} { return new(FreedomConfig) },
+-		"freedom":     func() interface{} { return new(FreedomConfig) },
+-		"http":        func() interface{} { return new(HTTPClientConfig) },
+-		"shadowsocks": func() interface{} { return new(ShadowsocksClientConfig) },
+-		"socks":       func() interface{} { return new(SocksClientConfig) },
+-		"vless":       func() interface{} { return new(VLessOutboundConfig) },
+-		"vmess":       func() interface{} { return new(VMessOutboundConfig) },
+-		"trojan":      func() interface{} { return new(TrojanClientConfig) },
+-		"naive":       func() interface{} { return new(NaiveClientConfig) },
+-		"anytls":      func() interface{} { return new(AnyTLSClientConfig) },
+-		"hysteria":    func() interface{} { return new(HysteriaClientConfig) },
+-		"masque":      func() interface{} { return new(MasqueClientConfig) },
+-		"dns":         func() interface{} { return new(DNSOutboundConfig) },
+-		"wireguard":   func() interface{} { return &WireGuardConfig{IsClient: true} },
++		"block":        func() interface{} { return new(BlackholeConfig) },
++		"blackhole":    func() interface{} { return new(BlackholeConfig) },
++		"loopback":     func() interface{} { return new(LoopbackConfig) },
++		"direct":       func() interface{} { return new(FreedomConfig) },
++		"freedom":      func() interface{} { return new(FreedomConfig) },
++		"http":         func() interface{} { return new(HTTPClientConfig) },
++		"shadowsocks":  func() interface{} { return new(ShadowsocksClientConfig) },
++		"socks":        func() interface{} { return new(SocksClientConfig) },
++		"vless":        func() interface{} { return new(VLessOutboundConfig) },
++		"vmess":        func() interface{} { return new(VMessOutboundConfig) },
++		"trojan":       func() interface{} { return new(TrojanClientConfig) },
++		"naive":        func() interface{} { return new(NaiveClientConfig) },
++		"shadowsocksr": func() interface{} { return new(ShadowsocksRClientConfig) },
++		"anytls":       func() interface{} { return new(AnyTLSClientConfig) },
++		"hysteria":     func() interface{} { return new(HysteriaClientConfig) },
++		"masque":       func() interface{} { return new(MasqueClientConfig) },
++		"dns":          func() interface{} { return new(DNSOutboundConfig) },
++		"wireguard":    func() interface{} { return &WireGuardConfig{IsClient: true} },
+ 	}, "protocol", "settings")
+ )
+ 
+--- a/main/distro/all/all.go
++++ b/main/distro/all/all.go
+@@ -45,6 +45,7 @@
+ 	_ "github.com/xtls/xray-core/proxy/masque"
+ 	_ "github.com/xtls/xray-core/proxy/naive"
+ 	_ "github.com/xtls/xray-core/proxy/shadowsocks"
++	_ "github.com/xtls/xray-core/proxy/shadowsocksr"
+ 	_ "github.com/xtls/xray-core/proxy/socks"
+ 	_ "github.com/xtls/xray-core/proxy/trojan"
+ 	_ "github.com/xtls/xray-core/proxy/vless/inbound"
+--- a/proxy/shadowsocksr/LICENSE
++++ b/proxy/shadowsocksr/LICENSE
+@@ -0,0 +1,674 @@
++                    GNU GENERAL PUBLIC LICENSE
++                       Version 3, 29 June 2007
++
++ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
++ Everyone is permitted to copy and distribute verbatim copies
++ of this license document, but changing it is not allowed.
++
++                            Preamble
++
++  The GNU General Public License is a free, copyleft license for
++software and other kinds of works.
++
++  The licenses for most software and other practical works are designed
++to take away your freedom to share and change the works.  By contrast,
++the GNU General Public License is intended to guarantee your freedom to
++share and change all versions of a program--to make sure it remains free
++software for all its users.  We, the Free Software Foundation, use the
++GNU General Public License for most of our software; it applies also to
++any other work released this way by its authors.  You can apply it to
++your programs, too.
++
++  When we speak of free software, we are referring to freedom, not
++price.  Our General Public Licenses are designed to make sure that you
++have the freedom to distribute copies of free software (and charge for
++them if you wish), that you receive source code or can get it if you
++want it, that you can change the software or use pieces of it in new
++free programs, and that you know you can do these things.
++
++  To protect your rights, we need to prevent others from denying you
++these rights or asking you to surrender the rights.  Therefore, you have
++certain responsibilities if you distribute copies of the software, or if
++you modify it: responsibilities to respect the freedom of others.
++
++  For example, if you distribute copies of such a program, whether
++gratis or for a fee, you must pass on to the recipients the same
++freedoms that you received.  You must make sure that they, too, receive
++or can get the source code.  And you must show them these terms so they
++know their rights.
++
++  Developers that use the GNU GPL protect your rights with two steps:
++(1) assert copyright on the software, and (2) offer you this License
++giving you legal permission to copy, distribute and/or modify it.
++
++  For the developers' and authors' protection, the GPL clearly explains
++that there is no warranty for this free software.  For both users' and
++authors' sake, the GPL requires that modified versions be marked as
++changed, so that their problems will not be attributed erroneously to
++authors of previous versions.
++
++  Some devices are designed to deny users access to install or run
++modified versions of the software inside them, although the manufacturer
++can do so.  This is fundamentally incompatible with the aim of
++protecting users' freedom to change the software.  The systematic
++pattern of such abuse occurs in the area of products for individuals to
++use, which is precisely where it is most unacceptable.  Therefore, we
++have designed this version of the GPL to prohibit the practice for those
++products.  If such problems arise substantially in other domains, we
++stand ready to extend this provision to those domains in future versions
++of the GPL, as needed to protect the freedom of users.
++
++  Finally, every program is threatened constantly by software patents.
++States should not allow patents to restrict development and use of
++software on general-purpose computers, but in those that do, we wish to
++avoid the special danger that patents applied to a free program could
++make it effectively proprietary.  To prevent this, the GPL assures that
++patents cannot be used to render the program non-free.
++
++  The precise terms and conditions for copying, distribution and
++modification follow.
++
++                       TERMS AND CONDITIONS
++
++  0. Definitions.
++
++  "This License" refers to version 3 of the GNU General Public License.
++
++  "Copyright" also means copyright-like laws that apply to other kinds of
++works, such as semiconductor masks.
++
++  "The Program" refers to any copyrightable work licensed under this
++License.  Each licensee is addressed as "you".  "Licensees" and
++"recipients" may be individuals or organizations.
++
++  To "modify" a work means to copy from or adapt all or part of the work
++in a fashion requiring copyright permission, other than the making of an
++exact copy.  The resulting work is called a "modified version" of the
++earlier work or a work "based on" the earlier work.
++
++  A "covered work" means either the unmodified Program or a work based
++on the Program.
++
++  To "propagate" a work means to do anything with it that, without
++permission, would make you directly or secondarily liable for
++infringement under applicable copyright law, except executing it on a
++computer or modifying a private copy.  Propagation includes copying,
++distribution (with or without modification), making available to the
++public, and in some countries other activities as well.
++
++  To "convey" a work means any kind of propagation that enables other
++parties to make or receive copies.  Mere interaction with a user through
++a computer network, with no transfer of a copy, is not conveying.
++
++  An interactive user interface displays "Appropriate Legal Notices"
++to the extent that it includes a convenient and prominently visible
++feature that (1) displays an appropriate copyright notice, and (2)
++tells the user that there is no warranty for the work (except to the
++extent that warranties are provided), that licensees may convey the
++work under this License, and how to view a copy of this License.  If
++the interface presents a list of user commands or options, such as a
++menu, a prominent item in the list meets this criterion.
++
++  1. Source Code.
++
++  The "source code" for a work means the preferred form of the work
++for making modifications to it.  "Object code" means any non-source
++form of a work.
++
++  A "Standard Interface" means an interface that either is an official
++standard defined by a recognized standards body, or, in the case of
++interfaces specified for a particular programming language, one that
++is widely used among developers working in that language.
++
++  The "System Libraries" of an executable work include anything, other
++than the work as a whole, that (a) is included in the normal form of
++packaging a Major Component, but which is not part of that Major
++Component, and (b) serves only to enable use of the work with that
++Major Component, or to implement a Standard Interface for which an
++implementation is available to the public in source code form.  A
++"Major Component", in this context, means a major essential component
++(kernel, window system, and so on) of the specific operating system
++(if any) on which the executable work runs, or a compiler used to
++produce the work, or an object code interpreter used to run it.
++
++  The "Corresponding Source" for a work in object code form means all
++the source code needed to generate, install, and (for an executable
++work) run the object code and to modify the work, including scripts to
++control those activities.  However, it does not include the work's
++System Libraries, or general-purpose tools or generally available free
++programs which are used unmodified in performing those activities but
++which are not part of the work.  For example, Corresponding Source
++includes interface definition files associated with source files for
++the work, and the source code for shared libraries and dynamically
++linked subprograms that the work is specifically designed to require,
++such as by intimate data communication or control flow between those
++subprograms and other parts of the work.
++
++  The Corresponding Source need not include anything that users
++can regenerate automatically from other parts of the Corresponding
++Source.
++
++  The Corresponding Source for a work in source code form is that
++same work.
++
++  2. Basic Permissions.
++
++  All rights granted under this License are granted for the term of
++copyright on the Program, and are irrevocable provided the stated
++conditions are met.  This License explicitly affirms your unlimited
++permission to run the unmodified Program.  The output from running a
++covered work is covered by this License only if the output, given its
++content, constitutes a covered work.  This License acknowledges your
++rights of fair use or other equivalent, as provided by copyright law.
++
++  You may make, run and propagate covered works that you do not
++convey, without conditions so long as your license otherwise remains
++in force.  You may convey covered works to others for the sole purpose
++of having them make modifications exclusively for you, or provide you
++with facilities for running those works, provided that you comply with
++the terms of this License in conveying all material for which you do
++not control copyright.  Those thus making or running the covered works
++for you must do so exclusively on your behalf, under your direction
++and control, on terms that prohibit them from making any copies of
++your copyrighted material outside their relationship with you.
++
++  Conveying under any other circumstances is permitted solely under
++the conditions stated below.  Sublicensing is not allowed; section 10
++makes it unnecessary.
++
++  3. Protecting Users' Legal Rights From Anti-Circumvention Law.
++
++  No covered work shall be deemed part of an effective technological
++measure under any applicable law fulfilling obligations under article
++11 of the WIPO copyright treaty adopted on 20 December 1996, or
++similar laws prohibiting or restricting circumvention of such
++measures.
++
++  When you convey a covered work, you waive any legal power to forbid
++circumvention of technological measures to the extent such circumvention
++is effected by exercising rights under this License with respect to
++the covered work, and you disclaim any intention to limit operation or
++modification of the work as a means of enforcing, against the work's
++users, your or third parties' legal rights to forbid circumvention of
++technological measures.
++
++  4. Conveying Verbatim Copies.
++
++  You may convey verbatim copies of the Program's source code as you
++receive it, in any medium, provided that you conspicuously and
++appropriately publish on each copy an appropriate copyright notice;
++keep intact all notices stating that this License and any
++non-permissive terms added in accord with section 7 apply to the code;
++keep intact all notices of the absence of any warranty; and give all
++recipients a copy of this License along with the Program.
++
++  You may charge any price or no price for each copy that you convey,
++and you may offer support or warranty protection for a fee.
++
++  5. Conveying Modified Source Versions.
++
++  You may convey a work based on the Program, or the modifications to
++produce it from the Program, in the form of source code under the
++terms of section 4, provided that you also meet all of these conditions:
++
++    a) The work must carry prominent notices stating that you modified
++    it, and giving a relevant date.
++
++    b) The work must carry prominent notices stating that it is
++    released under this License and any conditions added under section
++    7.  This requirement modifies the requirement in section 4 to
++    "keep intact all notices".
++
++    c) You must license the entire work, as a whole, under this
++    License to anyone who comes into possession of a copy.  This
++    License will therefore apply, along with any applicable section 7
++    additional terms, to the whole of the work, and all its parts,
++    regardless of how they are packaged.  This License gives no
++    permission to license the work in any other way, but it does not
++    invalidate such permission if you have separately received it.
++
++    d) If the work has interactive user interfaces, each must display
++    Appropriate Legal Notices; however, if the Program has interactive
++    interfaces that do not display Appropriate Legal Notices, your
++    work need not make them do so.
++
++  A compilation of a covered work with other separate and independent
++works, which are not by their nature extensions of the covered work,
++and which are not combined with it such as to form a larger program,
++in or on a volume of a storage or distribution medium, is called an
++"aggregate" if the compilation and its resulting copyright are not
++used to limit the access or legal rights of the compilation's users
++beyond what the individual works permit.  Inclusion of a covered work
++in an aggregate does not cause this License to apply to the other
++parts of the aggregate.
++
++  6. Conveying Non-Source Forms.
++
++  You may convey a covered work in object code form under the terms
++of sections 4 and 5, provided that you also convey the
++machine-readable Corresponding Source under the terms of this License,
++in one of these ways:
++
++    a) Convey the object code in, or embodied in, a physical product
++    (including a physical distribution medium), accompanied by the
++    Corresponding Source fixed on a durable physical medium
++    customarily used for software interchange.
++
++    b) Convey the object code in, or embodied in, a physical product
++    (including a physical distribution medium), accompanied by a
++    written offer, valid for at least three years and valid for as
++    long as you offer spare parts or customer support for that product
++    model, to give anyone who possesses the object code either (1) a
++    copy of the Corresponding Source for all the software in the
++    product that is covered by this License, on a durable physical
++    medium customarily used for software interchange, for a price no
++    more than your reasonable cost of physically performing this
++    conveying of source, or (2) access to copy the
++    Corresponding Source from a network server at no charge.
++
++    c) Convey individual copies of the object code with a copy of the
++    written offer to provide the Corresponding Source.  This
++    alternative is allowed only occasionally and noncommercially, and
++    only if you received the object code with such an offer, in accord
++    with subsection 6b.
++
++    d) Convey the object code by offering access from a designated
++    place (gratis or for a charge), and offer equivalent access to the
++    Corresponding Source in the same way through the same place at no
++    further charge.  You need not require recipients to copy the
++    Corresponding Source along with the object code.  If the place to
++    copy the object code is a network server, the Corresponding Source
++    may be on a different server (operated by you or a third party)
++    that supports equivalent copying facilities, provided you maintain
++    clear directions next to the object code saying where to find the
++    Corresponding Source.  Regardless of what server hosts the
++    Corresponding Source, you remain obligated to ensure that it is
++    available for as long as needed to satisfy these requirements.
++
++    e) Convey the object code using peer-to-peer transmission, provided
++    you inform other peers where the object code and Corresponding
++    Source of the work are being offered to the general public at no
++    charge under subsection 6d.
++
++  A separable portion of the object code, whose source code is excluded
++from the Corresponding Source as a System Library, need not be
++included in conveying the object code work.
++
++  A "User Product" is either (1) a "consumer product", which means any
++tangible personal property which is normally used for personal, family,
++or household purposes, or (2) anything designed or sold for incorporation
++into a dwelling.  In determining whether a product is a consumer product,
++doubtful cases shall be resolved in favor of coverage.  For a particular
++product received by a particular user, "normally used" refers to a
++typical or common use of that class of product, regardless of the status
++of the particular user or of the way in which the particular user
++actually uses, or expects or is expected to use, the product.  A product
++is a consumer product regardless of whether the product has substantial
++commercial, industrial or non-consumer uses, unless such uses represent
++the only significant mode of use of the product.
++
++  "Installation Information" for a User Product means any methods,
++procedures, authorization keys, or other information required to install
++and execute modified versions of a covered work in that User Product from
++a modified version of its Corresponding Source.  The information must
++suffice to ensure that the continued functioning of the modified object
++code is in no case prevented or interfered with solely because
++modification has been made.
++
++  If you convey an object code work under this section in, or with, or
++specifically for use in, a User Product, and the conveying occurs as
++part of a transaction in which the right of possession and use of the
++User Product is transferred to the recipient in perpetuity or for a
++fixed term (regardless of how the transaction is characterized), the
++Corresponding Source conveyed under this section must be accompanied
++by the Installation Information.  But this requirement does not apply
++if neither you nor any third party retains the ability to install
++modified object code on the User Product (for example, the work has
++been installed in ROM).
++
++  The requirement to provide Installation Information does not include a
++requirement to continue to provide support service, warranty, or updates
++for a work that has been modified or installed by the recipient, or for
++the User Product in which it has been modified or installed.  Access to a
++network may be denied when the modification itself materially and
++adversely affects the operation of the network or violates the rules and
++protocols for communication across the network.
++
++  Corresponding Source conveyed, and Installation Information provided,
++in accord with this section must be in a format that is publicly
++documented (and with an implementation available to the public in
++source code form), and must require no special password or key for
++unpacking, reading or copying.
++
++  7. Additional Terms.
++
++  "Additional permissions" are terms that supplement the terms of this
++License by making exceptions from one or more of its conditions.
++Additional permissions that are applicable to the entire Program shall
++be treated as though they were included in this License, to the extent
++that they are valid under applicable law.  If additional permissions
++apply only to part of the Program, that part may be used separately
++under those permissions, but the entire Program remains governed by
++this License without regard to the additional permissions.
++
++  When you convey a copy of a covered work, you may at your option
++remove any additional permissions from that copy, or from any part of
++it.  (Additional permissions may be written to require their own
++removal in certain cases when you modify the work.)  You may place
++additional permissions on material, added by you to a covered work,
++for which you have or can give appropriate copyright permission.
++
++  Notwithstanding any other provision of this License, for material you
++add to a covered work, you may (if authorized by the copyright holders of
++that material) supplement the terms of this License with terms:
++
++    a) Disclaiming warranty or limiting liability differently from the
++    terms of sections 15 and 16 of this License; or
++
++    b) Requiring preservation of specified reasonable legal notices or
++    author attributions in that material or in the Appropriate Legal
++    Notices displayed by works containing it; or
++
++    c) Prohibiting misrepresentation of the origin of that material, or
++    requiring that modified versions of such material be marked in
++    reasonable ways as different from the original version; or
++
++    d) Limiting the use for publicity purposes of names of licensors or
++    authors of the material; or
++
++    e) Declining to grant rights under trademark law for use of some
++    trade names, trademarks, or service marks; or
++
++    f) Requiring indemnification of licensors and authors of that
++    material by anyone who conveys the material (or modified versions of
++    it) with contractual assumptions of liability to the recipient, for
++    any liability that these contractual assumptions directly impose on
++    those licensors and authors.
++
++  All other non-permissive additional terms are considered "further
++restrictions" within the meaning of section 10.  If the Program as you
++received it, or any part of it, contains a notice stating that it is
++governed by this License along with a term that is a further
++restriction, you may remove that term.  If a license document contains
++a further restriction but permits relicensing or conveying under this
++License, you may add to a covered work material governed by the terms
++of that license document, provided that the further restriction does
++not survive such relicensing or conveying.
++
++  If you add terms to a covered work in accord with this section, you
++must place, in the relevant source files, a statement of the
++additional terms that apply to those files, or a notice indicating
++where to find the applicable terms.
++
++  Additional terms, permissive or non-permissive, may be stated in the
++form of a separately written license, or stated as exceptions;
++the above requirements apply either way.
++
++  8. Termination.
++
++  You may not propagate or modify a covered work except as expressly
++provided under this License.  Any attempt otherwise to propagate or
++modify it is void, and will automatically terminate your rights under
++this License (including any patent licenses granted under the third
++paragraph of section 11).
++
++  However, if you cease all violation of this License, then your
++license from a particular copyright holder is reinstated (a)
++provisionally, unless and until the copyright holder explicitly and
++finally terminates your license, and (b) permanently, if the copyright
++holder fails to notify you of the violation by some reasonable means
++prior to 60 days after the cessation.
++
++  Moreover, your license from a particular copyright holder is
++reinstated permanently if the copyright holder notifies you of the
++violation by some reasonable means, this is the first time you have
++received notice of violation of this License (for any work) from that
++copyright holder, and you cure the violation prior to 30 days after
++your receipt of the notice.
++
++  Termination of your rights under this section does not terminate the
++licenses of parties who have received copies or rights from you under
++this License.  If your rights have been terminated and not permanently
++reinstated, you do not qualify to receive new licenses for the same
++material under section 10.
++
++  9. Acceptance Not Required for Having Copies.
++
++  You are not required to accept this License in order to receive or
++run a copy of the Program.  Ancillary propagation of a covered work
++occurring solely as a consequence of using peer-to-peer transmission
++to receive a copy likewise does not require acceptance.  However,
++nothing other than this License grants you permission to propagate or
++modify any covered work.  These actions infringe copyright if you do
++not accept this License.  Therefore, by modifying or propagating a
++covered work, you indicate your acceptance of this License to do so.
++
++  10. Automatic Licensing of Downstream Recipients.
++
++  Each time you convey a covered work, the recipient automatically
++receives a license from the original licensors, to run, modify and
++propagate that work, subject to this License.  You are not responsible
++for enforcing compliance by third parties with this License.
++
++  An "entity transaction" is a transaction transferring control of an
++organization, or substantially all assets of one, or subdividing an
++organization, or merging organizations.  If propagation of a covered
++work results from an entity transaction, each party to that
++transaction who receives a copy of the work also receives whatever
++licenses to the work the party's predecessor in interest had or could
++give under the previous paragraph, plus a right to possession of the
++Corresponding Source of the work from the predecessor in interest, if
++the predecessor has it or can get it with reasonable efforts.
++
++  You may not impose any further restrictions on the exercise of the
++rights granted or affirmed under this License.  For example, you may
++not impose a license fee, royalty, or other charge for exercise of
++rights granted under this License, and you may not initiate litigation
++(including a cross-claim or counterclaim in a lawsuit) alleging that
++any patent claim is infringed by making, using, selling, offering for
++sale, or importing the Program or any portion of it.
++
++  11. Patents.
++
++  A "contributor" is a copyright holder who authorizes use under this
++License of the Program or a work on which the Program is based.  The
++work thus licensed is called the contributor's "contributor version".
++
++  A contributor's "essential patent claims" are all patent claims
++owned or controlled by the contributor, whether already acquired or
++hereafter acquired, that would be infringed by some manner, permitted
++by this License, of making, using, or selling its contributor version,
++but do not include claims that would be infringed only as a
++consequence of further modification of the contributor version.  For
++purposes of this definition, "control" includes the right to grant
++patent sublicenses in a manner consistent with the requirements of
++this License.
++
++  Each contributor grants you a non-exclusive, worldwide, royalty-free
++patent license under the contributor's essential patent claims, to
++make, use, sell, offer for sale, import and otherwise run, modify and
++propagate the contents of its contributor version.
++
++  In the following three paragraphs, a "patent license" is any express
++agreement or commitment, however denominated, not to enforce a patent
++(such as an express permission to practice a patent or covenant not to
++sue for patent infringement).  To "grant" such a patent license to a
++party means to make such an agreement or commitment not to enforce a
++patent against the party.
++
++  If you convey a covered work, knowingly relying on a patent license,
++and the Corresponding Source of the work is not available for anyone
++to copy, free of charge and under the terms of this License, through a
++publicly available network server or other readily accessible means,
++then you must either (1) cause the Corresponding Source to be so
++available, or (2) arrange to deprive yourself of the benefit of the
++patent license for this particular work, or (3) arrange, in a manner
++consistent with the requirements of this License, to extend the patent
++license to downstream recipients.  "Knowingly relying" means you have
++actual knowledge that, but for the patent license, your conveying the
++covered work in a country, or your recipient's use of the covered work
++in a country, would infringe one or more identifiable patents in that
++country that you have reason to believe are valid.
++
++  If, pursuant to or in connection with a single transaction or
++arrangement, you convey, or propagate by procuring conveyance of, a
++covered work, and grant a patent license to some of the parties
++receiving the covered work authorizing them to use, propagate, modify
++or convey a specific copy of the covered work, then the patent license
++you grant is automatically extended to all recipients of the covered
++work and works based on it.
++
++  A patent license is "discriminatory" if it does not include within
++the scope of its coverage, prohibits the exercise of, or is
++conditioned on the non-exercise of one or more of the rights that are
++specifically granted under this License.  You may not convey a covered
++work if you are a party to an arrangement with a third party that is
++in the business of distributing software, under which you make payment
++to the third party based on the extent of your activity of conveying
++the work, and under which the third party grants, to any of the
++parties who would receive the covered work from you, a discriminatory
++patent license (a) in connection with copies of the covered work
++conveyed by you (or copies made from those copies), or (b) primarily
++for and in connection with specific products or compilations that
++contain the covered work, unless you entered into that arrangement,
++or that patent license was granted, prior to 28 March 2007.
++
++  Nothing in this License shall be construed as excluding or limiting
++any implied license or other defenses to infringement that may
++otherwise be available to you under applicable patent law.
++
++  12. No Surrender of Others' Freedom.
++
++  If conditions are imposed on you (whether by court order, agreement or
++otherwise) that contradict the conditions of this License, they do not
++excuse you from the conditions of this License.  If you cannot convey a
++covered work so as to satisfy simultaneously your obligations under this
++License and any other pertinent obligations, then as a consequence you may
++not convey it at all.  For example, if you agree to terms that obligate you
++to collect a royalty for further conveying from those to whom you convey
++the Program, the only way you could satisfy both those terms and this
++License would be to refrain entirely from conveying the Program.
++
++  13. Use with the GNU Affero General Public License.
++
++  Notwithstanding any other provision of this License, you have
++permission to link or combine any covered work with a work licensed
++under version 3 of the GNU Affero General Public License into a single
++combined work, and to convey the resulting work.  The terms of this
++License will continue to apply to the part which is the covered work,
++but the special requirements of the GNU Affero General Public License,
++section 13, concerning interaction through a network will apply to the
++combination as such.
++
++  14. Revised Versions of this License.
++
++  The Free Software Foundation may publish revised and/or new versions of
++the GNU General Public License from time to time.  Such new versions will
++be similar in spirit to the present version, but may differ in detail to
++address new problems or concerns.
++
++  Each version is given a distinguishing version number.  If the
++Program specifies that a certain numbered version of the GNU General
++Public License "or any later version" applies to it, you have the
++option of following the terms and conditions either of that numbered
++version or of any later version published by the Free Software
++Foundation.  If the Program does not specify a version number of the
++GNU General Public License, you may choose any version ever published
++by the Free Software Foundation.
++
++  If the Program specifies that a proxy can decide which future
++versions of the GNU General Public License can be used, that proxy's
++public statement of acceptance of a version permanently authorizes you
++to choose that version for the Program.
++
++  Later license versions may give you additional or different
++permissions.  However, no additional obligations are imposed on any
++author or copyright holder as a result of your choosing to follow a
++later version.
++
++  15. Disclaimer of Warranty.
++
++  THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
++APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
++HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY
++OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
++THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
++IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
++ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
++
++  16. Limitation of Liability.
++
++  IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
++WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS
++THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY
++GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE
++USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF
++DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD
++PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS),
++EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
++SUCH DAMAGES.
++
++  17. Interpretation of Sections 15 and 16.
++
++  If the disclaimer of warranty and limitation of liability provided
++above cannot be given local legal effect according to their terms,
++reviewing courts shall apply local law that most closely approximates
++an absolute waiver of all civil liability in connection with the
++Program, unless a warranty or assumption of liability accompanies a
++copy of the Program in return for a fee.
++
++                     END OF TERMS AND CONDITIONS
++
++            How to Apply These Terms to Your New Programs
++
++  If you develop a new program, and you want it to be of the greatest
++possible use to the public, the best way to achieve this is to make it
++free software which everyone can redistribute and change under these terms.
++
++  To do so, attach the following notices to the program.  It is safest
++to attach them to the start of each source file to most effectively
++state the exclusion of warranty; and each file should have at least
++the "copyright" line and a pointer to where the full notice is found.
++
++    <one line to give the program's name and a brief idea of what it does.>
++    Copyright (C) <year>  <name of author>
++
++    This program is free software: you can redistribute it and/or modify
++    it under the terms of the GNU General Public License as published by
++    the Free Software Foundation, either version 3 of the License, or
++    (at your option) any later version.
++
++    This program is distributed in the hope that it will be useful,
++    but WITHOUT ANY WARRANTY; without even the implied warranty of
++    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++    GNU General Public License for more details.
++
++    You should have received a copy of the GNU General Public License
++    along with this program.  If not, see <https://www.gnu.org/licenses/>.
++
++Also add information on how to contact you by electronic and paper mail.
++
++  If the program does terminal interaction, make it output a short
++notice like this when it starts in an interactive mode:
++
++    <program>  Copyright (C) <year>  <name of author>
++    This program comes with ABSOLUTELY NO WARRANTY; for details type `show w'.
++    This is free software, and you are welcome to redistribute it
++    under certain conditions; type `show c' for details.
++
++The hypothetical commands `show w' and `show c' should show the appropriate
++parts of the General Public License.  Of course, your program's commands
++might be different; for a GUI interface, you would use an "about box".
++
++  You should also get your employer (if you work as a programmer) or school,
++if any, to sign a "copyright disclaimer" for the program, if necessary.
++For more information on this, and how to apply and follow the GNU GPL, see
++<https://www.gnu.org/licenses/>.
++
++  The GNU General Public License does not permit incorporating your program
++into proprietary programs.  If your program is a subroutine library, you
++may consider it more useful to permit linking proprietary applications with
++the library.  If this is what you want to do, use the GNU Lesser General
++Public License instead of this License.  But first, please read
++<https://www.gnu.org/licenses/why-not-lgpl.html>.
+--- a/proxy/shadowsocksr/cipher/cipher.go
++++ b/proxy/shadowsocksr/cipher/cipher.go
+@@ -0,0 +1,110 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package cipher
++
++import (
++	"crypto/md5"
++	"errors"
++	"net"
++	"sort"
++	"strings"
++
++	"github.com/xtls/xray-core/proxy/shadowsocksr/shadowstream"
++)
++
++type Cipher interface {
++	StreamConnCipher
++	PacketConnCipher
++}
++
++type StreamConnCipher interface {
++	StreamConn(net.Conn) net.Conn
++}
++
++type PacketConnCipher interface {
++	PacketConn(net.PacketConn) net.PacketConn
++}
++
++// ErrCipherNotSupported occurs when a cipher is not supported (likely because of security concerns).
++var ErrCipherNotSupported = errors.New("cipher not supported")
++
++// List of stream ciphers: key size in bytes and constructor
++var streamList = map[string]struct {
++	KeySize int
++	New     func(key []byte) (shadowstream.Cipher, error)
++}{
++	"RC4-MD5":       {16, shadowstream.RC4MD5},
++	"AES-128-CTR":   {16, shadowstream.AESCTR},
++	"AES-192-CTR":   {24, shadowstream.AESCTR},
++	"AES-256-CTR":   {32, shadowstream.AESCTR},
++	"AES-128-CFB":   {16, shadowstream.AESCFB},
++	"AES-192-CFB":   {24, shadowstream.AESCFB},
++	"AES-256-CFB":   {32, shadowstream.AESCFB},
++	"CHACHA20":      {32, shadowstream.ChaCha20},
++	"CHACHA20-IETF": {32, shadowstream.Chacha20IETF},
++	"XCHACHA20":     {32, shadowstream.Xchacha20},
++}
++
++// ListCipher returns a list of available cipher names sorted alphabetically.
++func ListCipher() []string {
++	var l []string
++	for k := range streamList {
++		l = append(l, k)
++	}
++	sort.Strings(l)
++	return l
++}
++
++// PickCipher returns a Cipher of the given name. Derive key from password if given key is empty.
++func PickCipher(name string, key []byte, password string) (Cipher, error) {
++	name = strings.ToUpper(name)
++
++	if name == "DUMMY" || name == "NONE" {
++		return &dummy{}, nil
++	}
++
++	if choice, ok := streamList[name]; ok {
++		if len(key) == 0 {
++			key = Kdf(password, choice.KeySize)
++		}
++		if len(key) != choice.KeySize {
++			return nil, shadowstream.KeySizeError(choice.KeySize)
++		}
++		ciph, err := choice.New(key)
++		return &StreamCipher{Cipher: ciph, Key: key}, err
++	}
++
++	return nil, ErrCipherNotSupported
++}
++
++type StreamCipher struct {
++	shadowstream.Cipher
++
++	Key []byte
++}
++
++func (ciph *StreamCipher) StreamConn(c net.Conn) net.Conn { return shadowstream.NewConn(c, ciph) }
++func (ciph *StreamCipher) PacketConn(c net.PacketConn) net.PacketConn {
++	return shadowstream.NewPacketConn(c, ciph)
++}
++
++// dummy cipher does not encrypt
++
++type dummy struct{}
++
++func (dummy) StreamConn(c net.Conn) net.Conn             { return c }
++func (dummy) PacketConn(c net.PacketConn) net.PacketConn { return c }
++
++// key-derivation function from original Shadowsocks
++func Kdf(password string, keyLen int) []byte {
++	var b, prev []byte
++	h := md5.New()
++	for len(b) < keyLen {
++		h.Write(prev)
++		h.Write([]byte(password))
++		b = h.Sum(b)
++		prev = b[len(b)-h.Size():]
++		h.Reset()
++	}
++	return b[:keyLen]
++}
+--- a/proxy/shadowsocksr/client.go
++++ b/proxy/shadowsocksr/client.go
+@@ -0,0 +1,136 @@
++package shadowsocksr
++
++import (
++	"context"
++	"time"
++
++	M "github.com/sagernet/sing/common/metadata"
++	"github.com/xtls/xray-core/common"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/session"
++	"github.com/xtls/xray-core/common/signal"
++	"github.com/xtls/xray-core/common/task"
++	"github.com/xtls/xray-core/core"
++	"github.com/xtls/xray-core/features/policy"
++	C "github.com/xtls/xray-core/proxy/shadowsocksr/cipher"
++	O "github.com/xtls/xray-core/proxy/shadowsocksr/obfs"
++	P "github.com/xtls/xray-core/proxy/shadowsocksr/protocol"
++	"github.com/xtls/xray-core/proxy/shadowsocksr/shadowstream"
++	"github.com/xtls/xray-core/transport"
++	"github.com/xtls/xray-core/transport/internet"
++)
++
++type Client struct {
++	server   net.Destination
++	policy   policy.Session
++	cipher   C.Cipher
++	obfs     O.Obfs
++	protocol P.Protocol
++}
++
++// Validate checks the same cipher, protocol and obfuscation registry used at runtime.
++func Validate(config *ClientConfig) error { _, err := newClient(config); return err }
++func newClient(config *ClientConfig) (*Client, error) {
++	if config.Address == nil || config.Port == 0 || config.Port > 65535 || config.Password == "" {
++		return nil, errors.New("shadowsocksr: invalid server or password")
++	}
++	cipher, err := C.PickCipher(config.Method, nil, config.Password)
++	if err != nil {
++		return nil, err
++	}
++	key := C.Kdf(config.Password, 16)
++	ivSize := 0
++	if stream, ok := cipher.(*C.StreamCipher); ok {
++		key = stream.Key
++		ivSize = stream.IVSize()
++	}
++	obfs, overhead, err := O.PickObfs(config.Obfs, &O.Base{Host: config.Address.AsAddress().String(), Port: int(config.Port), Key: key, IVSize: ivSize, Param: config.ObfsParam})
++	if err != nil {
++		return nil, err
++	}
++	protocol, err := P.PickProtocol(config.Protocol, &P.Base{Key: key, Overhead: overhead, Param: config.ProtocolParam})
++	if err != nil {
++		return nil, err
++	}
++	return &Client{server: net.TCPDestination(config.Address.AsAddress(), net.Port(config.Port)), cipher: cipher, obfs: obfs, protocol: protocol}, nil
++}
++func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
++	c, err := newClient(config)
++	if err != nil {
++		return nil, err
++	}
++	c.policy = core.MustFromContext(ctx).GetFeature(policy.ManagerType()).(policy.Manager).ForLevel(config.Level)
++	return c, nil
++}
++func (c *Client) Process(ctx context.Context, link *transport.Link, dialer internet.Dialer) error {
++	outbounds := session.OutboundsFromContext(ctx)
++	if len(outbounds) == 0 {
++		return errors.New("shadowsocksr: missing target")
++	}
++	ob := outbounds[len(outbounds)-1]
++	target := ob.Target
++	if !target.IsValid() || (target.Network != net.Network_TCP && target.Network != net.Network_UDP) {
++		return errors.New("shadowsocksr: unsupported target")
++	}
++	ob.Name = "shadowsocksr"
++	ob.CanSpliceCopy = 3
++	server := c.server
++	server.Network = target.Network
++	conn, err := dialer.Dial(ctx, server)
++	if err != nil {
++		return err
++	}
++	defer conn.Close()
++	var reader buf.Reader
++	var writer buf.Writer
++	if target.Network == net.Network_TCP {
++		conn.SetDeadline(time.Now().Add(c.policy.Timeouts.Handshake))
++		stream := c.cipher.StreamConn(c.obfs.StreamConn(conn))
++		var iv []byte
++		if sc, ok := stream.(*shadowstream.Conn); ok {
++			iv, err = sc.ObtainWriteIV()
++			if err != nil {
++				return err
++			}
++		}
++		stream = c.protocol.StreamConn(stream, iv)
++		if err = M.SocksaddrSerializer.WriteAddrPort(stream, socksaddr(target)); err != nil {
++			return err
++		}
++		conn.SetDeadline(time.Time{})
++		reader = buf.NewReader(stream)
++		writer = buf.NewWriter(stream)
++	} else {
++		pc := c.protocol.PacketConn(c.cipher.PacketConn(&connectedPacketConn{Conn: conn}))
++		reader = &packetReader{conn: pc}
++		writer = &packetWriter{conn: pc, server: conn.RemoteAddr(), destination: target}
++	}
++	ctx, cancel := context.WithCancel(ctx)
++	defer cancel()
++	timer := signal.CancelAfterInactivity(ctx, cancel, c.policy.Timeouts.ConnectionIdle)
++	defer timer.SetTimeout(0)
++	request := func() error {
++		defer timer.SetTimeout(c.policy.Timeouts.DownlinkOnly)
++		return buf.Copy(link.Reader, writer, buf.UpdateActivity(timer))
++	}
++	response := func() error {
++		defer timer.SetTimeout(c.policy.Timeouts.UplinkOnly)
++		return buf.Copy(reader, link.Writer, buf.UpdateActivity(timer))
++	}
++	if err = task.Run(ctx, request, task.OnSuccess(response, task.Close(link.Writer))); err != nil {
++		common.Interrupt(link.Reader)
++		common.Interrupt(link.Writer)
++		return errors.New("shadowsocksr: connection ends").Base(err)
++	}
++	return nil
++}
++func socksaddr(d net.Destination) M.Socksaddr {
++	return M.ParseSocksaddrHostPort(d.Address.String(), uint16(d.Port))
++}
++func init() {
++	common.Must(common.RegisterConfig((*ClientConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
++		return NewClient(ctx, config.(*ClientConfig))
++	}))
++}
+--- a/proxy/shadowsocksr/config.pb.go
++++ b/proxy/shadowsocksr/config.pb.go
+@@ -0,0 +1,198 @@
++// Code generated by protoc-gen-go. DO NOT EDIT.
++// versions:
++// 	protoc-gen-go v1.36.12
++// 	protoc        v3.21.12
++// source: proxy/shadowsocksr/config.proto
++
++package shadowsocksr
++
++import (
++	net "github.com/xtls/xray-core/common/net"
++	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
++	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
++	reflect "reflect"
++	sync "sync"
++	unsafe "unsafe"
++)
++
++const (
++	// Verify that this generated code is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
++	// Verify that runtime/protoimpl is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
++)
++
++type ClientConfig struct {
++	state         protoimpl.MessageState `protogen:"open.v1"`
++	Address       *net.IPOrDomain        `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
++	Port          uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
++	Password      string                 `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"`
++	Level         uint32                 `protobuf:"varint,4,opt,name=level,proto3" json:"level,omitempty"`
++	Method        string                 `protobuf:"bytes,5,opt,name=method,proto3" json:"method,omitempty"`
++	Protocol      string                 `protobuf:"bytes,6,opt,name=protocol,proto3" json:"protocol,omitempty"`
++	ProtocolParam string                 `protobuf:"bytes,7,opt,name=protocol_param,json=protocolParam,proto3" json:"protocol_param,omitempty"`
++	Obfs          string                 `protobuf:"bytes,8,opt,name=obfs,proto3" json:"obfs,omitempty"`
++	ObfsParam     string                 `protobuf:"bytes,9,opt,name=obfs_param,json=obfsParam,proto3" json:"obfs_param,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *ClientConfig) Reset() {
++	*x = ClientConfig{}
++	mi := &file_proxy_shadowsocksr_config_proto_msgTypes[0]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *ClientConfig) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*ClientConfig) ProtoMessage() {}
++
++func (x *ClientConfig) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_shadowsocksr_config_proto_msgTypes[0]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use ClientConfig.ProtoReflect.Descriptor instead.
++func (*ClientConfig) Descriptor() ([]byte, []int) {
++	return file_proxy_shadowsocksr_config_proto_rawDescGZIP(), []int{0}
++}
++
++func (x *ClientConfig) GetAddress() *net.IPOrDomain {
++	if x != nil {
++		return x.Address
++	}
++	return nil
++}
++
++func (x *ClientConfig) GetPort() uint32 {
++	if x != nil {
++		return x.Port
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetPassword() string {
++	if x != nil {
++		return x.Password
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetLevel() uint32 {
++	if x != nil {
++		return x.Level
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetMethod() string {
++	if x != nil {
++		return x.Method
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetProtocol() string {
++	if x != nil {
++		return x.Protocol
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetProtocolParam() string {
++	if x != nil {
++		return x.ProtocolParam
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetObfs() string {
++	if x != nil {
++		return x.Obfs
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetObfsParam() string {
++	if x != nil {
++		return x.ObfsParam
++	}
++	return ""
++}
++
++var File_proxy_shadowsocksr_config_proto protoreflect.FileDescriptor
++
++const file_proxy_shadowsocksr_config_proto_rawDesc = "" +
++	"\n" +
++	"\x1fproxy/shadowsocksr/config.proto\x12\x17xray.proxy.shadowsocksr\x1a\x18common/net/address.proto\"\x99\x02\n" +
++	"\fClientConfig\x125\n" +
++	"\aaddress\x18\x01 \x01(\v2\x1b.xray.common.net.IPOrDomainR\aaddress\x12\x12\n" +
++	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1a\n" +
++	"\bpassword\x18\x03 \x01(\tR\bpassword\x12\x14\n" +
++	"\x05level\x18\x04 \x01(\rR\x05level\x12\x16\n" +
++	"\x06method\x18\x05 \x01(\tR\x06method\x12\x1a\n" +
++	"\bprotocol\x18\x06 \x01(\tR\bprotocol\x12%\n" +
++	"\x0eprotocol_param\x18\a \x01(\tR\rprotocolParam\x12\x12\n" +
++	"\x04obfs\x18\b \x01(\tR\x04obfs\x12\x1d\n" +
++	"\n" +
++	"obfs_param\x18\t \x01(\tR\tobfsParamB.Z,github.com/xtls/xray-core/proxy/shadowsocksrb\x06proto3"
++
++var (
++	file_proxy_shadowsocksr_config_proto_rawDescOnce sync.Once
++	file_proxy_shadowsocksr_config_proto_rawDescData []byte
++)
++
++func file_proxy_shadowsocksr_config_proto_rawDescGZIP() []byte {
++	file_proxy_shadowsocksr_config_proto_rawDescOnce.Do(func() {
++		file_proxy_shadowsocksr_config_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proxy_shadowsocksr_config_proto_rawDesc), len(file_proxy_shadowsocksr_config_proto_rawDesc)))
++	})
++	return file_proxy_shadowsocksr_config_proto_rawDescData
++}
++
++var file_proxy_shadowsocksr_config_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
++var file_proxy_shadowsocksr_config_proto_goTypes = []any{
++	(*ClientConfig)(nil),   // 0: xray.proxy.shadowsocksr.ClientConfig
++	(*net.IPOrDomain)(nil), // 1: xray.common.net.IPOrDomain
++}
++var file_proxy_shadowsocksr_config_proto_depIdxs = []int32{
++	1, // 0: xray.proxy.shadowsocksr.ClientConfig.address:type_name -> xray.common.net.IPOrDomain
++	1, // [1:1] is the sub-list for method output_type
++	1, // [1:1] is the sub-list for method input_type
++	1, // [1:1] is the sub-list for extension type_name
++	1, // [1:1] is the sub-list for extension extendee
++	0, // [0:1] is the sub-list for field type_name
++}
++
++func init() { file_proxy_shadowsocksr_config_proto_init() }
++func file_proxy_shadowsocksr_config_proto_init() {
++	if File_proxy_shadowsocksr_config_proto != nil {
++		return
++	}
++	type x struct{}
++	out := protoimpl.TypeBuilder{
++		File: protoimpl.DescBuilder{
++			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
++			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proxy_shadowsocksr_config_proto_rawDesc), len(file_proxy_shadowsocksr_config_proto_rawDesc)),
++			NumEnums:      0,
++			NumMessages:   1,
++			NumExtensions: 0,
++			NumServices:   0,
++		},
++		GoTypes:           file_proxy_shadowsocksr_config_proto_goTypes,
++		DependencyIndexes: file_proxy_shadowsocksr_config_proto_depIdxs,
++		MessageInfos:      file_proxy_shadowsocksr_config_proto_msgTypes,
++	}.Build()
++	File_proxy_shadowsocksr_config_proto = out.File
++	file_proxy_shadowsocksr_config_proto_goTypes = nil
++	file_proxy_shadowsocksr_config_proto_depIdxs = nil
++}
+--- a/proxy/shadowsocksr/config.proto
++++ b/proxy/shadowsocksr/config.proto
+@@ -0,0 +1,15 @@
++syntax = "proto3";
++package xray.proxy.shadowsocksr;
++option go_package = "github.com/xtls/xray-core/proxy/shadowsocksr";
++import "common/net/address.proto";
++message ClientConfig {
++  xray.common.net.IPOrDomain address = 1;
++  uint32 port = 2;
++  string password = 3;
++  uint32 level = 4;
++  string method = 5;
++  string protocol = 6;
++  string protocol_param = 7;
++  string obfs = 8;
++  string obfs_param = 9;
++}
+--- a/proxy/shadowsocksr/obfs/base.go
++++ b/proxy/shadowsocksr/obfs/base.go
+@@ -0,0 +1,11 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package obfs
++
++type Base struct {
++	Host   string
++	Port   int
++	Key    []byte
++	IVSize int
++	Param  string
++}
+--- a/proxy/shadowsocksr/obfs/http_post.go
++++ b/proxy/shadowsocksr/obfs/http_post.go
+@@ -0,0 +1,11 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package obfs
++
++func init() {
++	register("http_post", newHTTPPost, 0)
++}
++
++func newHTTPPost(b *Base) Obfs {
++	return &httpObfs{Base: b, post: true}
++}
+--- a/proxy/shadowsocksr/obfs/http_simple.go
++++ b/proxy/shadowsocksr/obfs/http_simple.go
+@@ -0,0 +1,416 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package obfs
++
++import (
++	"bufio"
++	"bytes"
++	"encoding/hex"
++	"fmt"
++	"io"
++	randv2 "math/rand/v2"
++	"net"
++	"strconv"
++	"strings"
++
++	"github.com/xtls/xray-core/proxy/shadowsocksr/pool"
++)
++
++func init() {
++	register("http_simple", newHTTPSimple, 0)
++}
++
++type httpObfs struct {
++	*Base
++	post bool
++}
++
++func newHTTPSimple(b *Base) Obfs {
++	return &httpObfs{Base: b}
++}
++
++type httpConn struct {
++	net.Conn
++	*httpObfs
++	hasSentHeader bool
++	hasRecvHeader bool
++	buf           []byte
++}
++
++func (h *httpObfs) StreamConn(c net.Conn) net.Conn {
++	return &httpConn{Conn: c, httpObfs: h}
++}
++
++func (c *httpConn) Read(b []byte) (int, error) {
++	if c.buf != nil {
++		n := copy(b, c.buf)
++		if n == len(c.buf) {
++			c.buf = nil
++		} else {
++			c.buf = c.buf[n:]
++		}
++		return n, nil
++	}
++
++	if c.hasRecvHeader {
++		return c.Conn.Read(b)
++	}
++
++	// TCP may fragment the HTTP camouflage header across arbitrary reads.
++	r := bufio.NewReader(c.Conn)
++	total := 0
++	for {
++		line, err := r.ReadSlice('\n')
++		total += len(line)
++		if total > 32768 {
++			return 0, fmt.Errorf("SSR HTTP header too large")
++		}
++		if err != nil {
++			return 0, err
++		}
++		if bytes.Equal(line, []byte("\r\n")) {
++			break
++		}
++	}
++	c.hasRecvHeader = true
++	if n := r.Buffered(); n > 0 {
++		c.buf = make([]byte, n)
++		if _, err := io.ReadFull(r, c.buf); err != nil {
++			return 0, err
++		}
++	}
++	return c.Read(b)
++}
++
++func (c *httpConn) Write(b []byte) (int, error) {
++	if c.hasSentHeader {
++		return c.Conn.Write(b)
++	}
++	// 30: head length
++	headLength := c.IVSize + 30
++
++	bLength := len(b)
++	headDataLength := bLength
++	if bLength-headLength > 64 {
++		headDataLength = headLength + randv2.IntN(65)
++	}
++	headData := b[:headDataLength]
++	b = b[headDataLength:]
++
++	var body string
++	host := c.Host
++	if len(c.Param) > 0 {
++		pos := strings.Index(c.Param, "#")
++		if pos != -1 {
++			body = strings.ReplaceAll(c.Param[pos+1:], "\n", "\r\n")
++			body = strings.ReplaceAll(body, "\\n", "\r\n")
++			host = c.Param[:pos]
++		} else {
++			host = c.Param
++		}
++	}
++	hosts := strings.Split(host, ",")
++	host = hosts[randv2.IntN(len(hosts))]
++
++	buf := pool.GetBuffer()
++	defer pool.PutBuffer(buf)
++	if c.post {
++		buf.WriteString("POST /")
++	} else {
++		buf.WriteString("GET /")
++	}
++	packURLEncodedHeadData(buf, headData)
++	buf.WriteString(" HTTP/1.1\r\nHost: " + host)
++	if c.Port != 80 {
++		buf.WriteString(":" + strconv.Itoa(c.Port))
++	}
++	buf.WriteString("\r\n")
++	if len(body) > 0 {
++		buf.WriteString(body + "\r\n\r\n")
++	} else {
++		buf.WriteString("User-Agent: ")
++		buf.WriteString(userAgent[randv2.IntN(len(userAgent))])
++		buf.WriteString("\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nAccept-Language: en-US,en;q=0.8\r\nAccept-Encoding: gzip, deflate\r\n")
++		if c.post {
++			packBoundary(buf)
++		}
++		buf.WriteString("DNT: 1\r\nConnection: keep-alive\r\n\r\n")
++	}
++	buf.Write(b)
++	_, err := c.Conn.Write(buf.Bytes())
++	if err != nil {
++		return 0, err
++	}
++	c.hasSentHeader = true
++	return bLength, nil
++}
++
++func packURLEncodedHeadData(buf *bytes.Buffer, data []byte) {
++	dataLength := len(data)
++	for i := 0; i < dataLength; i++ {
++		buf.WriteRune('%')
++		buf.WriteString(hex.EncodeToString(data[i : i+1]))
++	}
++}
++
++func packBoundary(buf *bytes.Buffer) {
++	buf.WriteString("Content-Type: multipart/form-data; boundary=")
++	set := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
++	for i := 0; i < 32; i++ {
++		buf.WriteByte(set[randv2.IntN(62)])
++	}
++	buf.WriteString("\r\n")
++}
++
++var userAgent = []string{
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.162 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.0; Moto C Build/NRD90M.059) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.106 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0.1; SM-G532M Build/MMB29T; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/55.0.2883.91 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.101 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/40.0.2214.111 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.94 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 5.1.1; SM-J120M Build/LMY47X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.0; Moto G (5) Build/NPPS25.137-93-14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.106 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.0; SM-G570M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.80 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 5.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.112 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0; CAM-L03 Build/HUAWEICAM-L03) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.76 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.117 Safari/537.36",
++	"Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/534.3 (KHTML, like Gecko) Chrome/6.0.472.63 Safari/534.3",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.106 Safari/537.36",
++	"Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/534.7 (KHTML, like Gecko) Chrome/7.0.517.44 Safari/534.7",
++	"Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.75 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.71 Safari/537.36",
++	"Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/534.3 (KHTML, like Gecko) Chrome/6.0.472.63 Safari/534.3",
++	"Mozilla/5.0 (Linux; Android 8.0.0; FIG-LX3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.80 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/40.0.2214.115 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36",
++	"Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/534.10 (KHTML, like Gecko) Chrome/8.0.552.237 Safari/534.10",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36",
++	"Mozilla/5.0 (X11; U; Linux x86_64; en-US) AppleWebKit/533.2 (KHTML, like Gecko) Chrome/5.0.342.1 Safari/533.2",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.110 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.89 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.81 Safari/537.36",
++	"Mozilla/5.0 (X11; Datanyze; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.71 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 5.1.1; SM-J111M Build/LMY47V) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.106 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.120 Safari/537.36",
++	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.84 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1700.107 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0.1; SM-J700M Build/MMB29K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.63 Safari/537.36",
++	"Mozilla/5.0 (X11; Linux i686) AppleWebKit/534.30 (KHTML, like Gecko) Slackware/Chrome/12.0.742.100 Safari/534.30",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.86 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.167 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.116 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.143 Safari/537.36",
++	"Mozilla/5.0 (X11; Linux i686) AppleWebKit/534.30 (KHTML, like Gecko) Chrome/12.0.742.100 Safari/534.30",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 8.0.0; WAS-LX3 Build/HUAWEIWAS-LX3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/31.0.1650.57 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.101 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.1805 Safari/537.36 MVisionPlayer/1.0.0.0",
++	"Mozilla/5.0 (Linux; Android 7.0; TRT-LX3 Build/HUAWEITRT-LX3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.89 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0; vivo 1610 Build/MMB29M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.124 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.111 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 4.4.2; de-de; SAMSUNG GT-I9195 Build/KOT49H) AppleWebKit/537.36 (KHTML, like Gecko) Version/1.5 Chrome/28.0.1500.94 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.110 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36",
++	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.90 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.110 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 8.0.0; ANE-LX3 Build/HUAWEIANE-LX3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.112 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.143 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
++	"Mozilla/5.0 (X11; U; Linux i586; en-US) AppleWebKit/533.2 (KHTML, like Gecko) Chrome/5.0.342.1 Safari/533.2",
++	"Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.65 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.0; SM-G610M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.80 Mobile Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0.1; SM-J500M Build/MMB29M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/534.7 (KHTML, like Gecko) Chrome/7.0.517.44 Safari/534.7",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.104 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0; vivo 1606 Build/MMB29M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.124 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36",
++	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.0; SM-G610M Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.1; vivo 1716 Build/N2G47H) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.98 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.93 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.0; SM-G570M Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0; MYA-L22 Build/HUAWEIMYA-L22) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.84 Mobile Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 5.1; A1601 Build/LMY47I) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.98 Mobile Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.0; TRT-LX2 Build/HUAWEITRT-LX2; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/59.0.3071.125 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 5.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36",
++	"Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/534.17 (KHTML, like Gecko) Chrome/10.0.649.0 Safari/534.17",
++	"Mozilla/5.0 (Linux; Android 6.0; CAM-L21 Build/HUAWEICAM-L21; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/62.0.3202.84 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.94 Safari/537.36",
++	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/534.24 (KHTML, like Gecko) Chrome/11.0.696.3 Safari/534.24",
++	"Mozilla/5.0 (Linux; Android 7.1.2; Redmi 4X Build/N2G47H) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.111 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.106 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 4.4.2; SM-G7102 Build/KOT49H) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.84 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.109 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 5.1; HUAWEI CUN-L22 Build/HUAWEICUN-L22; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/62.0.3202.84 Mobile Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 5.1.1; A37fw Build/LMY47V) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.84 Mobile Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.0; SM-J730GM Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.111 Mobile Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.0; SM-G610F Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.111 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.101 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.1.2; Redmi Note 5A Build/N2G47H; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/63.0.3239.111 Mobile Safari/537.36",
++	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.0; Redmi Note 4 Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.111 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.106 Safari/537.36",
++	"Mozilla/5.0 (Unknown; Linux) AppleWebKit/538.1 (KHTML, like Gecko) Chrome/v1.0.0 Safari/538.1",
++	"Mozilla/5.0 (Linux; Android 7.0; BLL-L22 Build/HUAWEIBLL-L22) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.91 Mobile Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.0; SM-J710F Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.84 Mobile Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0.1; SM-G532M Build/MMB29T) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.91 Mobile Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.1.1; CPH1723 Build/N6F26Q) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.98 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.118 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.79 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.101 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.94 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.139 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 8.0.0; FIG-LX3 Build/HUAWEIFIG-LX3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows; U; Windows NT 6.1; de-DE) AppleWebKit/534.17 (KHTML, like Gecko) Chrome/10.0.649.0 Safari/534.17",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.63 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.94 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.110 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.65 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 7.1; Mi A1 Build/N2G47H) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.83 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.117 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36",
++	"Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.99 Safari/533.4",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.89 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.111 Safari/537.36 MVisionPlayer/1.0.0.0",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 5.1; A37f Build/LMY47V) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.93 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.86 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.110 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.76 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 5.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0.1; CPH1607 Build/MMB29M; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/63.0.3239.111 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36",
++	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0.1; vivo 1603 Build/MMB29M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.83 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0.1; SM-G532M Build/MMB29T) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.87 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0.1; Redmi 4A Build/MMB29M; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/60.0.3112.116 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.112 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36",
++	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.71 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 5.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.90 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.31 (KHTML, like Gecko) Chrome/26.0.1410.64 Safari/537.31",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.84 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.106 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.143 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.112 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.106 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0.1; SM-G532G Build/MMB29T) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.83 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.109 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.117 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.139 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.131 Safari/537.36",
++	"Mozilla/5.0 (Linux; Android 6.0; vivo 1713 Build/MRA58K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.124 Mobile Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.89 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.101 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36",
++	"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.106 Safari/537.36",
++}
+--- a/proxy/shadowsocksr/obfs/obfs.go
++++ b/proxy/shadowsocksr/obfs/obfs.go
+@@ -0,0 +1,44 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package obfs
++
++import (
++	"errors"
++	"fmt"
++	"net"
++)
++
++var (
++	errTLS12TicketAuthIncorrectMagicNumber = errors.New("tls1.2_ticket_auth incorrect magic number")
++	errTLS12TicketAuthTooShortData         = errors.New("tls1.2_ticket_auth too short data")
++	errTLS12TicketAuthHMACError            = errors.New("tls1.2_ticket_auth hmac verifying failed")
++)
++
++type authData struct {
++	clientID [32]byte
++}
++
++type Obfs interface {
++	StreamConn(net.Conn) net.Conn
++}
++
++type obfsCreator func(b *Base) Obfs
++
++var obfsList = make(map[string]struct {
++	overhead int
++	new      obfsCreator
++})
++
++func register(name string, c obfsCreator, o int) {
++	obfsList[name] = struct {
++		overhead int
++		new      obfsCreator
++	}{overhead: o, new: c}
++}
++
++func PickObfs(name string, b *Base) (Obfs, int, error) {
++	if choice, ok := obfsList[name]; ok {
++		return choice.new(b), choice.overhead, nil
++	}
++	return nil, 0, fmt.Errorf("Obfs %s not supported", name)
++}
+--- a/proxy/shadowsocksr/obfs/plain.go
++++ b/proxy/shadowsocksr/obfs/plain.go
+@@ -0,0 +1,17 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package obfs
++
++import "net"
++
++type plain struct{}
++
++func init() {
++	register("plain", newPlain, 0)
++}
++
++func newPlain(b *Base) Obfs {
++	return &plain{}
++}
++
++func (p *plain) StreamConn(c net.Conn) net.Conn { return c }
+--- a/proxy/shadowsocksr/obfs/random_head.go
++++ b/proxy/shadowsocksr/obfs/random_head.go
+@@ -0,0 +1,81 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package obfs
++
++import (
++	"crypto/rand"
++	"encoding/binary"
++	"hash/crc32"
++	randv2 "math/rand/v2"
++	"net"
++	"sync"
++	"sync/atomic"
++
++	"github.com/xtls/xray-core/proxy/shadowsocksr/pool"
++)
++
++func init() {
++	register("random_head", newRandomHead, 0)
++}
++
++type randomHead struct {
++	*Base
++}
++
++func newRandomHead(b *Base) Obfs {
++	return &randomHead{Base: b}
++}
++
++type randomHeadConn struct {
++	net.Conn
++	*randomHead
++	hasSentHeader bool
++	rawTransSent  bool
++	rawTransRecv  atomic.Bool
++	writeMu       sync.Mutex
++	buf           []byte
++}
++
++func (r *randomHead) StreamConn(c net.Conn) net.Conn {
++	return &randomHeadConn{Conn: c, randomHead: r}
++}
++
++func (c *randomHeadConn) Read(b []byte) (int, error) {
++	if c.rawTransRecv.Load() {
++		return c.Conn.Read(b)
++	}
++	buf := pool.Get(pool.RelayBufferSize)
++	defer pool.Put(buf)
++	if _, err := c.Conn.Read(buf); err != nil {
++		return 0, err
++	}
++	c.rawTransRecv.Store(true)
++	_, err := c.Write(nil)
++	return 0, err
++}
++
++func (c *randomHeadConn) Write(b []byte) (int, error) {
++	c.writeMu.Lock()
++	defer c.writeMu.Unlock()
++	if c.rawTransSent {
++		return c.Conn.Write(b)
++	}
++	c.buf = append(c.buf, b...)
++	if !c.hasSentHeader {
++		c.hasSentHeader = true
++		dataLength := randv2.IntN(96) + 4
++		buf := pool.Get(dataLength + 4)
++		defer pool.Put(buf)
++		rand.Read(buf[:dataLength])
++		binary.LittleEndian.PutUint32(buf[dataLength:], 0xffffffff-crc32.ChecksumIEEE(buf[:dataLength]))
++		_, err := c.Conn.Write(buf)
++		return len(b), err
++	}
++	if c.rawTransRecv.Load() {
++		_, err := c.Conn.Write(c.buf)
++		c.buf = nil
++		c.rawTransSent = true
++		return len(b), err
++	}
++	return len(b), nil
++}
+--- a/proxy/shadowsocksr/obfs/tls1.2_ticket_auth.go
++++ b/proxy/shadowsocksr/obfs/tls1.2_ticket_auth.go
+@@ -0,0 +1,264 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package obfs
++
++import (
++	"bytes"
++	"crypto/hmac"
++	"crypto/rand"
++	"encoding/binary"
++	"io"
++	randv2 "math/rand/v2"
++	"net"
++	"strings"
++	"sync"
++	"sync/atomic"
++	"time"
++
++	"github.com/xtls/xray-core/proxy/shadowsocksr/pool"
++	"github.com/xtls/xray-core/proxy/shadowsocksr/tools"
++)
++
++func init() {
++	register("tls1.2_ticket_auth", newTLS12Ticket, 5)
++	register("tls1.2_ticket_fastauth", newTLS12Ticket, 5)
++}
++
++type tls12Ticket struct {
++	*Base
++	*authData
++}
++
++func newTLS12Ticket(b *Base) Obfs {
++	r := &tls12Ticket{Base: b, authData: &authData{}}
++	rand.Read(r.clientID[:])
++	return r
++}
++
++type tls12TicketConn struct {
++	net.Conn
++	*tls12Ticket
++	handshakeStatus atomic.Int32
++	writeMu         sync.Mutex
++	decoded         bytes.Buffer
++	sendBuf         bytes.Buffer
++}
++
++func (t *tls12Ticket) StreamConn(c net.Conn) net.Conn {
++	return &tls12TicketConn{Conn: c, tls12Ticket: t}
++}
++
++// Read complete records so fragmented or coalesced TCP reads cannot corrupt
++// the handshake authentication boundary.
++func (c *tls12TicketConn) readRecord() ([]byte, error) {
++	var header [5]byte
++	if _, err := io.ReadFull(c.Conn, header[:]); err != nil {
++		return nil, err
++	}
++	if header[1] != 3 || header[2] != 3 {
++		return nil, errTLS12TicketAuthIncorrectMagicNumber
++	}
++	n := int(binary.BigEndian.Uint16(header[3:]))
++	if n > 18432 {
++		return nil, errTLS12TicketAuthTooShortData
++	}
++	record := make([]byte, 5+n)
++	copy(record, header[:])
++	_, err := io.ReadFull(c.Conn, record[5:])
++	return record, err
++}
++func (c *tls12TicketConn) Read(b []byte) (int, error) {
++	if len(b) == 0 {
++		return 0, nil
++	}
++	if c.handshakeStatus.Load() != 8 {
++		var handshake bytes.Buffer
++		changed := false
++		for i := 0; ; i++ {
++			if i >= 16 {
++				return 0, errTLS12TicketAuthTooShortData
++			}
++			record, err := c.readRecord()
++			if err != nil {
++				return 0, err
++			}
++			handshake.Write(record)
++			if handshake.Len() > 65536 {
++				return 0, errTLS12TicketAuthTooShortData
++			}
++			if record[0] == 0x16 && changed {
++				break
++			}
++			if record[0] == 0x14 {
++				changed = true
++			} else if record[0] != 0x16 {
++				return 0, errTLS12TicketAuthIncorrectMagicNumber
++			}
++		}
++		data := handshake.Bytes()
++		n := len(data)
++		if n < 76 {
++			return 0, errTLS12TicketAuthTooShortData
++		}
++		if !hmac.Equal(data[33:43], c.hmacSHA1(data[11:33])[:10]) || !hmac.Equal(data[n-10:], c.hmacSHA1(data[:n-10])[:10]) {
++			return 0, errTLS12TicketAuthHMACError
++		}
++		if _, err := c.Write(nil); err != nil {
++			return 0, err
++		}
++	}
++	for c.decoded.Len() == 0 {
++		record, err := c.readRecord()
++		if err != nil {
++			return 0, err
++		}
++		if record[0] != 0x17 {
++			return 0, errTLS12TicketAuthIncorrectMagicNumber
++		}
++		c.decoded.Write(record[5:])
++	}
++	return c.decoded.Read(b)
++}
++
++func (c *tls12TicketConn) Write(b []byte) (int, error) {
++	c.writeMu.Lock()
++	defer c.writeMu.Unlock()
++	length := len(b)
++	if c.handshakeStatus.Load() == 8 {
++		buf := pool.GetBuffer()
++		defer pool.PutBuffer(buf)
++		for len(b) > 2048 {
++			size := randv2.IntN(4096) + 100
++			if len(b) < size {
++				size = len(b)
++			}
++			packData(buf, b[:size])
++			b = b[size:]
++		}
++		if len(b) > 0 {
++			packData(buf, b)
++		}
++		_, err := c.Conn.Write(buf.Bytes())
++		if err != nil {
++			return 0, err
++		}
++		return length, nil
++	}
++
++	if len(b) > 0 {
++		packData(&c.sendBuf, b)
++	}
++
++	if c.handshakeStatus.Load() == 0 {
++		c.handshakeStatus.Store(1)
++
++		data := pool.GetBuffer()
++		defer pool.PutBuffer(data)
++
++		data.Write([]byte{3, 3})
++		c.packAuthData(data)
++		data.WriteByte(0x20)
++		data.Write(c.clientID[:])
++		data.Write([]byte{0x00, 0x1c, 0xc0, 0x2b, 0xc0, 0x2f, 0xcc, 0xa9, 0xcc, 0xa8, 0xcc, 0x14, 0xcc, 0x13, 0xc0, 0x0a, 0xc0, 0x14, 0xc0, 0x09, 0xc0, 0x13, 0x00, 0x9c, 0x00, 0x35, 0x00, 0x2f, 0x00, 0x0a})
++		data.Write([]byte{0x1, 0x0})
++
++		ext := pool.GetBuffer()
++		defer pool.PutBuffer(ext)
++
++		host := c.getHost()
++		ext.Write([]byte{0xff, 0x01, 0x00, 0x01, 0x00})
++		packSNIData(ext, host)
++		ext.Write([]byte{0, 0x17, 0, 0})
++		c.packTicketBuf(ext, host)
++		ext.Write([]byte{0x00, 0x0d, 0x00, 0x16, 0x00, 0x14, 0x06, 0x01, 0x06, 0x03, 0x05, 0x01, 0x05, 0x03, 0x04, 0x01, 0x04, 0x03, 0x03, 0x01, 0x03, 0x03, 0x02, 0x01, 0x02, 0x03})
++		ext.Write([]byte{0x00, 0x05, 0x00, 0x05, 0x01, 0x00, 0x00, 0x00, 0x00})
++		ext.Write([]byte{0x00, 0x12, 0x00, 0x00})
++		ext.Write([]byte{0x75, 0x50, 0x00, 0x00})
++		ext.Write([]byte{0x00, 0x0b, 0x00, 0x02, 0x01, 0x00})
++		ext.Write([]byte{0x00, 0x0a, 0x00, 0x06, 0x00, 0x04, 0x00, 0x17, 0x00, 0x18})
++
++		binary.Write(data, binary.BigEndian, uint16(ext.Len()))
++		data.ReadFrom(ext)
++
++		ret := pool.GetBuffer()
++		defer pool.PutBuffer(ret)
++
++		ret.Write([]byte{0x16, 3, 1})
++		binary.Write(ret, binary.BigEndian, uint16(data.Len()+4))
++		ret.Write([]byte{1, 0})
++		binary.Write(ret, binary.BigEndian, uint16(data.Len()))
++		ret.ReadFrom(data)
++
++		_, err := c.Conn.Write(ret.Bytes())
++		if err != nil {
++			return 0, err
++		}
++		return length, nil
++	} else if c.handshakeStatus.Load() == 1 && len(b) == 0 {
++		buf := pool.GetBuffer()
++		defer pool.PutBuffer(buf)
++
++		buf.Write([]byte{0x14, 3, 3, 0, 1, 1, 0x16, 3, 3, 0, 0x20})
++		tools.AppendRandBytes(buf, 22)
++		buf.Write(c.hmacSHA1(buf.Bytes())[:10])
++		buf.ReadFrom(&c.sendBuf)
++
++		c.handshakeStatus.Store(8)
++
++		_, err := c.Conn.Write(buf.Bytes())
++		return 0, err
++	}
++	return length, nil
++}
++
++func packData(buf *bytes.Buffer, data []byte) {
++	buf.Write([]byte{0x17, 3, 3})
++	binary.Write(buf, binary.BigEndian, uint16(len(data)))
++	buf.Write(data)
++}
++
++func (t *tls12Ticket) packAuthData(buf *bytes.Buffer) {
++	binary.Write(buf, binary.BigEndian, uint32(time.Now().Unix()))
++	tools.AppendRandBytes(buf, 18)
++	buf.Write(t.hmacSHA1(buf.Bytes()[buf.Len()-22:])[:10])
++}
++
++func packSNIData(buf *bytes.Buffer, u string) {
++	len := uint16(len(u))
++	buf.Write([]byte{0, 0})
++	binary.Write(buf, binary.BigEndian, len+5)
++	binary.Write(buf, binary.BigEndian, len+3)
++	buf.WriteByte(0)
++	binary.Write(buf, binary.BigEndian, len)
++	buf.WriteString(u)
++}
++
++func (c *tls12TicketConn) packTicketBuf(buf *bytes.Buffer, u string) {
++	length := 16 * (randv2.IntN(17) + 8)
++	buf.Write([]byte{0, 0x23})
++	binary.Write(buf, binary.BigEndian, uint16(length))
++	tools.AppendRandBytes(buf, length)
++}
++
++func (t *tls12Ticket) hmacSHA1(data []byte) []byte {
++	key := pool.Get(len(t.Key) + 32)
++	defer pool.Put(key)
++	copy(key, t.Key)
++	copy(key[len(t.Key):], t.clientID[:])
++
++	sha1Data := tools.HmacSHA1(key, data)
++	return sha1Data[:10]
++}
++
++func (t *tls12Ticket) getHost() string {
++	host := t.Param
++	if len(host) == 0 {
++		host = t.Host
++	}
++	if len(host) > 0 && host[len(host)-1] >= '0' && host[len(host)-1] <= '9' {
++		host = ""
++	}
++	hosts := strings.Split(host, ",")
++	host = hosts[randv2.IntN(len(hosts))]
++	return host
++}
+--- a/proxy/shadowsocksr/packet.go
++++ b/proxy/shadowsocksr/packet.go
+@@ -0,0 +1,62 @@
++package shadowsocksr
++
++import (
++	"bytes"
++	"net"
++
++	M "github.com/sagernet/sing/common/metadata"
++	"github.com/xtls/xray-core/common/buf"
++	N "github.com/xtls/xray-core/common/net"
++)
++
++type connectedPacketConn struct{ net.Conn }
++
++func (c *connectedPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
++	n, e := c.Read(b)
++	return n, c.RemoteAddr(), e
++}
++func (c *connectedPacketConn) WriteTo(b []byte, _ net.Addr) (int, error) { return c.Write(b) }
++
++type packetReader struct{ conn net.PacketConn }
++
++func (r *packetReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
++	packet := make([]byte, 65535)
++	n, _, err := r.conn.ReadFrom(packet)
++	if err != nil {
++		return nil, err
++	}
++	data := bytes.NewReader(packet[:n])
++	address, err := M.SocksaddrSerializer.ReadAddrPort(data)
++	if err != nil {
++		return nil, err
++	}
++	b := buf.FromBytes(packet[n-data.Len() : n])
++	d := N.UDPDestination(N.ParseAddress(address.AddrString()), N.Port(address.Port))
++	b.UDP = &d
++	return buf.MultiBuffer{b}, nil
++}
++
++type packetWriter struct {
++	conn        net.PacketConn
++	server      net.Addr
++	destination N.Destination
++}
++
++func (w *packetWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
++	defer buf.ReleaseMulti(mb)
++	for _, b := range mb {
++		d := w.destination
++		if b.UDP != nil {
++			d = *b.UDP
++		}
++		var packet bytes.Buffer
++		if err := M.SocksaddrSerializer.WriteAddrPort(&packet, socksaddr(d)); err != nil {
++			return err
++		}
++		packet.Write(b.Bytes())
++		if _, err := w.conn.WriteTo(packet.Bytes(), w.server); err != nil {
++			return err
++		}
++	}
++	return nil
++}
+--- a/proxy/shadowsocksr/pool/pool.go
++++ b/proxy/shadowsocksr/pool/pool.go
+@@ -0,0 +1,31 @@
++package pool
++
++import (
++	"bytes"
++	"sync"
++)
++
++const RelayBufferSize = 32 * 1024
++
++var buffers = sync.Pool{New: func() any { return new(bytes.Buffer) }}
++var packets = sync.Pool{New: func() any { return make([]byte, 65536) }}
++
++func Get(n int) []byte {
++	if n > 65536 {
++		return make([]byte, n)
++	}
++	return packets.Get().([]byte)[:n]
++}
++func Put(b []byte) {
++	if cap(b) == 65536 {
++		clear(b[:cap(b)])
++		packets.Put(b[:cap(b)])
++	}
++}
++func GetBuffer() *bytes.Buffer { return buffers.Get().(*bytes.Buffer) }
++func PutBuffer(b *bytes.Buffer) {
++	b.Reset()
++	if b.Cap() <= 65536 {
++		buffers.Put(b)
++	}
++}
+--- a/proxy/shadowsocksr/protocol/auth_aes128_md5.go
++++ b/proxy/shadowsocksr/protocol/auth_aes128_md5.go
+@@ -0,0 +1,20 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package protocol
++
++import "github.com/xtls/xray-core/proxy/shadowsocksr/tools"
++
++func init() {
++	register("auth_aes128_md5", newAuthAES128MD5, 9)
++}
++
++func newAuthAES128MD5(b *Base) Protocol {
++	a := &authAES128{
++		Base:               b,
++		authData:           &authData{},
++		authAES128Function: &authAES128Function{salt: "auth_aes128_md5", hmac: tools.HmacMD5, hashDigest: tools.MD5Sum},
++		userData:           &userData{},
++	}
++	a.initUserData()
++	return a
++}
+--- a/proxy/shadowsocksr/protocol/auth_aes128_sha1.go
++++ b/proxy/shadowsocksr/protocol/auth_aes128_sha1.go
+@@ -0,0 +1,286 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package protocol
++
++import (
++	"bytes"
++	"crypto/rand"
++	"encoding/binary"
++	"log"
++	"math"
++	randv2 "math/rand/v2"
++	"net"
++	"strconv"
++	"strings"
++
++	"github.com/xtls/xray-core/proxy/shadowsocksr/pool"
++	"github.com/xtls/xray-core/proxy/shadowsocksr/tools"
++)
++
++type (
++	hmacMethod       func(key, data []byte) []byte
++	hashDigestMethod func([]byte) []byte
++)
++
++func init() {
++	register("auth_aes128_sha1", newAuthAES128SHA1, 9)
++}
++
++type authAES128Function struct {
++	salt       string
++	hmac       hmacMethod
++	hashDigest hashDigestMethod
++}
++
++type authAES128 struct {
++	*Base
++	*authData
++	*authAES128Function
++	*userData
++	iv            []byte
++	hasSentHeader bool
++	rawTrans      bool
++	packID        uint32
++	recvID        uint32
++}
++
++func newAuthAES128SHA1(b *Base) Protocol {
++	a := &authAES128{
++		Base:               b,
++		authData:           &authData{},
++		authAES128Function: &authAES128Function{salt: "auth_aes128_sha1", hmac: tools.HmacSHA1, hashDigest: tools.SHA1Sum},
++		userData:           &userData{},
++	}
++	a.initUserData()
++	return a
++}
++
++func (a *authAES128) initUserData() {
++	params := strings.Split(a.Param, ":")
++	if len(params) > 1 {
++		if userID, err := strconv.ParseUint(params[0], 10, 32); err == nil {
++			binary.LittleEndian.PutUint32(a.userID[:], uint32(userID))
++			a.userKey = a.hashDigest([]byte(params[1]))
++		} else {
++			log.Printf("Wrong protocol-param for %s, only digits are expected before ':'", a.salt)
++		}
++	}
++	if len(a.userKey) == 0 {
++		a.userKey = a.Key
++		rand.Read(a.userID[:])
++	}
++}
++
++func (a *authAES128) StreamConn(c net.Conn, iv []byte) net.Conn {
++	p := &authAES128{
++		Base:               a.Base,
++		authData:           a.next(),
++		authAES128Function: a.authAES128Function,
++		userData:           a.userData,
++		packID:             1,
++		recvID:             1,
++	}
++	p.iv = iv
++	return &Conn{Conn: c, Protocol: p}
++}
++
++func (a *authAES128) PacketConn(c net.PacketConn) net.PacketConn {
++	p := &authAES128{
++		Base:               a.Base,
++		authAES128Function: a.authAES128Function,
++		userData:           a.userData,
++	}
++	return &PacketConn{PacketConn: c, Protocol: p}
++}
++
++func (a *authAES128) Decode(dst, src *bytes.Buffer) error {
++	if a.rawTrans {
++		dst.ReadFrom(src)
++		return nil
++	}
++	for src.Len() > 4 {
++		macKey := pool.Get(len(a.userKey) + 4)
++		defer pool.Put(macKey)
++		copy(macKey, a.userKey)
++		binary.LittleEndian.PutUint32(macKey[len(a.userKey):], a.recvID)
++		if !bytes.Equal(a.hmac(macKey, src.Bytes()[:2])[:2], src.Bytes()[2:4]) {
++			src.Reset()
++			return errAuthAES128MACError
++		}
++
++		length := int(binary.LittleEndian.Uint16(src.Bytes()[:2]))
++		if length >= 8192 || length < 7 {
++			a.rawTrans = true
++			src.Reset()
++			return errAuthAES128LengthError
++		}
++		if length > src.Len() {
++			break
++		}
++
++		if !bytes.Equal(a.hmac(macKey, src.Bytes()[:length-4])[:4], src.Bytes()[length-4:length]) {
++			a.rawTrans = true
++			src.Reset()
++			return errAuthAES128ChksumError
++		}
++
++		a.recvID++
++
++		pos := int(src.Bytes()[4])
++		if pos < 255 {
++			pos += 4
++		} else {
++			pos = int(binary.LittleEndian.Uint16(src.Bytes()[5:7])) + 4
++		}
++		if pos < 5 || pos > length-4 {
++			return errAuthAES128LengthError
++		}
++		dst.Write(src.Bytes()[pos : length-4])
++		src.Next(length)
++	}
++	return nil
++}
++
++func (a *authAES128) Encode(buf *bytes.Buffer, b []byte) error {
++	fullDataLength := len(b)
++	if !a.hasSentHeader {
++		dataLength := getDataLength(b)
++		a.packAuthData(buf, b[:dataLength])
++		b = b[dataLength:]
++		a.hasSentHeader = true
++	}
++	for len(b) > 8100 {
++		a.packData(buf, b[:8100], fullDataLength)
++		b = b[8100:]
++	}
++	if len(b) > 0 {
++		a.packData(buf, b, fullDataLength)
++	}
++	return nil
++}
++
++func (a *authAES128) DecodePacket(b []byte) ([]byte, error) {
++	if len(b) < 4 {
++		return nil, errAuthAES128LengthError
++	}
++	if !bytes.Equal(a.hmac(a.Key, b[:len(b)-4])[:4], b[len(b)-4:]) {
++		return nil, errAuthAES128ChksumError
++	}
++	return b[:len(b)-4], nil
++}
++
++func (a *authAES128) EncodePacket(buf *bytes.Buffer, b []byte) error {
++	buf.Write(b)
++	buf.Write(a.userID[:])
++	buf.Write(a.hmac(a.userKey, buf.Bytes())[:4])
++	return nil
++}
++
++func (a *authAES128) packData(poolBuf *bytes.Buffer, data []byte, fullDataLength int) {
++	dataLength := len(data)
++	randDataLength := a.getRandDataLengthForPackData(dataLength, fullDataLength)
++	/*
++		2:	uint16 LittleEndian packedDataLength
++		2:	hmac of packedDataLength
++		3:	maxRandDataLengthPrefix (min:1)
++		4:	hmac of packedData except the last 4 bytes
++	*/
++	packedDataLength := 2 + 2 + 3 + randDataLength + dataLength + 4
++	if randDataLength < 128 {
++		packedDataLength -= 2
++	}
++
++	macKey := pool.Get(len(a.userKey) + 4)
++	defer pool.Put(macKey)
++	copy(macKey, a.userKey)
++	binary.LittleEndian.PutUint32(macKey[len(a.userKey):], a.packID)
++	a.packID++
++
++	binary.Write(poolBuf, binary.LittleEndian, uint16(packedDataLength))
++	poolBuf.Write(a.hmac(macKey, poolBuf.Bytes()[poolBuf.Len()-2:])[:2])
++	a.packRandData(poolBuf, randDataLength)
++	poolBuf.Write(data)
++	poolBuf.Write(a.hmac(macKey, poolBuf.Bytes()[poolBuf.Len()-packedDataLength+4:])[:4])
++}
++
++func trapezoidRandom(max int, d float64) int {
++	base := randv2.Float64()
++	if d-0 > 1e-6 {
++		a := 1 - d
++		base = (math.Sqrt(a*a+4*d*base) - a) / (2 * d)
++	}
++	return int(base * float64(max))
++}
++
++func (a *authAES128) getRandDataLengthForPackData(dataLength, fullDataLength int) int {
++	if fullDataLength >= 32*1024-a.Overhead {
++		return 0
++	}
++	// 1460: tcp_mss
++	revLength := 1460 - dataLength - 9
++	if revLength == 0 {
++		return 0
++	}
++	if revLength < 0 {
++		if revLength > -1460 {
++			return trapezoidRandom(revLength+1460, -0.3)
++		}
++		return randv2.IntN(32)
++	}
++	if dataLength > 900 {
++		return randv2.IntN(revLength)
++	}
++	return trapezoidRandom(revLength, -0.3)
++}
++
++func (a *authAES128) packAuthData(poolBuf *bytes.Buffer, data []byte) {
++	if len(data) == 0 {
++		return
++	}
++	dataLength := len(data)
++	randDataLength := a.getRandDataLengthForPackAuthData(dataLength)
++	/*
++		7:	checkHead(1) and hmac of checkHead(6)
++		4:	userID
++		16:	encrypted data of authdata(12), uint16 BigEndian packedDataLength(2) and uint16 BigEndian randDataLength(2)
++		4:	hmac of userID and encrypted data
++		4:	hmac of packedAuthData except the last 4 bytes
++	*/
++	packedAuthDataLength := 7 + 4 + 16 + 4 + randDataLength + dataLength + 4
++
++	macKey := pool.Get(len(a.iv) + len(a.Key))
++	defer pool.Put(macKey)
++	copy(macKey, a.iv)
++	copy(macKey[len(a.iv):], a.Key)
++
++	poolBuf.WriteByte(byte(randv2.IntN(256)))
++	poolBuf.Write(a.hmac(macKey, poolBuf.Bytes())[:6])
++	poolBuf.Write(a.userID[:])
++	err := a.authData.putEncryptedData(poolBuf, a.userKey, [2]int{packedAuthDataLength, randDataLength}, a.salt)
++	if err != nil {
++		poolBuf.Reset()
++		return
++	}
++	poolBuf.Write(a.hmac(macKey, poolBuf.Bytes()[7:])[:4])
++	tools.AppendRandBytes(poolBuf, randDataLength)
++	poolBuf.Write(data)
++	poolBuf.Write(a.hmac(a.userKey, poolBuf.Bytes())[:4])
++}
++
++func (a *authAES128) getRandDataLengthForPackAuthData(size int) int {
++	if size > 400 {
++		return randv2.IntN(512)
++	}
++	return randv2.IntN(1024)
++}
++
++func (a *authAES128) packRandData(poolBuf *bytes.Buffer, size int) {
++	if size < 128 {
++		poolBuf.WriteByte(byte(size + 1))
++		tools.AppendRandBytes(poolBuf, size)
++		return
++	}
++	poolBuf.WriteByte(255)
++	binary.Write(poolBuf, binary.LittleEndian, uint16(size+3))
++	tools.AppendRandBytes(poolBuf, size)
++}
+--- a/proxy/shadowsocksr/protocol/auth_chain_a.go
++++ b/proxy/shadowsocksr/protocol/auth_chain_a.go
+@@ -0,0 +1,324 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package protocol
++
++import (
++	"bytes"
++	"crypto/cipher"
++	"crypto/rand"
++	"crypto/rc4"
++	"encoding/base64"
++	"encoding/binary"
++	"errors"
++	"log"
++	"net"
++	"strconv"
++	"strings"
++
++	core "github.com/xtls/xray-core/proxy/shadowsocksr/cipher"
++	"github.com/xtls/xray-core/proxy/shadowsocksr/pool"
++	"github.com/xtls/xray-core/proxy/shadowsocksr/tools"
++)
++
++func init() {
++	register("auth_chain_a", newAuthChainA, 4)
++}
++
++type randDataLengthMethod func(int, []byte, *tools.XorShift128Plus) int
++
++type authChainA struct {
++	*Base
++	*authData
++	*userData
++	iv             []byte
++	salt           string
++	hasSentHeader  bool
++	rawTrans       bool
++	lastClientHash []byte
++	lastServerHash []byte
++	encrypter      cipher.Stream
++	decrypter      cipher.Stream
++	randomClient   tools.XorShift128Plus
++	randomServer   tools.XorShift128Plus
++	randDataLength randDataLengthMethod
++	packID         uint32
++	recvID         uint32
++}
++
++func newAuthChainA(b *Base) Protocol {
++	a := &authChainA{
++		Base:     b,
++		authData: &authData{},
++		userData: &userData{},
++		salt:     "auth_chain_a",
++	}
++	a.initUserData()
++	return a
++}
++
++func (a *authChainA) initUserData() {
++	params := strings.Split(a.Param, ":")
++	if len(params) > 1 {
++		if userID, err := strconv.ParseUint(params[0], 10, 32); err == nil {
++			binary.LittleEndian.PutUint32(a.userID[:], uint32(userID))
++			a.userKey = []byte(params[1])
++		} else {
++			log.Printf("Wrong protocol-param for %s, only digits are expected before ':'", a.salt)
++		}
++	}
++	if len(a.userKey) == 0 {
++		a.userKey = a.Key
++		rand.Read(a.userID[:])
++	}
++}
++
++func (a *authChainA) StreamConn(c net.Conn, iv []byte) net.Conn {
++	p := &authChainA{
++		Base:     a.Base,
++		authData: a.next(),
++		userData: a.userData,
++		salt:     a.salt,
++		packID:   1,
++		recvID:   1,
++	}
++	p.iv = iv
++	p.randDataLength = p.getRandLength
++	return &Conn{Conn: c, Protocol: p}
++}
++
++func (a *authChainA) PacketConn(c net.PacketConn) net.PacketConn {
++	p := &authChainA{
++		Base:     a.Base,
++		salt:     a.salt,
++		userData: a.userData,
++	}
++	return &PacketConn{PacketConn: c, Protocol: p}
++}
++
++func (a *authChainA) Decode(dst, src *bytes.Buffer) error {
++	if a.rawTrans {
++		dst.ReadFrom(src)
++		return nil
++	}
++	for src.Len() > 4 {
++		macKey := pool.Get(len(a.userKey) + 4)
++		defer pool.Put(macKey)
++		copy(macKey, a.userKey)
++		binary.LittleEndian.PutUint32(macKey[len(a.userKey):], a.recvID)
++
++		dataLength := int(binary.LittleEndian.Uint16(src.Bytes()[:2]) ^ binary.LittleEndian.Uint16(a.lastServerHash[14:16]))
++		randDataLength := a.randDataLength(dataLength, a.lastServerHash, &a.randomServer)
++		length := dataLength + randDataLength
++		// Temporary workaround for https://github.com/metacubex/mihomo/issues/1352
++		if dataLength < 0 || randDataLength < 0 || length < 0 {
++			return errors.New("ssr crashing blocked")
++		}
++
++		if length >= 4096 {
++			a.rawTrans = true
++			src.Reset()
++			return errAuthChainLengthError
++		}
++
++		if 4+length > src.Len() {
++			break
++		}
++
++		serverHash := tools.HmacMD5(macKey, src.Bytes()[:length+2])
++		if !bytes.Equal(serverHash[:2], src.Bytes()[length+2:length+4]) {
++			a.rawTrans = true
++			src.Reset()
++			return errAuthChainChksumError
++		}
++		a.lastServerHash = serverHash
++
++		pos := 2
++		if dataLength > 0 && randDataLength > 0 {
++			pos += getRandStartPos(randDataLength, &a.randomServer)
++		}
++		// Temporary workaround for https://github.com/metacubex/mihomo/issues/1352
++		if pos < 0 || dataLength < 0 || pos+dataLength > length+2 || (a.recvID == 1 && dataLength < 2) {
++			return errors.New("ssr crashing blocked")
++		}
++
++		wantedData := src.Bytes()[pos : pos+dataLength]
++		a.decrypter.XORKeyStream(wantedData, wantedData)
++		if a.recvID == 1 {
++			dst.Write(wantedData[2:])
++		} else {
++			dst.Write(wantedData)
++		}
++		a.recvID++
++		src.Next(length + 4)
++	}
++	return nil
++}
++
++func (a *authChainA) Encode(buf *bytes.Buffer, b []byte) error {
++	if !a.hasSentHeader {
++		dataLength := getDataLength(b)
++		a.packAuthData(buf, b[:dataLength])
++		b = b[dataLength:]
++		a.hasSentHeader = true
++	}
++	for len(b) > 2800 {
++		a.packData(buf, b[:2800])
++		b = b[2800:]
++	}
++	if len(b) > 0 {
++		a.packData(buf, b)
++	}
++	return nil
++}
++
++func (a *authChainA) DecodePacket(b []byte) ([]byte, error) {
++	if len(b) < 9 {
++		return nil, errAuthChainLengthError
++	}
++	if !bytes.Equal(tools.HmacMD5(a.userKey, b[:len(b)-1])[:1], b[len(b)-1:]) {
++		return nil, errAuthChainChksumError
++	}
++	md5Data := tools.HmacMD5(a.Key, b[len(b)-8:len(b)-1])
++
++	randDataLength := udpGetRandLength(md5Data, &a.randomServer)
++
++	key := core.Kdf(base64.StdEncoding.EncodeToString(a.userKey)+base64.StdEncoding.EncodeToString(md5Data), 16)
++	rc4Cipher, err := rc4.NewCipher(key)
++	if err != nil {
++		return nil, err
++	}
++	if randDataLength > len(b)-8 {
++		return nil, errAuthChainLengthError
++	}
++	wantedData := b[:len(b)-8-randDataLength]
++	rc4Cipher.XORKeyStream(wantedData, wantedData)
++	return wantedData, nil
++}
++
++func (a *authChainA) EncodePacket(buf *bytes.Buffer, b []byte) error {
++	authData := pool.Get(3)
++	defer pool.Put(authData)
++	rand.Read(authData)
++
++	md5Data := tools.HmacMD5(a.Key, authData)
++
++	randDataLength := udpGetRandLength(md5Data, &a.randomClient)
++
++	key := core.Kdf(base64.StdEncoding.EncodeToString(a.userKey)+base64.StdEncoding.EncodeToString(md5Data), 16)
++	rc4Cipher, err := rc4.NewCipher(key)
++	if err != nil {
++		return err
++	}
++	rc4Cipher.XORKeyStream(b, b)
++
++	buf.Write(b)
++	tools.AppendRandBytes(buf, randDataLength)
++	buf.Write(authData)
++	binary.Write(buf, binary.LittleEndian, binary.LittleEndian.Uint32(a.userID[:])^binary.LittleEndian.Uint32(md5Data[:4]))
++	buf.Write(tools.HmacMD5(a.userKey, buf.Bytes())[:1])
++	return nil
++}
++
++func (a *authChainA) packAuthData(poolBuf *bytes.Buffer, data []byte) {
++	/*
++		dataLength := len(data)
++		12:	checkHead(4) and hmac of checkHead(8)
++		4:	uint32 LittleEndian uid (uid = userID ^ last client hash)
++		16:	encrypted data of authdata(12), uint16 LittleEndian overhead(2) and uint16 LittleEndian number zero(2)
++		4:	last server hash(4)
++		packedAuthDataLength := 12 + 4 + 16 + 4 + dataLength
++	*/
++
++	macKey := pool.Get(len(a.iv) + len(a.Key))
++	defer pool.Put(macKey)
++	copy(macKey, a.iv)
++	copy(macKey[len(a.iv):], a.Key)
++
++	// check head
++	tools.AppendRandBytes(poolBuf, 4)
++	a.lastClientHash = tools.HmacMD5(macKey, poolBuf.Bytes())
++	a.initRC4Cipher()
++	poolBuf.Write(a.lastClientHash[:8])
++	// uid
++	binary.Write(poolBuf, binary.LittleEndian, binary.LittleEndian.Uint32(a.userID[:])^binary.LittleEndian.Uint32(a.lastClientHash[8:12]))
++	// encrypted data
++	err := a.putEncryptedData(poolBuf, a.userKey, [2]int{a.Overhead, 0}, a.salt)
++	if err != nil {
++		poolBuf.Reset()
++		return
++	}
++	// last server hash
++	a.lastServerHash = tools.HmacMD5(a.userKey, poolBuf.Bytes()[12:])
++	poolBuf.Write(a.lastServerHash[:4])
++	// packed data
++	a.packData(poolBuf, data)
++}
++
++func (a *authChainA) packData(poolBuf *bytes.Buffer, data []byte) {
++	a.encrypter.XORKeyStream(data, data)
++
++	macKey := pool.Get(len(a.userKey) + 4)
++	defer pool.Put(macKey)
++	copy(macKey, a.userKey)
++	binary.LittleEndian.PutUint32(macKey[len(a.userKey):], a.packID)
++	a.packID++
++
++	length := uint16(len(data)) ^ binary.LittleEndian.Uint16(a.lastClientHash[14:16])
++
++	originalLength := poolBuf.Len()
++	binary.Write(poolBuf, binary.LittleEndian, length)
++	a.putMixedRandDataAndData(poolBuf, data)
++	a.lastClientHash = tools.HmacMD5(macKey, poolBuf.Bytes()[originalLength:])
++	poolBuf.Write(a.lastClientHash[:2])
++}
++
++func (a *authChainA) putMixedRandDataAndData(poolBuf *bytes.Buffer, data []byte) {
++	randDataLength := a.randDataLength(len(data), a.lastClientHash, &a.randomClient)
++	if len(data) == 0 {
++		tools.AppendRandBytes(poolBuf, randDataLength)
++		return
++	}
++	if randDataLength > 0 {
++		startPos := getRandStartPos(randDataLength, &a.randomClient)
++		tools.AppendRandBytes(poolBuf, startPos)
++		poolBuf.Write(data)
++		tools.AppendRandBytes(poolBuf, randDataLength-startPos)
++		return
++	}
++	poolBuf.Write(data)
++}
++
++func getRandStartPos(length int, random *tools.XorShift128Plus) int {
++	if length == 0 {
++		return 0
++	}
++	return int(int64(random.Next()%8589934609) % int64(length))
++}
++
++func (a *authChainA) getRandLength(length int, lastHash []byte, random *tools.XorShift128Plus) int {
++	if length > 1440 {
++		return 0
++	}
++	random.InitFromBinAndLength(lastHash, length)
++	if length > 1300 {
++		return int(random.Next() % 31)
++	}
++	if length > 900 {
++		return int(random.Next() % 127)
++	}
++	if length > 400 {
++		return int(random.Next() % 521)
++	}
++	return int(random.Next() % 1021)
++}
++
++func (a *authChainA) initRC4Cipher() {
++	key := core.Kdf(base64.StdEncoding.EncodeToString(a.userKey)+base64.StdEncoding.EncodeToString(a.lastClientHash), 16)
++	a.encrypter, _ = rc4.NewCipher(key)
++	a.decrypter, _ = rc4.NewCipher(key)
++}
++
++func udpGetRandLength(lastHash []byte, random *tools.XorShift128Plus) int {
++	random.InitFromBin(lastHash)
++	return int(random.Next() % 127)
++}
+--- a/proxy/shadowsocksr/protocol/auth_chain_b.go
++++ b/proxy/shadowsocksr/protocol/auth_chain_b.go
+@@ -0,0 +1,99 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package protocol
++
++import (
++	"net"
++	"sort"
++
++	"github.com/xtls/xray-core/proxy/shadowsocksr/tools"
++)
++
++func init() {
++	register("auth_chain_b", newAuthChainB, 4)
++}
++
++type authChainB struct {
++	*authChainA
++	dataSizeList  []int
++	dataSizeList2 []int
++}
++
++func newAuthChainB(b *Base) Protocol {
++	a := &authChainB{
++		authChainA: &authChainA{
++			Base:     b,
++			authData: &authData{},
++			userData: &userData{},
++			salt:     "auth_chain_b",
++		},
++	}
++	a.initUserData()
++	return a
++}
++
++func (a *authChainB) StreamConn(c net.Conn, iv []byte) net.Conn {
++	p := &authChainB{
++		authChainA: &authChainA{
++			Base:     a.Base,
++			authData: a.next(),
++			userData: a.userData,
++			salt:     a.salt,
++			packID:   1,
++			recvID:   1,
++		},
++	}
++	p.iv = iv
++	p.randDataLength = p.getRandLength
++	p.initDataSize()
++	return &Conn{Conn: c, Protocol: p}
++}
++
++func (a *authChainB) initDataSize() {
++	a.dataSizeList = a.dataSizeList[:0]
++	a.dataSizeList2 = a.dataSizeList2[:0]
++
++	a.randomServer.InitFromBin(a.Key)
++	length := a.randomServer.Next()%8 + 4
++	for ; length > 0; length-- {
++		a.dataSizeList = append(a.dataSizeList, int(a.randomServer.Next()%2340%2040%1440))
++	}
++	sort.Ints(a.dataSizeList)
++
++	length = a.randomServer.Next()%16 + 8
++	for ; length > 0; length-- {
++		a.dataSizeList2 = append(a.dataSizeList2, int(a.randomServer.Next()%2340%2040%1440))
++	}
++	sort.Ints(a.dataSizeList2)
++}
++
++func (a *authChainB) getRandLength(length int, lashHash []byte, random *tools.XorShift128Plus) int {
++	if length >= 1440 {
++		return 0
++	}
++	random.InitFromBinAndLength(lashHash, length)
++	pos := sort.Search(len(a.dataSizeList), func(i int) bool { return a.dataSizeList[i] >= length+a.Overhead })
++	finalPos := pos + int(random.Next()%uint64(len(a.dataSizeList)))
++	if finalPos < len(a.dataSizeList) {
++		return a.dataSizeList[finalPos] - length - a.Overhead
++	}
++
++	pos = sort.Search(len(a.dataSizeList2), func(i int) bool { return a.dataSizeList2[i] >= length+a.Overhead })
++	finalPos = pos + int(random.Next()%uint64(len(a.dataSizeList2)))
++	if finalPos < len(a.dataSizeList2) {
++		return a.dataSizeList2[finalPos] - length - a.Overhead
++	}
++	if finalPos < pos+len(a.dataSizeList2)-1 {
++		return 0
++	}
++	if length > 1300 {
++		return int(random.Next() % 31)
++	}
++	if length > 900 {
++		return int(random.Next() % 127)
++	}
++	if length > 400 {
++		return int(random.Next() % 521)
++	}
++	return int(random.Next() % 1021)
++}
+--- a/proxy/shadowsocksr/protocol/auth_sha1_v4.go
++++ b/proxy/shadowsocksr/protocol/auth_sha1_v4.go
+@@ -0,0 +1,184 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package protocol
++
++import (
++	"bytes"
++	"encoding/binary"
++	"hash/adler32"
++	"hash/crc32"
++	randv2 "math/rand/v2"
++	"net"
++
++	"github.com/xtls/xray-core/proxy/shadowsocksr/pool"
++	"github.com/xtls/xray-core/proxy/shadowsocksr/tools"
++)
++
++func init() {
++	register("auth_sha1_v4", newAuthSHA1V4, 7)
++}
++
++type authSHA1V4 struct {
++	*Base
++	*authData
++	iv            []byte
++	hasSentHeader bool
++	rawTrans      bool
++}
++
++func newAuthSHA1V4(b *Base) Protocol {
++	return &authSHA1V4{Base: b, authData: &authData{}}
++}
++
++func (a *authSHA1V4) StreamConn(c net.Conn, iv []byte) net.Conn {
++	p := &authSHA1V4{Base: a.Base, authData: a.next()}
++	p.iv = iv
++	return &Conn{Conn: c, Protocol: p}
++}
++
++func (a *authSHA1V4) PacketConn(c net.PacketConn) net.PacketConn {
++	return c
++}
++
++func (a *authSHA1V4) Decode(dst, src *bytes.Buffer) error {
++	if a.rawTrans {
++		dst.ReadFrom(src)
++		return nil
++	}
++	for src.Len() > 4 {
++		if uint16(crc32.ChecksumIEEE(src.Bytes()[:2])&0xffff) != binary.LittleEndian.Uint16(src.Bytes()[2:4]) {
++			src.Reset()
++			return errAuthSHA1V4CRC32Error
++		}
++
++		length := int(binary.BigEndian.Uint16(src.Bytes()[:2]))
++		if length >= 8192 || length < 7 {
++			a.rawTrans = true
++			src.Reset()
++			return errAuthSHA1V4LengthError
++		}
++		if length > src.Len() {
++			break
++		}
++
++		if adler32.Checksum(src.Bytes()[:length-4]) != binary.LittleEndian.Uint32(src.Bytes()[length-4:length]) {
++			a.rawTrans = true
++			src.Reset()
++			return errAuthSHA1V4Adler32Error
++		}
++
++		pos := int(src.Bytes()[4])
++		if pos < 255 {
++			pos += 4
++		} else {
++			pos = int(binary.BigEndian.Uint16(src.Bytes()[5:7])) + 4
++		}
++		dst.Write(src.Bytes()[pos : length-4])
++		src.Next(length)
++	}
++	return nil
++}
++
++func (a *authSHA1V4) Encode(buf *bytes.Buffer, b []byte) error {
++	if !a.hasSentHeader {
++		dataLength := getDataLength(b)
++
++		a.packAuthData(buf, b[:dataLength])
++		b = b[dataLength:]
++
++		a.hasSentHeader = true
++	}
++	for len(b) > 8100 {
++		a.packData(buf, b[:8100])
++		b = b[8100:]
++	}
++	if len(b) > 0 {
++		a.packData(buf, b)
++	}
++
++	return nil
++}
++
++func (a *authSHA1V4) DecodePacket(b []byte) ([]byte, error) { return b, nil }
++
++func (a *authSHA1V4) EncodePacket(buf *bytes.Buffer, b []byte) error {
++	buf.Write(b)
++	return nil
++}
++
++func (a *authSHA1V4) packData(poolBuf *bytes.Buffer, data []byte) {
++	dataLength := len(data)
++	randDataLength := a.getRandDataLength(dataLength)
++	/*
++		2:	uint16 BigEndian packedDataLength
++		2:	uint16 LittleEndian crc32Data & 0xffff
++		3:	maxRandDataLengthPrefix (min:1)
++		4:	adler32Data
++	*/
++	packedDataLength := 2 + 2 + 3 + randDataLength + dataLength + 4
++	if randDataLength < 128 {
++		packedDataLength -= 2
++	}
++
++	binary.Write(poolBuf, binary.BigEndian, uint16(packedDataLength))
++	binary.Write(poolBuf, binary.LittleEndian, uint16(crc32.ChecksumIEEE(poolBuf.Bytes()[poolBuf.Len()-2:])&0xffff))
++	a.packRandData(poolBuf, randDataLength)
++	poolBuf.Write(data)
++	binary.Write(poolBuf, binary.LittleEndian, adler32.Checksum(poolBuf.Bytes()[poolBuf.Len()-packedDataLength+4:]))
++}
++
++func (a *authSHA1V4) packAuthData(poolBuf *bytes.Buffer, data []byte) {
++	dataLength := len(data)
++	randDataLength := a.getRandDataLength(12 + dataLength)
++	/*
++		2:	uint16 BigEndian packedAuthDataLength
++		4:	uint32 LittleEndian crc32Data
++		3:	maxRandDataLengthPrefix (min: 1)
++		12:	authDataLength
++		10:	hmacSHA1DataLength
++	*/
++	packedAuthDataLength := 2 + 4 + 3 + randDataLength + 12 + dataLength + 10
++	if randDataLength < 128 {
++		packedAuthDataLength -= 2
++	}
++
++	salt := []byte("auth_sha1_v4")
++	crcData := pool.Get(len(salt) + len(a.Key) + 2)
++	defer pool.Put(crcData)
++	binary.BigEndian.PutUint16(crcData, uint16(packedAuthDataLength))
++	copy(crcData[2:], salt)
++	copy(crcData[2+len(salt):], a.Key)
++
++	key := pool.Get(len(a.iv) + len(a.Key))
++	defer pool.Put(key)
++	copy(key, a.iv)
++	copy(key[len(a.iv):], a.Key)
++
++	poolBuf.Write(crcData[:2])
++	binary.Write(poolBuf, binary.LittleEndian, crc32.ChecksumIEEE(crcData))
++	a.packRandData(poolBuf, randDataLength)
++	a.putAuthData(poolBuf)
++	poolBuf.Write(data)
++	poolBuf.Write(tools.HmacSHA1(key, poolBuf.Bytes()[poolBuf.Len()-packedAuthDataLength+10:])[:10])
++}
++
++func (a *authSHA1V4) packRandData(poolBuf *bytes.Buffer, size int) {
++	if size < 128 {
++		poolBuf.WriteByte(byte(size + 1))
++		tools.AppendRandBytes(poolBuf, size)
++		return
++	}
++	poolBuf.WriteByte(255)
++	binary.Write(poolBuf, binary.BigEndian, uint16(size+3))
++	tools.AppendRandBytes(poolBuf, size)
++}
++
++func (a *authSHA1V4) getRandDataLength(size int) int {
++	if size > 1200 {
++		return 0
++	}
++	if size > 400 {
++		return randv2.IntN(256)
++	}
++	return randv2.IntN(512)
++}
+--- a/proxy/shadowsocksr/protocol/base.go
++++ b/proxy/shadowsocksr/protocol/base.go
+@@ -0,0 +1,80 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package protocol
++
++import (
++	"bytes"
++	"crypto/aes"
++	"crypto/cipher"
++	"crypto/rand"
++	"encoding/base64"
++	"encoding/binary"
++	"log"
++	randv2 "math/rand/v2"
++	"sync"
++	"time"
++
++	core "github.com/xtls/xray-core/proxy/shadowsocksr/cipher"
++	"github.com/xtls/xray-core/proxy/shadowsocksr/pool"
++)
++
++type Base struct {
++	Key      []byte
++	Overhead int
++	Param    string
++}
++
++type userData struct {
++	userKey []byte
++	userID  [4]byte
++}
++
++type authData struct {
++	clientID     [4]byte
++	connectionID uint32
++	mutex        sync.Mutex
++}
++
++func (a *authData) next() *authData {
++	r := &authData{}
++	a.mutex.Lock()
++	defer a.mutex.Unlock()
++	if a.connectionID > 0xff000000 || a.connectionID == 0 {
++		rand.Read(a.clientID[:])
++		a.connectionID = randv2.Uint32() & 0xffffff
++	}
++	a.connectionID++
++	copy(r.clientID[:], a.clientID[:])
++	r.connectionID = a.connectionID
++	return r
++}
++
++func (a *authData) putAuthData(buf *bytes.Buffer) {
++	binary.Write(buf, binary.LittleEndian, uint32(time.Now().Unix()))
++	buf.Write(a.clientID[:])
++	binary.Write(buf, binary.LittleEndian, a.connectionID)
++}
++
++func (a *authData) putEncryptedData(b *bytes.Buffer, userKey []byte, paddings [2]int, salt string) error {
++	encrypt := pool.Get(16)
++	defer pool.Put(encrypt)
++	binary.LittleEndian.PutUint32(encrypt, uint32(time.Now().Unix()))
++	copy(encrypt[4:], a.clientID[:])
++	binary.LittleEndian.PutUint32(encrypt[8:], a.connectionID)
++	binary.LittleEndian.PutUint16(encrypt[12:], uint16(paddings[0]))
++	binary.LittleEndian.PutUint16(encrypt[14:], uint16(paddings[1]))
++
++	cipherKey := core.Kdf(base64.StdEncoding.EncodeToString(userKey)+salt, 16)
++	block, err := aes.NewCipher(cipherKey)
++	if err != nil {
++		log.Printf("New cipher error: %s", err.Error())
++		return err
++	}
++	iv := bytes.Repeat([]byte{0}, 16)
++	cbcCipher := cipher.NewCBCEncrypter(block, iv)
++
++	cbcCipher.CryptBlocks(encrypt, encrypt)
++
++	b.Write(encrypt)
++	return nil
++}
+--- a/proxy/shadowsocksr/protocol/origin.go
++++ b/proxy/shadowsocksr/protocol/origin.go
+@@ -0,0 +1,35 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package protocol
++
++import (
++	"bytes"
++	"net"
++)
++
++type origin struct{}
++
++func init() { register("origin", newOrigin, 0) }
++
++func newOrigin(b *Base) Protocol { return &origin{} }
++
++func (o *origin) StreamConn(c net.Conn, iv []byte) net.Conn { return c }
++
++func (o *origin) PacketConn(c net.PacketConn) net.PacketConn { return c }
++
++func (o *origin) Decode(dst, src *bytes.Buffer) error {
++	dst.ReadFrom(src)
++	return nil
++}
++
++func (o *origin) Encode(buf *bytes.Buffer, b []byte) error {
++	buf.Write(b)
++	return nil
++}
++
++func (o *origin) DecodePacket(b []byte) ([]byte, error) { return b, nil }
++
++func (o *origin) EncodePacket(buf *bytes.Buffer, b []byte) error {
++	buf.Write(b)
++	return nil
++}
+--- a/proxy/shadowsocksr/protocol/packet.go
++++ b/proxy/shadowsocksr/protocol/packet.go
+@@ -0,0 +1,38 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package protocol
++
++import (
++	"net"
++
++	"github.com/xtls/xray-core/proxy/shadowsocksr/pool"
++)
++
++type PacketConn struct {
++	net.PacketConn
++	Protocol
++}
++
++func (c *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
++	buf := pool.GetBuffer()
++	defer pool.PutBuffer(buf)
++	err := c.EncodePacket(buf, b)
++	if err != nil {
++		return 0, err
++	}
++	_, err = c.PacketConn.WriteTo(buf.Bytes(), addr)
++	return len(b), err
++}
++
++func (c *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
++	n, addr, err := c.PacketConn.ReadFrom(b)
++	if err != nil {
++		return n, addr, err
++	}
++	decoded, err := c.DecodePacket(b[:n])
++	if err != nil {
++		return n, addr, err
++	}
++	copy(b, decoded)
++	return len(decoded), addr, nil
++}
+--- a/proxy/shadowsocksr/protocol/protocol.go
++++ b/proxy/shadowsocksr/protocol/protocol.go
+@@ -0,0 +1,78 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package protocol
++
++import (
++	"bytes"
++	"errors"
++	"fmt"
++	randv2 "math/rand/v2"
++	"net"
++)
++
++var (
++	errAuthSHA1V4CRC32Error   = errors.New("auth_sha1_v4 decode data wrong crc32")
++	errAuthSHA1V4LengthError  = errors.New("auth_sha1_v4 decode data wrong length")
++	errAuthSHA1V4Adler32Error = errors.New("auth_sha1_v4 decode data wrong adler32")
++	errAuthAES128MACError     = errors.New("auth_aes128 decode data wrong mac")
++	errAuthAES128LengthError  = errors.New("auth_aes128 decode data wrong length")
++	errAuthAES128ChksumError  = errors.New("auth_aes128 decode data wrong checksum")
++	errAuthChainLengthError   = errors.New("auth_chain decode data wrong length")
++	errAuthChainChksumError   = errors.New("auth_chain decode data wrong checksum")
++)
++
++type Protocol interface {
++	StreamConn(net.Conn, []byte) net.Conn
++	PacketConn(net.PacketConn) net.PacketConn
++	Decode(dst, src *bytes.Buffer) error
++	Encode(buf *bytes.Buffer, b []byte) error
++	DecodePacket([]byte) ([]byte, error)
++	EncodePacket(buf *bytes.Buffer, b []byte) error
++}
++
++type protocolCreator func(b *Base) Protocol
++
++var protocolList = make(map[string]struct {
++	overhead int
++	new      protocolCreator
++})
++
++func register(name string, c protocolCreator, o int) {
++	protocolList[name] = struct {
++		overhead int
++		new      protocolCreator
++	}{overhead: o, new: c}
++}
++
++func PickProtocol(name string, b *Base) (Protocol, error) {
++	if choice, ok := protocolList[name]; ok {
++		b.Overhead += choice.overhead
++		return choice.new(b), nil
++	}
++	return nil, fmt.Errorf("protocol %s not supported", name)
++}
++
++func getHeadSize(b []byte, defaultValue int) int {
++	if len(b) < 2 {
++		return defaultValue
++	}
++	headType := b[0] & 7
++	switch headType {
++	case 1:
++		return 7
++	case 4:
++		return 19
++	case 3:
++		return 4 + int(b[1])
++	}
++	return defaultValue
++}
++
++func getDataLength(b []byte) int {
++	bLength := len(b)
++	dataLength := getHeadSize(b, 30) + randv2.IntN(32)
++	if bLength < dataLength {
++		return bLength
++	}
++	return dataLength
++}
+--- a/proxy/shadowsocksr/protocol/stream.go
++++ b/proxy/shadowsocksr/protocol/stream.go
+@@ -0,0 +1,60 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package protocol
++
++import (
++	"bytes"
++	"io"
++	"net"
++
++	"github.com/xtls/xray-core/proxy/shadowsocksr/pool"
++)
++
++type Conn struct {
++	net.Conn
++	Protocol
++	decoded      bytes.Buffer
++	underDecoded bytes.Buffer
++	readErr      error
++}
++
++func (c *Conn) Read(b []byte) (int, error) {
++	if len(b) == 0 {
++		return 0, nil
++	}
++	for c.decoded.Len() == 0 {
++		if c.readErr != nil {
++			if c.underDecoded.Len() > 0 && c.readErr == io.EOF {
++				return 0, io.ErrUnexpectedEOF
++			}
++			return 0, c.readErr
++		}
++		data := pool.Get(pool.RelayBufferSize)
++		n, err := c.Conn.Read(data)
++		c.readErr = err
++		c.underDecoded.Write(data[:n])
++		pool.Put(data)
++		if err := c.Decode(&c.decoded, &c.underDecoded); err != nil {
++			return 0, err
++		}
++	}
++	return c.decoded.Read(b)
++}
++
++func (c *Conn) Write(b []byte) (int, error) {
++	bLength := len(b)
++	buf := pool.GetBuffer()
++	defer pool.PutBuffer(buf)
++	err := c.Encode(buf, b)
++	if err != nil {
++		return 0, err
++	}
++	n, err := c.Conn.Write(buf.Bytes())
++	if err == nil && n != buf.Len() {
++		err = io.ErrShortWrite
++	}
++	if err != nil {
++		return 0, err
++	}
++	return bLength, nil
++}
+--- a/proxy/shadowsocksr/shadowstream/chacha20.go
++++ b/proxy/shadowsocksr/shadowstream/chacha20.go
+@@ -0,0 +1,57 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package shadowstream
++
++import (
++	"crypto/cipher"
++
++	"github.com/metacubex/chacha"
++)
++
++func newChaCha20(nonce, key []byte) cipher.Stream {
++	c, err := chacha.NewChaCha20IgnoreCounterOverflow(nonce, key)
++	if err != nil {
++		panic(err) // should never happen
++	}
++	return c
++}
++
++type chacha20key []byte
++
++func (k chacha20key) IVSize() int                       { return chacha.NonceSize }
++func (k chacha20key) Encrypter(iv []byte) cipher.Stream { return newChaCha20(iv, k) }
++func (k chacha20key) Decrypter(iv []byte) cipher.Stream { return k.Encrypter(iv) }
++
++func ChaCha20(key []byte) (Cipher, error) {
++	if len(key) != chacha.KeySize {
++		return nil, KeySizeError(chacha.KeySize)
++	}
++	return chacha20key(key), nil
++}
++
++// IETF-variant of chacha20
++type chacha20ietfkey []byte
++
++func (k chacha20ietfkey) IVSize() int                       { return chacha.INonceSize }
++func (k chacha20ietfkey) Decrypter(iv []byte) cipher.Stream { return k.Encrypter(iv) }
++func (k chacha20ietfkey) Encrypter(iv []byte) cipher.Stream { return newChaCha20(iv, k) }
++
++func Chacha20IETF(key []byte) (Cipher, error) {
++	if len(key) != chacha.KeySize {
++		return nil, KeySizeError(chacha.KeySize)
++	}
++	return chacha20ietfkey(key), nil
++}
++
++type xchacha20key []byte
++
++func (k xchacha20key) IVSize() int                       { return chacha.XNonceSize }
++func (k xchacha20key) Decrypter(iv []byte) cipher.Stream { return k.Encrypter(iv) }
++func (k xchacha20key) Encrypter(iv []byte) cipher.Stream { return newChaCha20(iv, k) }
++
++func Xchacha20(key []byte) (Cipher, error) {
++	if len(key) != chacha.KeySize {
++		return nil, KeySizeError(chacha.KeySize)
++	}
++	return xchacha20key(key), nil
++}
+--- a/proxy/shadowsocksr/shadowstream/cipher.go
++++ b/proxy/shadowsocksr/shadowstream/cipher.go
+@@ -0,0 +1,77 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package shadowstream
++
++import (
++	"crypto/aes"
++	"crypto/cipher"
++	"crypto/md5"
++	"crypto/rc4"
++	"strconv"
++)
++
++// Cipher generates a pair of stream ciphers for encryption and decryption.
++type Cipher interface {
++	IVSize() int
++	Encrypter(iv []byte) cipher.Stream
++	Decrypter(iv []byte) cipher.Stream
++}
++
++type KeySizeError int
++
++func (e KeySizeError) Error() string {
++	return "key size error: need " + strconv.Itoa(int(e)) + " bytes"
++}
++
++// CTR mode
++type ctrStream struct{ cipher.Block }
++
++func (b *ctrStream) IVSize() int                       { return b.BlockSize() }
++func (b *ctrStream) Decrypter(iv []byte) cipher.Stream { return b.Encrypter(iv) }
++func (b *ctrStream) Encrypter(iv []byte) cipher.Stream { return cipher.NewCTR(b.Block, iv) }
++
++func AESCTR(key []byte) (Cipher, error) {
++	blk, err := aes.NewCipher(key)
++	if err != nil {
++		return nil, err
++	}
++	return &ctrStream{blk}, nil
++}
++
++// CFB mode
++type cfbStream struct{ cipher.Block }
++
++func (b *cfbStream) IVSize() int                       { return b.BlockSize() }
++func (b *cfbStream) Decrypter(iv []byte) cipher.Stream { return cipher.NewCFBDecrypter(b.Block, iv) }
++func (b *cfbStream) Encrypter(iv []byte) cipher.Stream { return cipher.NewCFBEncrypter(b.Block, iv) }
++
++func AESCFB(key []byte) (Cipher, error) {
++	blk, err := aes.NewCipher(key)
++	if err != nil {
++		return nil, err
++	}
++	return &cfbStream{blk}, nil
++}
++
++type rc4Md5Key []byte
++
++func (k rc4Md5Key) IVSize() int {
++	return 16
++}
++
++func (k rc4Md5Key) Encrypter(iv []byte) cipher.Stream {
++	h := md5.New()
++	h.Write([]byte(k))
++	h.Write(iv)
++	rc4key := h.Sum(nil)
++	c, _ := rc4.NewCipher(rc4key)
++	return c
++}
++
++func (k rc4Md5Key) Decrypter(iv []byte) cipher.Stream {
++	return k.Encrypter(iv)
++}
++
++func RC4MD5(key []byte) (Cipher, error) {
++	return rc4Md5Key(key), nil
++}
+--- a/proxy/shadowsocksr/shadowstream/packet.go
++++ b/proxy/shadowsocksr/shadowstream/packet.go
+@@ -0,0 +1,93 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package shadowstream
++
++import (
++	"crypto/rand"
++	"errors"
++	"io"
++	"net"
++
++	"github.com/xtls/xray-core/proxy/shadowsocksr/pool"
++)
++
++// ErrShortPacket means the packet is too short to be a valid encrypted packet.
++var ErrShortPacket = errors.New("short packet")
++
++// Pack encrypts plaintext using stream cipher s and a random IV.
++// Returns a slice of dst containing random IV and ciphertext.
++// Ensure len(dst) >= s.IVSize() + len(plaintext).
++func Pack(dst, plaintext []byte, s Cipher) ([]byte, error) {
++	if len(dst) < s.IVSize()+len(plaintext) {
++		return nil, io.ErrShortBuffer
++	}
++	iv := dst[:s.IVSize()]
++	_, err := rand.Read(iv)
++	if err != nil {
++		return nil, err
++	}
++	s.Encrypter(iv).XORKeyStream(dst[len(iv):], plaintext)
++	return dst[:len(iv)+len(plaintext)], nil
++}
++
++// UnpackInplace decrypts pkt using stream cipher s.
++// Returns a slice of pkt containing decrypted plaintext.
++// Note: The data in the input dst will be changed
++func UnpackInplace(pkt []byte, s Cipher) ([]byte, error) {
++	if len(pkt) < s.IVSize() {
++		return nil, ErrShortPacket
++	}
++	iv, dst := pkt[:s.IVSize()], pkt[s.IVSize():]
++	s.Decrypter(iv).XORKeyStream(dst, dst)
++	return dst, nil
++}
++
++// Unpack decrypts pkt using stream cipher s.
++// Returns a slice of dst containing decrypted plaintext.
++func Unpack(dst, pkt []byte, s Cipher) ([]byte, error) {
++	if len(pkt) < s.IVSize() {
++		return nil, ErrShortPacket
++	}
++	if len(dst) < len(pkt)-s.IVSize() {
++		return nil, io.ErrShortBuffer
++	}
++	iv := pkt[:s.IVSize()]
++	s.Decrypter(iv).XORKeyStream(dst, pkt[len(iv):])
++	return dst[:len(pkt)-len(iv)], nil
++}
++
++type PacketConn struct {
++	net.PacketConn
++	Cipher
++}
++
++// NewPacketConn wraps an net.PacketConn with stream cipher encryption/decryption.
++func NewPacketConn(c net.PacketConn, ciph Cipher) *PacketConn {
++	return &PacketConn{PacketConn: c, Cipher: ciph}
++}
++
++const maxPacketSize = 64 * 1024
++
++func (c *PacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
++	buf := pool.Get(maxPacketSize)
++	defer pool.Put(buf)
++	buf, err := Pack(buf, b, c.Cipher)
++	if err != nil {
++		return 0, err
++	}
++	_, err = c.PacketConn.WriteTo(buf, addr)
++	return len(b), err
++}
++
++func (c *PacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
++	n, addr, err := c.PacketConn.ReadFrom(b)
++	if err != nil {
++		return n, addr, err
++	}
++	bb, err := UnpackInplace(b[:n], c.Cipher)
++	if err != nil {
++		return n, addr, err
++	}
++	copy(b, bb)
++	return len(bb), addr, err
++}
+--- a/proxy/shadowsocksr/shadowstream/stream.go
++++ b/proxy/shadowsocksr/shadowstream/stream.go
+@@ -0,0 +1,199 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package shadowstream
++
++import (
++	"crypto/cipher"
++	"crypto/rand"
++	"io"
++	"net"
++)
++
++const bufSize = 2048
++
++type Writer struct {
++	io.Writer
++	cipher.Stream
++	buf [bufSize]byte
++}
++
++// NewWriter wraps an io.Writer with stream cipher encryption.
++func NewWriter(w io.Writer, s cipher.Stream) *Writer { return &Writer{Writer: w, Stream: s} }
++
++func (w *Writer) Write(p []byte) (n int, err error) {
++	buf := w.buf[:]
++	for nw := 0; n < len(p) && err == nil; n += nw {
++		end := n + len(buf)
++		if end > len(p) {
++			end = len(p)
++		}
++		w.XORKeyStream(buf, p[n:end])
++		nw, err = w.Writer.Write(buf[:end-n])
++		if err == nil && nw != end-n {
++			err = io.ErrShortWrite
++		}
++	}
++	return
++}
++
++func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
++	buf := w.buf[:]
++	for {
++		nr, er := r.Read(buf)
++		n += int64(nr)
++		b := buf[:nr]
++		w.XORKeyStream(b, b)
++		if _, err = w.Writer.Write(b); err != nil {
++			return
++		}
++		if er != nil {
++			if er != io.EOF { // ignore EOF as per io.ReaderFrom contract
++				err = er
++			}
++			return
++		}
++	}
++}
++
++type Reader struct {
++	io.Reader
++	cipher.Stream
++	buf [bufSize]byte
++}
++
++// NewReader wraps an io.Reader with stream cipher decryption.
++func NewReader(r io.Reader, s cipher.Stream) *Reader { return &Reader{Reader: r, Stream: s} }
++
++func (r *Reader) Read(p []byte) (n int, err error) {
++	n, err = r.Reader.Read(p)
++	r.XORKeyStream(p[:n], p[:n])
++	return
++}
++
++func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
++	buf := r.buf[:]
++	for {
++		nr, er := r.Reader.Read(buf)
++		if nr > 0 {
++			r.XORKeyStream(buf, buf[:nr])
++			nw, ew := w.Write(buf[:nr])
++			n += int64(nw)
++			if ew != nil {
++				err = ew
++				return
++			}
++		}
++		if er != nil {
++			if er != io.EOF { // ignore EOF as per io.Copy contract (using src.WriteTo shortcut)
++				err = er
++			}
++			return
++		}
++	}
++}
++
++// A Conn represents a Shadowsocks connection. It implements the net.Conn interface.
++type Conn struct {
++	net.Conn
++	Cipher
++	r       *Reader
++	w       *Writer
++	readIV  []byte
++	writeIV []byte
++}
++
++// NewConn wraps a stream-oriented net.Conn with stream cipher encryption/decryption.
++func NewConn(c net.Conn, ciph Cipher) *Conn { return &Conn{Conn: c, Cipher: ciph} }
++
++func (c *Conn) initReader() error {
++	if c.r == nil {
++		iv, err := c.ObtainReadIV()
++		if err != nil {
++			return err
++		}
++		c.r = NewReader(c.Conn, c.Decrypter(iv))
++	}
++	return nil
++}
++
++func (c *Conn) Read(b []byte) (int, error) {
++	if c.r == nil {
++		if err := c.initReader(); err != nil {
++			return 0, err
++		}
++	}
++	return c.r.Read(b)
++}
++
++func (c *Conn) WriteTo(w io.Writer) (int64, error) {
++	if c.r == nil {
++		if err := c.initReader(); err != nil {
++			return 0, err
++		}
++	}
++	return c.r.WriteTo(w)
++}
++
++func (c *Conn) initWriter() error {
++	if c.w == nil {
++		iv, err := c.ObtainWriteIV()
++		if err != nil {
++			return err
++		}
++		if _, err := c.Conn.Write(iv); err != nil {
++			return err
++		}
++		c.w = NewWriter(c.Conn, c.Encrypter(iv))
++	}
++	return nil
++}
++
++func (c *Conn) Write(b []byte) (int, error) {
++	if c.w == nil {
++		if err := c.initWriter(); err != nil {
++			return 0, err
++		}
++	}
++	return c.w.Write(b)
++}
++
++func (c *Conn) ReadFrom(r io.Reader) (int64, error) {
++	if c.w == nil {
++		if err := c.initWriter(); err != nil {
++			return 0, err
++		}
++	}
++	return c.w.ReadFrom(r)
++}
++
++func (c *Conn) ObtainWriteIV() ([]byte, error) {
++	if len(c.writeIV) == c.IVSize() {
++		return c.writeIV, nil
++	}
++
++	iv := make([]byte, c.IVSize())
++
++	if _, err := rand.Read(iv); err != nil {
++		return nil, err
++	}
++
++	c.writeIV = iv
++
++	return iv, nil
++}
++
++func (c *Conn) ObtainReadIV() ([]byte, error) {
++	if len(c.readIV) == c.IVSize() {
++		return c.readIV, nil
++	}
++
++	iv := make([]byte, c.IVSize())
++
++	if _, err := io.ReadFull(c.Conn, iv); err != nil {
++		return nil, err
++	}
++
++	c.readIV = iv
++
++	return iv, nil
++}
+--- a/proxy/shadowsocksr/tools/bufPool.go
++++ b/proxy/shadowsocksr/tools/bufPool.go
+@@ -0,0 +1,13 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package tools
++
++import (
++	"bytes"
++	"crypto/rand"
++	"io"
++)
++
++func AppendRandBytes(b *bytes.Buffer, length int) {
++	b.ReadFrom(io.LimitReader(rand.Reader, int64(length)))
++}
+--- a/proxy/shadowsocksr/tools/crypto.go
++++ b/proxy/shadowsocksr/tools/crypto.go
+@@ -0,0 +1,35 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package tools
++
++import (
++	"crypto/hmac"
++	"crypto/md5"
++	"crypto/sha1"
++)
++
++const HmacSHA1Len = 10
++
++func HmacMD5(key, data []byte) []byte {
++	hmacMD5 := hmac.New(md5.New, key)
++	hmacMD5.Write(data)
++	return hmacMD5.Sum(nil)
++}
++
++func HmacSHA1(key, data []byte) []byte {
++	hmacSHA1 := hmac.New(sha1.New, key)
++	hmacSHA1.Write(data)
++	return hmacSHA1.Sum(nil)
++}
++
++func MD5Sum(b []byte) []byte {
++	h := md5.New()
++	h.Write(b)
++	return h.Sum(nil)
++}
++
++func SHA1Sum(b []byte) []byte {
++	h := sha1.New()
++	h.Write(b)
++	return h.Sum(nil)
++}
+--- a/proxy/shadowsocksr/tools/random.go
++++ b/proxy/shadowsocksr/tools/random.go
+@@ -0,0 +1,59 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Adapted from MetaCubeX/mihomo v1.19.32.
++package tools
++
++import (
++	"encoding/binary"
++
++	"github.com/xtls/xray-core/proxy/shadowsocksr/pool"
++)
++
++// XorShift128Plus - a pseudorandom number generator
++type XorShift128Plus struct {
++	s [2]uint64
++}
++
++func (r *XorShift128Plus) Next() uint64 {
++	x := r.s[0]
++	y := r.s[1]
++	r.s[0] = y
++	x ^= x << 23
++	x ^= y ^ (x >> 17) ^ (y >> 26)
++	r.s[1] = x
++	return x + y
++}
++
++func (r *XorShift128Plus) InitFromBin(bin []byte) {
++	var full []byte
++	if len(bin) < 16 {
++		full := pool.Get(16)[:0]
++		defer pool.Put(full)
++		full = append(full, bin...)
++		for len(full) < 16 {
++			full = append(full, 0)
++		}
++	} else {
++		full = bin
++	}
++	r.s[0] = binary.LittleEndian.Uint64(full[:8])
++	r.s[1] = binary.LittleEndian.Uint64(full[8:16])
++}
++
++func (r *XorShift128Plus) InitFromBinAndLength(bin []byte, length int) {
++	var full []byte
++	if len(bin) < 16 {
++		full := pool.Get(16)[:0]
++		defer pool.Put(full)
++		full = append(full, bin...)
++		for len(full) < 16 {
++			full = append(full, 0)
++		}
++	}
++	full = bin
++	binary.LittleEndian.PutUint16(full, uint16(length))
++	r.s[0] = binary.LittleEndian.Uint64(full[:8])
++	r.s[1] = binary.LittleEndian.Uint64(full[8:16])
++	for i := 0; i < 4; i++ {
++		r.Next()
++	}
++}

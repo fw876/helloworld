@@ -992,8 +992,8 @@ use_mihomo_for_ss_rust_server() {
 }
 
 start_v2ray_with_mihomo() {
-	# Naive requires the Cronet-enabled Xray build. Never fall back to Mihomo.
-	[ "$(uci_get_by_name "$1" v2ray_protocol)" = "naive" ] && return 1
+	# These nodes use Xray-specific settings.
+	case "$(uci_get_by_name "$1" v2ray_protocol)" in naive|shadowsocksr) return 1 ;; esac
 	local sid="$1"
 	local local_port="$2"
 	local socks_port="$3"
@@ -1798,7 +1798,7 @@ start_udp() {
 		;;
 	v2ray)
 		enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
-		if [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "naive" ] && [ "$enable_mihomo" = "1" ] && has_mihomo_binary; then
+		if [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "naive" ] && [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "shadowsocksr" ] && [ "$enable_mihomo" = "1" ] && has_mihomo_binary; then
 			redir_udp=0
 			ARG_UDP=""
 			echolog "UDP TPROXY Relay:V2Ray/Xray 单节点由主 Mihomo 实例处理。"
@@ -1811,7 +1811,7 @@ start_udp() {
 				echolog "UDP TPROXY Relay:$($(first_type xray) version | head -1) Started!"
 			else
 				# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
-				if [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "naive" ] && has_mihomo_binary; then
+				if [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "naive" ] && [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "shadowsocksr" ] && has_mihomo_binary; then
 					redir_udp=0
 					ARG_UDP=""
 					echolog "UDP TPROXY Relay:Xray 内核不存在，已回退到 Mihomo 内核启动。"

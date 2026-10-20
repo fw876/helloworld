@@ -363,6 +363,14 @@ function outbound:handleIndex(index)
 		trojan = function()
 			trojan_shadowsocks()
 		end,
+		shadowsocksr = function()
+            outbound_settings = {
+                address = server.server, port = tonumber(server.server_port),
+                password = server.password, method = server.ssr_method or "aes-128-cfb",
+                protocol = server.ssr_protocol or "origin", protocolParam = server.protocol_param,
+                obfs = server.ssr_obfs or "plain", obfsParam = server.obfs_param
+            }
+        end,
 		shadowsocks = function()
 			trojan_shadowsocks()
 		end,
@@ -891,8 +899,9 @@ Xray.outbounds = {
 	}
 }
 
--- Cronet owns TLS and multiplexing. Preserve Xray socket marks and dialer chains.
-if server.v2ray_protocol == "naive" then
+-- Naive owns TLS/multiplexing; SSR owns obfuscation and uses native UDP.
+-- Preserve Xray socket marks and dialer chains for both.
+if server.v2ray_protocol == "naive" or server.v2ray_protocol == "shadowsocksr" then
     local ob = Xray.outbounds[1]
     ob.streamSettings = { network = "raw", sockopt = ob.streamSettings.sockopt }
     ob.mux = nil
