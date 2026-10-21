@@ -47,7 +47,7 @@ jobs:
             echo "- luci-app-ssr-plus"
             echo "- xray-core"
             echo "- mihomo"
-            echo "- naiveproxy"
+            echo "- luci-i18n-ssr-plus-zh-cn"
           } > release_note.md
 
           echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
@@ -136,6 +136,7 @@ jobs:
           CONFIG_AUTOREMOVE=n
           CONFIG_LUCI_LANG_zh_Hans=y
           CONFIG_PACKAGE_luci-app-ssr-plus=m
+          CONFIG_PACKAGE_luci-i18n-ssr-plus-zh-cn=m
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_NONE_V2RAY=y
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_NONE_Client=y
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks_NONE_Server=y
@@ -156,7 +157,7 @@ jobs:
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Libev_Server=n
           CONFIG_PACKAGE_xray-core=m
           CONFIG_PACKAGE_mihomo=m
-          CONFIG_PACKAGE_naiveproxy=m
+          CONFIG_PACKAGE_naiveproxy=n
           EOF
           make defconfig
           make clean
@@ -170,7 +171,7 @@ jobs:
           ./scripts/feeds install -a -p helloworld
           test -e package/feeds/helloworld/xray-core
 
-          packages=(luci-app-ssr-plus xray-core mihomo naiveproxy)
+          packages=(luci-app-ssr-plus xray-core mihomo)
           for package in "${packages[@]}"; do
             make "package/feeds/helloworld/${package}/clean"
             if ! make "package/feeds/helloworld/${package}/compile" -j"$(nproc)"; then
@@ -184,8 +185,14 @@ jobs:
 
           shopt -s nullglob
           package_files=()
-          for package in "${packages[@]}"; do
-            matches=("$package_dir"/"${package}"*."${PACKAGE_EXT}")
+          # LuCI generates translations while compiling luci-app-ssr-plus.
+          release_packages=("${packages[@]}" luci-i18n-ssr-plus-zh-cn)
+          for package in "${release_packages[@]}"; do
+            if [ "${PACKAGE_EXT}" = "apk" ]; then
+              matches=("$package_dir"/"${package}"-*.apk)
+            else
+              matches=("$package_dir"/"${package}"_*.ipk)
+            fi
             if [ ${#matches[@]} -eq 0 ]; then
               echo "No ${package} .${PACKAGE_EXT} package was produced in ${package_dir}" >&2
               exit 1
@@ -197,7 +204,7 @@ jobs:
             package_name="$(basename "$package_file")"
             if [ "${PACKAGE_EXT}" = "apk" ]; then
               case "$package_name" in
-                xray-core-*.apk|mihomo-*.apk|naiveproxy-*.apk)
+                xray-core-*.apk|mihomo-*.apk)
                   package_name="${package_name%.apk}_${SDK_ARCH}.apk"
                   ;;
               esac
