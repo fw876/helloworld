@@ -1,0 +1,2732 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Subject: [PATCH] transport: add Mihomo ShadowTLS inbound and outbound
+
+Port ShadowTLS v1/v2/v3 framing and authentication from Mihomo v1.19.32.
+Add RAW/TCP security settings, metacubex uTLS client fingerprints, certificate
+verification, multi-user v3 authentication and SNI-selected handshake servers.
+Bound handshakes, cancel pending connections when listeners close, and retain
+Xray routing and socket options. ShadowTLS does not encrypt inner payloads;
+use an encrypted inner protocol. Native UDP is not wrapped by ShadowTLS.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/go.mod
++++ b/go.mod
+@@ -16,6 +16,7 @@
+ 	github.com/metacubex/mihomo v1.19.32
+ 	github.com/metacubex/quic-go v0.61.1-0.20260727080200-2548683b76f4
+ 	github.com/metacubex/tls v0.1.8
++	github.com/metacubex/utls v1.8.8
+ 	github.com/miekg/dns v1.1.73
+ 	github.com/pelletier/go-toml v1.9.5
+ 	github.com/pion/stun/v3 v3.1.7
+--- a/go.sum
++++ b/go.sum
+@@ -82,6 +82,8 @@
+ github.com/metacubex/tfo-go v0.0.0-20260623020846-376a77860b8c/go.mod h1:l9oLnLoEXyGZ5RVLsh7QCC5XsouTUyKk4F2nLm2DHLw=
+ github.com/metacubex/tls v0.1.8 h1:BHF2payjtxC7wdR3tnq8vl3FAgEQB6/pPjP2tJNTsP4=
+ github.com/metacubex/tls v0.1.8/go.mod h1:0XeVdL0cBw+8i5Hqy3lVeP9IyD/LFTq02ExvHM6rzEM=
++github.com/metacubex/utls v1.8.8 h1:7fiMYahL+tT1I/vG1MWidv88r/3A5NnPrurjzApZGyQ=
++github.com/metacubex/utls v1.8.8/go.mod h1:kncGGVhFaoGn5M3pFe3SXhZCzsbCJayNOH4UEqTKTko=
+ github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f h1:FGBPRb1zUabhPhDrlKEjQ9lgIwQ6cHL4x8M9lrERhbk=
+ github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f/go.mod h1:oPGcV994OGJedmmxrcK9+ni7jUEMGhR+uVQAdaduIP4=
+ github.com/miekg/dns v1.1.73 h1:uhT8nJxmTrPJYClxVxTCX+CVn6qnzSiybRk72Z6DgrE=
+--- a/infra/conf/shadowtls.go
++++ b/infra/conf/shadowtls.go
+@@ -0,0 +1,48 @@
++package conf
++
++import (
++	"github.com/xtls/xray-core/transport/internet/shadowtls"
++	"os"
++)
++
++type ShadowTLSUser struct {
++	Name     string `json:"name"`
++	Password string `json:"password"`
++}
++type ShadowTLSConfig struct {
++	Version                uint32            `json:"version"`
++	Password               string            `json:"password"`
++	ServerName             string            `json:"serverName"`
++	Fingerprint            string            `json:"fingerprint"`
++	AllowInsecure          bool              `json:"allowInsecure"`
++	ALPN                   []string          `json:"alpn"`
++	CertificateFiles       []string          `json:"certificateFiles"`
++	StrictMode             bool              `json:"strictMode"`
++	Handshake              string            `json:"handshake"`
++	Users                  []ShadowTLSUser   `json:"users"`
++	HandshakeForServerName map[string]string `json:"handshakeForServerName"`
++	WildcardSNI            string            `json:"wildcardSni"`
++	HandshakeTimeout       uint32            `json:"handshakeTimeout"`
++}
++
++func (c *ShadowTLSConfig) Build() (*shadowtls.Config, error) {
++	version := c.Version
++	if version == 0 {
++		version = 3
++	}
++	cfg := &shadowtls.Config{Version: version, Password: c.Password, ServerName: c.ServerName, Fingerprint: c.Fingerprint, AllowInsecure: c.AllowInsecure, Alpn: c.ALPN, StrictMode: c.StrictMode, Handshake: c.Handshake, HandshakeForServerName: c.HandshakeForServerName, WildcardSni: c.WildcardSNI, HandshakeTimeout: c.HandshakeTimeout}
++	for _, u := range c.Users {
++		cfg.Users = append(cfg.Users, &shadowtls.User{Name: u.Name, Password: u.Password})
++	}
++	for _, file := range c.CertificateFiles {
++		pem, err := os.ReadFile(file)
++		if err != nil {
++			return nil, err
++		}
++		cfg.Certificates = append(cfg.Certificates, pem)
++	}
++	if err := cfg.Validate(); err != nil {
++		return nil, err
++	}
++	return cfg, nil
++}
+--- a/infra/conf/transport_internet.go
++++ b/infra/conf/transport_internet.go
+@@ -52,6 +52,7 @@
+ }
+ 
+ type StreamConfig struct {
++	ShadowTLSSettings   *ShadowTLSConfig   `json:"shadowtlsSettings"`
+ 	Address             *Address           `json:"address"`
+ 	Port                uint16             `json:"port"`
+ 	Method              *TransportProtocol `json:"method"`
+@@ -129,6 +130,20 @@
+ 		}
+ 		tm := serial.ToTypedMessage(ts)
+ 		config.SecuritySettings = append(config.SecuritySettings, tm)
++		config.SecurityType = tm.Type
++	case "shadowtls", "shadow-tls":
++		if config.ProtocolName != "tcp" {
++			return nil, errors.New("ShadowTLS only supports RAW/TCP")
++		}
++		if c.ShadowTLSSettings == nil {
++			return nil, errors.New("ShadowTLS: empty shadowtlsSettings")
++		}
++		ts, err := c.ShadowTLSSettings.Build()
++		if err != nil {
++			return nil, err
++		}
++		tm := serial.ToTypedMessage(ts)
++		config.SecuritySettings = append(config.SecuritySettings, tm)
+ 		config.SecurityType = tm.Type
+ 	case "xtls":
+ 		return nil, errors.PrintRemovedFeatureError(`Legacy XTLS`, `xtls-rprx-vision with TLS or REALITY`)
+--- a/transport/internet/shadowtls/LICENSE.mihomo
++++ b/transport/internet/shadowtls/LICENSE.mihomo
+@@ -0,0 +1,674 @@
++                    GNU GENERAL PUBLIC LICENSE
++                       Version 3, 29 June 2007
++
++ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
++ Everyone is permitted to copy and distribute verbatim copies
++ of this license document, but changing it is not allowed.
++
++                            Preamble
++
++  The GNU General Public License is a free, copyleft license for
++software and other kinds of works.
++
++  The licenses for most software and other practical works are designed
++to take away your freedom to share and change the works.  By contrast,
++the GNU General Public License is intended to guarantee your freedom to
++share and change all versions of a program--to make sure it remains free
++software for all its users.  We, the Free Software Foundation, use the
++GNU General Public License for most of our software; it applies also to
++any other work released this way by its authors.  You can apply it to
++your programs, too.
++
++  When we speak of free software, we are referring to freedom, not
++price.  Our General Public Licenses are designed to make sure that you
++have the freedom to distribute copies of free software (and charge for
++them if you wish), that you receive source code or can get it if you
++want it, that you can change the software or use pieces of it in new
++free programs, and that you know you can do these things.
++
++  To protect your rights, we need to prevent others from denying you
++these rights or asking you to surrender the rights.  Therefore, you have
++certain responsibilities if you distribute copies of the software, or if
++you modify it: responsibilities to respect the freedom of others.
++
++  For example, if you distribute copies of such a program, whether
++gratis or for a fee, you must pass on to the recipients the same
++freedoms that you received.  You must make sure that they, too, receive
++or can get the source code.  And you must show them these terms so they
++know their rights.
++
++  Developers that use the GNU GPL protect your rights with two steps:
++(1) assert copyright on the software, and (2) offer you this License
++giving you legal permission to copy, distribute and/or modify it.
++
++  For the developers' and authors' protection, the GPL clearly explains
++that there is no warranty for this free software.  For both users' and
++authors' sake, the GPL requires that modified versions be marked as
++changed, so that their problems will not be attributed erroneously to
++authors of previous versions.
++
++  Some devices are designed to deny users access to install or run
++modified versions of the software inside them, although the manufacturer
++can do so.  This is fundamentally incompatible with the aim of
++protecting users' freedom to change the software.  The systematic
++pattern of such abuse occurs in the area of products for individuals to
++use, which is precisely where it is most unacceptable.  Therefore, we
++have designed this version of the GPL to prohibit the practice for those
++products.  If such problems arise substantially in other domains, we
++stand ready to extend this provision to those domains in future versions
++of the GPL, as needed to protect the freedom of users.
++
++  Finally, every program is threatened constantly by software patents.
++States should not allow patents to restrict development and use of
++software on general-purpose computers, but in those that do, we wish to
++avoid the special danger that patents applied to a free program could
++make it effectively proprietary.  To prevent this, the GPL assures that
++patents cannot be used to render the program non-free.
++
++  The precise terms and conditions for copying, distribution and
++modification follow.
++
++                       TERMS AND CONDITIONS
++
++  0. Definitions.
++
++  "This License" refers to version 3 of the GNU General Public License.
++
++  "Copyright" also means copyright-like laws that apply to other kinds of
++works, such as semiconductor masks.
++
++  "The Program" refers to any copyrightable work licensed under this
++License.  Each licensee is addressed as "you".  "Licensees" and
++"recipients" may be individuals or organizations.
++
++  To "modify" a work means to copy from or adapt all or part of the work
++in a fashion requiring copyright permission, other than the making of an
++exact copy.  The resulting work is called a "modified version" of the
++earlier work or a work "based on" the earlier work.
++
++  A "covered work" means either the unmodified Program or a work based
++on the Program.
++
++  To "propagate" a work means to do anything with it that, without
++permission, would make you directly or secondarily liable for
++infringement under applicable copyright law, except executing it on a
++computer or modifying a private copy.  Propagation includes copying,
++distribution (with or without modification), making available to the
++public, and in some countries other activities as well.
++
++  To "convey" a work means any kind of propagation that enables other
++parties to make or receive copies.  Mere interaction with a user through
++a computer network, with no transfer of a copy, is not conveying.
++
++  An interactive user interface displays "Appropriate Legal Notices"
++to the extent that it includes a convenient and prominently visible
++feature that (1) displays an appropriate copyright notice, and (2)
++tells the user that there is no warranty for the work (except to the
++extent that warranties are provided), that licensees may convey the
++work under this License, and how to view a copy of this License.  If
++the interface presents a list of user commands or options, such as a
++menu, a prominent item in the list meets this criterion.
++
++  1. Source Code.
++
++  The "source code" for a work means the preferred form of the work
++for making modifications to it.  "Object code" means any non-source
++form of a work.
++
++  A "Standard Interface" means an interface that either is an official
++standard defined by a recognized standards body, or, in the case of
++interfaces specified for a particular programming language, one that
++is widely used among developers working in that language.
++
++  The "System Libraries" of an executable work include anything, other
++than the work as a whole, that (a) is included in the normal form of
++packaging a Major Component, but which is not part of that Major
++Component, and (b) serves only to enable use of the work with that
++Major Component, or to implement a Standard Interface for which an
++implementation is available to the public in source code form.  A
++"Major Component", in this context, means a major essential component
++(kernel, window system, and so on) of the specific operating system
++(if any) on which the executable work runs, or a compiler used to
++produce the work, or an object code interpreter used to run it.
++
++  The "Corresponding Source" for a work in object code form means all
++the source code needed to generate, install, and (for an executable
++work) run the object code and to modify the work, including scripts to
++control those activities.  However, it does not include the work's
++System Libraries, or general-purpose tools or generally available free
++programs which are used unmodified in performing those activities but
++which are not part of the work.  For example, Corresponding Source
++includes interface definition files associated with source files for
++the work, and the source code for shared libraries and dynamically
++linked subprograms that the work is specifically designed to require,
++such as by intimate data communication or control flow between those
++subprograms and other parts of the work.
++
++  The Corresponding Source need not include anything that users
++can regenerate automatically from other parts of the Corresponding
++Source.
++
++  The Corresponding Source for a work in source code form is that
++same work.
++
++  2. Basic Permissions.
++
++  All rights granted under this License are granted for the term of
++copyright on the Program, and are irrevocable provided the stated
++conditions are met.  This License explicitly affirms your unlimited
++permission to run the unmodified Program.  The output from running a
++covered work is covered by this License only if the output, given its
++content, constitutes a covered work.  This License acknowledges your
++rights of fair use or other equivalent, as provided by copyright law.
++
++  You may make, run and propagate covered works that you do not
++convey, without conditions so long as your license otherwise remains
++in force.  You may convey covered works to others for the sole purpose
++of having them make modifications exclusively for you, or provide you
++with facilities for running those works, provided that you comply with
++the terms of this License in conveying all material for which you do
++not control copyright.  Those thus making or running the covered works
++for you must do so exclusively on your behalf, under your direction
++and control, on terms that prohibit them from making any copies of
++your copyrighted material outside their relationship with you.
++
++  Conveying under any other circumstances is permitted solely under
++the conditions stated below.  Sublicensing is not allowed; section 10
++makes it unnecessary.
++
++  3. Protecting Users' Legal Rights From Anti-Circumvention Law.
++
++  No covered work shall be deemed part of an effective technological
++measure under any applicable law fulfilling obligations under article
++11 of the WIPO copyright treaty adopted on 20 December 1996, or
++similar laws prohibiting or restricting circumvention of such
++measures.
++
++  When you convey a covered work, you waive any legal power to forbid
++circumvention of technological measures to the extent such circumvention
++is effected by exercising rights under this License with respect to
++the covered work, and you disclaim any intention to limit operation or
++modification of the work as a means of enforcing, against the work's
++users, your or third parties' legal rights to forbid circumvention of
++technological measures.
++
++  4. Conveying Verbatim Copies.
++
++  You may convey verbatim copies of the Program's source code as you
++receive it, in any medium, provided that you conspicuously and
++appropriately publish on each copy an appropriate copyright notice;
++keep intact all notices stating that this License and any
++non-permissive terms added in accord with section 7 apply to the code;
++keep intact all notices of the absence of any warranty; and give all
++recipients a copy of this License along with the Program.
++
++  You may charge any price or no price for each copy that you convey,
++and you may offer support or warranty protection for a fee.
++
++  5. Conveying Modified Source Versions.
++
++  You may convey a work based on the Program, or the modifications to
++produce it from the Program, in the form of source code under the
++terms of section 4, provided that you also meet all of these conditions:
++
++    a) The work must carry prominent notices stating that you modified
++    it, and giving a relevant date.
++
++    b) The work must carry prominent notices stating that it is
++    released under this License and any conditions added under section
++    7.  This requirement modifies the requirement in section 4 to
++    "keep intact all notices".
++
++    c) You must license the entire work, as a whole, under this
++    License to anyone who comes into possession of a copy.  This
++    License will therefore apply, along with any applicable section 7
++    additional terms, to the whole of the work, and all its parts,
++    regardless of how they are packaged.  This License gives no
++    permission to license the work in any other way, but it does not
++    invalidate such permission if you have separately received it.
++
++    d) If the work has interactive user interfaces, each must display
++    Appropriate Legal Notices; however, if the Program has interactive
++    interfaces that do not display Appropriate Legal Notices, your
++    work need not make them do so.
++
++  A compilation of a covered work with other separate and independent
++works, which are not by their nature extensions of the covered work,
++and which are not combined with it such as to form a larger program,
++in or on a volume of a storage or distribution medium, is called an
++"aggregate" if the compilation and its resulting copyright are not
++used to limit the access or legal rights of the compilation's users
++beyond what the individual works permit.  Inclusion of a covered work
++in an aggregate does not cause this License to apply to the other
++parts of the aggregate.
++
++  6. Conveying Non-Source Forms.
++
++  You may convey a covered work in object code form under the terms
++of sections 4 and 5, provided that you also convey the
++machine-readable Corresponding Source under the terms of this License,
++in one of these ways:
++
++    a) Convey the object code in, or embodied in, a physical product
++    (including a physical distribution medium), accompanied by the
++    Corresponding Source fixed on a durable physical medium
++    customarily used for software interchange.
++
++    b) Convey the object code in, or embodied in, a physical product
++    (including a physical distribution medium), accompanied by a
++    written offer, valid for at least three years and valid for as
++    long as you offer spare parts or customer support for that product
++    model, to give anyone who possesses the object code either (1) a
++    copy of the Corresponding Source for all the software in the
++    product that is covered by this License, on a durable physical
++    medium customarily used for software interchange, for a price no
++    more than your reasonable cost of physically performing this
++    conveying of source, or (2) access to copy the
++    Corresponding Source from a network server at no charge.
++
++    c) Convey individual copies of the object code with a copy of the
++    written offer to provide the Corresponding Source.  This
++    alternative is allowed only occasionally and noncommercially, and
++    only if you received the object code with such an offer, in accord
++    with subsection 6b.
++
++    d) Convey the object code by offering access from a designated
++    place (gratis or for a charge), and offer equivalent access to the
++    Corresponding Source in the same way through the same place at no
++    further charge.  You need not require recipients to copy the
++    Corresponding Source along with the object code.  If the place to
++    copy the object code is a network server, the Corresponding Source
++    may be on a different server (operated by you or a third party)
++    that supports equivalent copying facilities, provided you maintain
++    clear directions next to the object code saying where to find the
++    Corresponding Source.  Regardless of what server hosts the
++    Corresponding Source, you remain obligated to ensure that it is
++    available for as long as needed to satisfy these requirements.
++
++    e) Convey the object code using peer-to-peer transmission, provided
++    you inform other peers where the object code and Corresponding
++    Source of the work are being offered to the general public at no
++    charge under subsection 6d.
++
++  A separable portion of the object code, whose source code is excluded
++from the Corresponding Source as a System Library, need not be
++included in conveying the object code work.
++
++  A "User Product" is either (1) a "consumer product", which means any
++tangible personal property which is normally used for personal, family,
++or household purposes, or (2) anything designed or sold for incorporation
++into a dwelling.  In determining whether a product is a consumer product,
++doubtful cases shall be resolved in favor of coverage.  For a particular
++product received by a particular user, "normally used" refers to a
++typical or common use of that class of product, regardless of the status
++of the particular user or of the way in which the particular user
++actually uses, or expects or is expected to use, the product.  A product
++is a consumer product regardless of whether the product has substantial
++commercial, industrial or non-consumer uses, unless such uses represent
++the only significant mode of use of the product.
++
++  "Installation Information" for a User Product means any methods,
++procedures, authorization keys, or other information required to install
++and execute modified versions of a covered work in that User Product from
++a modified version of its Corresponding Source.  The information must
++suffice to ensure that the continued functioning of the modified object
++code is in no case prevented or interfered with solely because
++modification has been made.
++
++  If you convey an object code work under this section in, or with, or
++specifically for use in, a User Product, and the conveying occurs as
++part of a transaction in which the right of possession and use of the
++User Product is transferred to the recipient in perpetuity or for a
++fixed term (regardless of how the transaction is characterized), the
++Corresponding Source conveyed under this section must be accompanied
++by the Installation Information.  But this requirement does not apply
++if neither you nor any third party retains the ability to install
++modified object code on the User Product (for example, the work has
++been installed in ROM).
++
++  The requirement to provide Installation Information does not include a
++requirement to continue to provide support service, warranty, or updates
++for a work that has been modified or installed by the recipient, or for
++the User Product in which it has been modified or installed.  Access to a
++network may be denied when the modification itself materially and
++adversely affects the operation of the network or violates the rules and
++protocols for communication across the network.
++
++  Corresponding Source conveyed, and Installation Information provided,
++in accord with this section must be in a format that is publicly
++documented (and with an implementation available to the public in
++source code form), and must require no special password or key for
++unpacking, reading or copying.
++
++  7. Additional Terms.
++
++  "Additional permissions" are terms that supplement the terms of this
++License by making exceptions from one or more of its conditions.
++Additional permissions that are applicable to the entire Program shall
++be treated as though they were included in this License, to the extent
++that they are valid under applicable law.  If additional permissions
++apply only to part of the Program, that part may be used separately
++under those permissions, but the entire Program remains governed by
++this License without regard to the additional permissions.
++
++  When you convey a copy of a covered work, you may at your option
++remove any additional permissions from that copy, or from any part of
++it.  (Additional permissions may be written to require their own
++removal in certain cases when you modify the work.)  You may place
++additional permissions on material, added by you to a covered work,
++for which you have or can give appropriate copyright permission.
++
++  Notwithstanding any other provision of this License, for material you
++add to a covered work, you may (if authorized by the copyright holders of
++that material) supplement the terms of this License with terms:
++
++    a) Disclaiming warranty or limiting liability differently from the
++    terms of sections 15 and 16 of this License; or
++
++    b) Requiring preservation of specified reasonable legal notices or
++    author attributions in that material or in the Appropriate Legal
++    Notices displayed by works containing it; or
++
++    c) Prohibiting misrepresentation of the origin of that material, or
++    requiring that modified versions of such material be marked in
++    reasonable ways as different from the original version; or
++
++    d) Limiting the use for publicity purposes of names of licensors or
++    authors of the material; or
++
++    e) Declining to grant rights under trademark law for use of some
++    trade names, trademarks, or service marks; or
++
++    f) Requiring indemnification of licensors and authors of that
++    material by anyone who conveys the material (or modified versions of
++    it) with contractual assumptions of liability to the recipient, for
++    any liability that these contractual assumptions directly impose on
++    those licensors and authors.
++
++  All other non-permissive additional terms are considered "further
++restrictions" within the meaning of section 10.  If the Program as you
++received it, or any part of it, contains a notice stating that it is
++governed by this License along with a term that is a further
++restriction, you may remove that term.  If a license document contains
++a further restriction but permits relicensing or conveying under this
++License, you may add to a covered work material governed by the terms
++of that license document, provided that the further restriction does
++not survive such relicensing or conveying.
++
++  If you add terms to a covered work in accord with this section, you
++must place, in the relevant source files, a statement of the
++additional terms that apply to those files, or a notice indicating
++where to find the applicable terms.
++
++  Additional terms, permissive or non-permissive, may be stated in the
++form of a separately written license, or stated as exceptions;
++the above requirements apply either way.
++
++  8. Termination.
++
++  You may not propagate or modify a covered work except as expressly
++provided under this License.  Any attempt otherwise to propagate or
++modify it is void, and will automatically terminate your rights under
++this License (including any patent licenses granted under the third
++paragraph of section 11).
++
++  However, if you cease all violation of this License, then your
++license from a particular copyright holder is reinstated (a)
++provisionally, unless and until the copyright holder explicitly and
++finally terminates your license, and (b) permanently, if the copyright
++holder fails to notify you of the violation by some reasonable means
++prior to 60 days after the cessation.
++
++  Moreover, your license from a particular copyright holder is
++reinstated permanently if the copyright holder notifies you of the
++violation by some reasonable means, this is the first time you have
++received notice of violation of this License (for any work) from that
++copyright holder, and you cure the violation prior to 30 days after
++your receipt of the notice.
++
++  Termination of your rights under this section does not terminate the
++licenses of parties who have received copies or rights from you under
++this License.  If your rights have been terminated and not permanently
++reinstated, you do not qualify to receive new licenses for the same
++material under section 10.
++
++  9. Acceptance Not Required for Having Copies.
++
++  You are not required to accept this License in order to receive or
++run a copy of the Program.  Ancillary propagation of a covered work
++occurring solely as a consequence of using peer-to-peer transmission
++to receive a copy likewise does not require acceptance.  However,
++nothing other than this License grants you permission to propagate or
++modify any covered work.  These actions infringe copyright if you do
++not accept this License.  Therefore, by modifying or propagating a
++covered work, you indicate your acceptance of this License to do so.
++
++  10. Automatic Licensing of Downstream Recipients.
++
++  Each time you convey a covered work, the recipient automatically
++receives a license from the original licensors, to run, modify and
++propagate that work, subject to this License.  You are not responsible
++for enforcing compliance by third parties with this License.
++
++  An "entity transaction" is a transaction transferring control of an
++organization, or substantially all assets of one, or subdividing an
++organization, or merging organizations.  If propagation of a covered
++work results from an entity transaction, each party to that
++transaction who receives a copy of the work also receives whatever
++licenses to the work the party's predecessor in interest had or could
++give under the previous paragraph, plus a right to possession of the
++Corresponding Source of the work from the predecessor in interest, if
++the predecessor has it or can get it with reasonable efforts.
++
++  You may not impose any further restrictions on the exercise of the
++rights granted or affirmed under this License.  For example, you may
++not impose a license fee, royalty, or other charge for exercise of
++rights granted under this License, and you may not initiate litigation
++(including a cross-claim or counterclaim in a lawsuit) alleging that
++any patent claim is infringed by making, using, selling, offering for
++sale, or importing the Program or any portion of it.
++
++  11. Patents.
++
++  A "contributor" is a copyright holder who authorizes use under this
++License of the Program or a work on which the Program is based.  The
++work thus licensed is called the contributor's "contributor version".
++
++  A contributor's "essential patent claims" are all patent claims
++owned or controlled by the contributor, whether already acquired or
++hereafter acquired, that would be infringed by some manner, permitted
++by this License, of making, using, or selling its contributor version,
++but do not include claims that would be infringed only as a
++consequence of further modification of the contributor version.  For
++purposes of this definition, "control" includes the right to grant
++patent sublicenses in a manner consistent with the requirements of
++this License.
++
++  Each contributor grants you a non-exclusive, worldwide, royalty-free
++patent license under the contributor's essential patent claims, to
++make, use, sell, offer for sale, import and otherwise run, modify and
++propagate the contents of its contributor version.
++
++  In the following three paragraphs, a "patent license" is any express
++agreement or commitment, however denominated, not to enforce a patent
++(such as an express permission to practice a patent or covenant not to
++sue for patent infringement).  To "grant" such a patent license to a
++party means to make such an agreement or commitment not to enforce a
++patent against the party.
++
++  If you convey a covered work, knowingly relying on a patent license,
++and the Corresponding Source of the work is not available for anyone
++to copy, free of charge and under the terms of this License, through a
++publicly available network server or other readily accessible means,
++then you must either (1) cause the Corresponding Source to be so
++available, or (2) arrange to deprive yourself of the benefit of the
++patent license for this particular work, or (3) arrange, in a manner
++consistent with the requirements of this License, to extend the patent
++license to downstream recipients.  "Knowingly relying" means you have
++actual knowledge that, but for the patent license, your conveying the
++covered work in a country, or your recipient's use of the covered work
++in a country, would infringe one or more identifiable patents in that
++country that you have reason to believe are valid.
++
++  If, pursuant to or in connection with a single transaction or
++arrangement, you convey, or propagate by procuring conveyance of, a
++covered work, and grant a patent license to some of the parties
++receiving the covered work authorizing them to use, propagate, modify
++or convey a specific copy of the covered work, then the patent license
++you grant is automatically extended to all recipients of the covered
++work and works based on it.
++
++  A patent license is "discriminatory" if it does not include within
++the scope of its coverage, prohibits the exercise of, or is
++conditioned on the non-exercise of one or more of the rights that are
++specifically granted under this License.  You may not convey a covered
++work if you are a party to an arrangement with a third party that is
++in the business of distributing software, under which you make payment
++to the third party based on the extent of your activity of conveying
++the work, and under which the third party grants, to any of the
++parties who would receive the covered work from you, a discriminatory
++patent license (a) in connection with copies of the covered work
++conveyed by you (or copies made from those copies), or (b) primarily
++for and in connection with specific products or compilations that
++contain the covered work, unless you entered into that arrangement,
++or that patent license was granted, prior to 28 March 2007.
++
++  Nothing in this License shall be construed as excluding or limiting
++any implied license or other defenses to infringement that may
++otherwise be available to you under applicable patent law.
++
++  12. No Surrender of Others' Freedom.
++
++  If conditions are imposed on you (whether by court order, agreement or
++otherwise) that contradict the conditions of this License, they do not
++excuse you from the conditions of this License.  If you cannot convey a
++covered work so as to satisfy simultaneously your obligations under this
++License and any other pertinent obligations, then as a consequence you may
++not convey it at all.  For example, if you agree to terms that obligate you
++to collect a royalty for further conveying from those to whom you convey
++the Program, the only way you could satisfy both those terms and this
++License would be to refrain entirely from conveying the Program.
++
++  13. Use with the GNU Affero General Public License.
++
++  Notwithstanding any other provision of this License, you have
++permission to link or combine any covered work with a work licensed
++under version 3 of the GNU Affero General Public License into a single
++combined work, and to convey the resulting work.  The terms of this
++License will continue to apply to the part which is the covered work,
++but the special requirements of the GNU Affero General Public License,
++section 13, concerning interaction through a network will apply to the
++combination as such.
++
++  14. Revised Versions of this License.
++
++  The Free Software Foundation may publish revised and/or new versions of
++the GNU General Public License from time to time.  Such new versions will
++be similar in spirit to the present version, but may differ in detail to
++address new problems or concerns.
++
++  Each version is given a distinguishing version number.  If the
++Program specifies that a certain numbered version of the GNU General
++Public License "or any later version" applies to it, you have the
++option of following the terms and conditions either of that numbered
++version or of any later version published by the Free Software
++Foundation.  If the Program does not specify a version number of the
++GNU General Public License, you may choose any version ever published
++by the Free Software Foundation.
++
++  If the Program specifies that a proxy can decide which future
++versions of the GNU General Public License can be used, that proxy's
++public statement of acceptance of a version permanently authorizes you
++to choose that version for the Program.
++
++  Later license versions may give you additional or different
++permissions.  However, no additional obligations are imposed on any
++author or copyright holder as a result of your choosing to follow a
++later version.
++
++  15. Disclaimer of Warranty.
++
++  THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
++APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
++HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY
++OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
++THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
++IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
++ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
++
++  16. Limitation of Liability.
++
++  IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
++WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS
++THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY
++GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE
++USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF
++DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD
++PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS),
++EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
++SUCH DAMAGES.
++
++  17. Interpretation of Sections 15 and 16.
++
++  If the disclaimer of warranty and limitation of liability provided
++above cannot be given local legal effect according to their terms,
++reviewing courts shall apply local law that most closely approximates
++an absolute waiver of all civil liability in connection with the
++Program, unless a warranty or assumption of liability accompanies a
++copy of the Program in return for a fee.
++
++                     END OF TERMS AND CONDITIONS
++
++            How to Apply These Terms to Your New Programs
++
++  If you develop a new program, and you want it to be of the greatest
++possible use to the public, the best way to achieve this is to make it
++free software which everyone can redistribute and change under these terms.
++
++  To do so, attach the following notices to the program.  It is safest
++to attach them to the start of each source file to most effectively
++state the exclusion of warranty; and each file should have at least
++the "copyright" line and a pointer to where the full notice is found.
++
++    <one line to give the program's name and a brief idea of what it does.>
++    Copyright (C) <year>  <name of author>
++
++    This program is free software: you can redistribute it and/or modify
++    it under the terms of the GNU General Public License as published by
++    the Free Software Foundation, either version 3 of the License, or
++    (at your option) any later version.
++
++    This program is distributed in the hope that it will be useful,
++    but WITHOUT ANY WARRANTY; without even the implied warranty of
++    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++    GNU General Public License for more details.
++
++    You should have received a copy of the GNU General Public License
++    along with this program.  If not, see <https://www.gnu.org/licenses/>.
++
++Also add information on how to contact you by electronic and paper mail.
++
++  If the program does terminal interaction, make it output a short
++notice like this when it starts in an interactive mode:
++
++    <program>  Copyright (C) <year>  <name of author>
++    This program comes with ABSOLUTELY NO WARRANTY; for details type `show w'.
++    This is free software, and you are welcome to redistribute it
++    under certain conditions; type `show c' for details.
++
++The hypothetical commands `show w' and `show c' should show the appropriate
++parts of the General Public License.  Of course, your program's commands
++might be different; for a GUI interface, you would use an "about box".
++
++  You should also get your employer (if you work as a programmer) or school,
++if any, to sign a "copyright disclaimer" for the program, if necessary.
++For more information on this, and how to apply and follow the GNU GPL, see
++<https://www.gnu.org/licenses/>.
++
++  The GNU General Public License does not permit incorporating your program
++into proprietary programs.  If your program is a subroutine library, you
++may consider it more useful to permit linking proprietary applications with
++the library.  If this is what you want to do, use the GNU Lesser General
++Public License instead of this License.  But first, please read
++<https://www.gnu.org/licenses/why-not-lgpl.html>.
+--- a/transport/internet/shadowtls/config.go
++++ b/transport/internet/shadowtls/config.go
+@@ -0,0 +1,223 @@
++package shadowtls
++
++import (
++	"context"
++	"crypto/x509"
++	"fmt"
++	"net"
++	"slices"
++	"strings"
++	"time"
++
++	utls "github.com/metacubex/utls"
++	xnet "github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/transport/internet"
++	protocol "github.com/xtls/xray-core/transport/internet/shadowtls/protocol"
++)
++
++func ConfigFromStreamSettings(settings *internet.MemoryStreamConfig) *Config {
++	if settings == nil {
++		return nil
++	}
++	c, _ := settings.SecuritySettings.(*Config)
++	return c
++}
++func (c *Config) Timeout() time.Duration {
++	if c.HandshakeTimeout == 0 {
++		return 15 * time.Second
++	}
++	return time.Duration(c.HandshakeTimeout) * time.Second
++}
++
++func (c *Config) Validate() error {
++	if c.Version < 1 || c.Version > 3 {
++		return fmt.Errorf("shadowtls: version must be 1, 2 or 3")
++	}
++	if c.HandshakeTimeout > 300 {
++		return fmt.Errorf("shadowtls: handshakeTimeout must not exceed 300 seconds")
++	}
++	if (c.Version == 2 && c.Password == "") || (c.Version == 3 && c.Password == "" && len(c.Users) == 0) {
++		return fmt.Errorf("shadowtls: password or users required")
++	}
++	for _, u := range c.Users {
++		if u == nil || u.Password == "" {
++			return fmt.Errorf("shadowtls: empty user password")
++		}
++	}
++	if _, err := fingerprint(c.Fingerprint); err != nil {
++		return err
++	}
++	switch c.WildcardSni {
++	case "", "off", "authed", "all":
++	default:
++		return fmt.Errorf("shadowtls: invalid wildcardSni")
++	}
++	for _, addr := range c.HandshakeForServerName {
++		if err := checkAddress(addr); err != nil {
++			return err
++		}
++	}
++	for name := range c.HandshakeForServerName {
++		if name == "" {
++			return fmt.Errorf("shadowtls: empty handshake server name")
++		}
++	}
++	if c.Handshake != "" {
++		if err := checkAddress(c.Handshake); err != nil {
++			return err
++		}
++	}
++	_, err := c.roots()
++	return err
++}
++func checkAddress(addr string) error {
++	d, err := xnet.ParseDestination("tcp:" + addr)
++	if err != nil || d.Port == 0 || d.Address == nil {
++		return fmt.Errorf("shadowtls: invalid handshake address %q", addr)
++	}
++	return nil
++}
++func (c *Config) roots() (*x509.CertPool, error) {
++	if len(c.Certificates) == 0 {
++		return nil, nil
++	}
++	pool, err := x509.SystemCertPool()
++	if err != nil {
++		pool = x509.NewCertPool()
++	}
++	for _, pem := range c.Certificates {
++		if !pool.AppendCertsFromPEM(pem) {
++			return nil, fmt.Errorf("shadowtls: invalid CA certificate")
++		}
++	}
++	return pool, nil
++}
++func fingerprint(name string) (*utls.ClientHelloID, error) {
++	ids := map[string]utls.ClientHelloID{"chrome": utls.HelloChrome_Auto, "firefox": utls.HelloFirefox_Auto, "safari": utls.HelloSafari_Auto, "ios": utls.HelloIOS_Auto, "android": utls.HelloAndroid_11_OkHttp, "edge": utls.HelloEdge_Auto, "360": utls.Hello360_Auto, "qq": utls.HelloQQ_Auto, "chrome120": utls.HelloChrome_120, "firefox120": utls.HelloFirefox_120, "safari16": utls.HelloSafari_16_0, "randomized": utls.HelloRandomized}
++	switch name {
++	case "", "none", "golang":
++		return nil, nil
++	}
++	id, ok := ids[name]
++	if !ok {
++		return nil, fmt.Errorf("shadowtls: unknown fingerprint %q", name)
++	}
++	return &id, nil
++}
++
++func (c *Config) Client(ctx context.Context, conn net.Conn, dest xnet.Destination) (net.Conn, error) {
++	if err := c.Validate(); err != nil {
++		return nil, err
++	}
++	if c.Version > 1 && c.Password == "" {
++		return nil, fmt.Errorf("shadowtls: outbound password required")
++	}
++	host := c.ServerName
++	if host == "" {
++		host = dest.Address.String()
++	}
++	roots, err := c.roots()
++	if err != nil {
++		return nil, err
++	}
++	fp, err := fingerprint(c.Fingerprint)
++	if err != nil {
++		return nil, err
++	}
++	alpn := c.Alpn
++	if len(alpn) == 0 {
++		alpn = protocol.DefaultALPN
++	}
++	client, err := protocol.NewClient(protocol.ClientConfig{Version: int(c.Version), Password: c.Password, StrictMode: c.StrictMode, TLSHandshake: func(ctx context.Context, raw net.Conn, generator protocol.TLSSessionIDGeneratorFunc) error {
++		tc := &utls.Config{ServerName: host, RootCAs: roots, InsecureSkipVerify: c.AllowInsecure, MinVersion: utls.VersionTLS12, NextProtos: alpn, SessionIDGenerator: generator}
++		if c.Version == 1 {
++			tc.MaxVersion = utls.VersionTLS12
++			return utls.Client(raw, tc).HandshakeContext(ctx)
++		}
++		// V2 cannot authenticate a handshake using the post-quantum key share.
++		if c.Version == 2 {
++			tc.CurvePreferences = []utls.CurveID{utls.X25519, utls.CurveP256, utls.CurveP384}
++		}
++		if fp == nil {
++			return utls.Client(raw, tc).HandshakeContext(ctx)
++		}
++		uc := utls.UClient(raw, tc, *fp)
++		if err := uc.BuildHandshakeState(); err != nil {
++			return err
++		}
++		for _, extension := range uc.Extensions {
++			switch e := extension.(type) {
++			case *utls.ALPNExtension:
++				if len(c.Alpn) > 0 {
++					e.AlpnProtocols = append([]string(nil), alpn...)
++				}
++			case *utls.SupportedCurvesExtension:
++				if c.Version == 2 {
++					e.Curves = slices.DeleteFunc(e.Curves, func(v utls.CurveID) bool { return v == utls.X25519MLKEM768 })
++				}
++			case *utls.KeyShareExtension:
++				if c.Version == 2 {
++					e.KeyShares = slices.DeleteFunc(e.KeyShares, func(v utls.KeyShare) bool { return v.Group == utls.X25519MLKEM768 })
++				}
++			}
++		}
++		if err := uc.BuildHandshakeState(); err != nil {
++			return err
++		}
++		return uc.HandshakeContext(ctx)
++	}})
++	if err != nil {
++		return nil, err
++	}
++	ctx, cancel := context.WithTimeout(ctx, c.Timeout())
++	defer cancel()
++	stop := context.AfterFunc(ctx, func() { conn.Close() })
++	result, err := client.DialContextConn(ctx, conn)
++	if !stop() && err == nil {
++		err = ctx.Err()
++	}
++	return result, err
++}
++
++type handshakeConn struct {
++	net.Conn
++	stop func() bool
++}
++
++func (c *handshakeConn) Close() error { c.stop(); return c.Conn.Close() }
++func (c *Config) ServerConfig(sockopt *internet.SocketConfig) (*protocol.ServerConfig, error) {
++	if err := c.Validate(); err != nil {
++		return nil, err
++	}
++	dial := func(ctx context.Context, network, addr string) (net.Conn, error) {
++		dest, err := xnet.ParseDestination("tcp:" + addr)
++		if err != nil {
++			return nil, err
++		}
++		conn, err := internet.DialSystem(ctx, dest, sockopt)
++		if err != nil {
++			return nil, err
++		}
++		return &handshakeConn{Conn: conn, stop: context.AfterFunc(ctx, func() { conn.Close() })}, nil
++	}
++	handshake := protocol.HandshakeConfig{Server: c.Handshake, DialContext: dial}
++	custom := make(map[string]protocol.HandshakeConfig, len(c.HandshakeForServerName))
++	for name, addr := range c.HandshakeForServerName {
++		custom[name] = protocol.HandshakeConfig{Server: addr, DialContext: dial}
++	}
++	users := make([]protocol.User, 0, len(c.Users)+1)
++	for _, u := range c.Users {
++		users = append(users, protocol.User{Name: u.Name, Password: u.Password})
++	}
++	if len(users) == 0 && c.Password != "" {
++		users = append(users, protocol.User{Password: c.Password})
++	}
++	wildcard := protocol.WildcardSNIOff
++	switch strings.ToLower(c.WildcardSni) {
++	case "authed":
++		wildcard = protocol.WildcardSNIAuthed
++	case "all":
++		wildcard = protocol.WildcardSNIAll
++	}
++	return protocol.NewServerConfig(int(c.Version), c.Password, users, handshake, custom, c.StrictMode, wildcard)
++}
+--- a/transport/internet/shadowtls/config.pb.go
++++ b/transport/internet/shadowtls/config.pb.go
+@@ -0,0 +1,295 @@
++// Code generated by protoc-gen-go. DO NOT EDIT.
++// versions:
++// 	protoc-gen-go v1.36.12
++// 	protoc        v3.21.12
++// source: transport/internet/shadowtls/config.proto
++
++package shadowtls
++
++import (
++	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
++	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
++	reflect "reflect"
++	sync "sync"
++	unsafe "unsafe"
++)
++
++const (
++	// Verify that this generated code is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
++	// Verify that runtime/protoimpl is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
++)
++
++type User struct {
++	state         protoimpl.MessageState `protogen:"open.v1"`
++	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
++	Password      string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *User) Reset() {
++	*x = User{}
++	mi := &file_transport_internet_shadowtls_config_proto_msgTypes[0]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *User) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*User) ProtoMessage() {}
++
++func (x *User) ProtoReflect() protoreflect.Message {
++	mi := &file_transport_internet_shadowtls_config_proto_msgTypes[0]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use User.ProtoReflect.Descriptor instead.
++func (*User) Descriptor() ([]byte, []int) {
++	return file_transport_internet_shadowtls_config_proto_rawDescGZIP(), []int{0}
++}
++
++func (x *User) GetName() string {
++	if x != nil {
++		return x.Name
++	}
++	return ""
++}
++
++func (x *User) GetPassword() string {
++	if x != nil {
++		return x.Password
++	}
++	return ""
++}
++
++type Config struct {
++	state                  protoimpl.MessageState `protogen:"open.v1"`
++	Version                uint32                 `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
++	Password               string                 `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`
++	ServerName             string                 `protobuf:"bytes,3,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`
++	Fingerprint            string                 `protobuf:"bytes,4,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
++	AllowInsecure          bool                   `protobuf:"varint,5,opt,name=allow_insecure,json=allowInsecure,proto3" json:"allow_insecure,omitempty"`
++	Alpn                   []string               `protobuf:"bytes,6,rep,name=alpn,proto3" json:"alpn,omitempty"`
++	Certificates           [][]byte               `protobuf:"bytes,7,rep,name=certificates,proto3" json:"certificates,omitempty"`
++	StrictMode             bool                   `protobuf:"varint,8,opt,name=strict_mode,json=strictMode,proto3" json:"strict_mode,omitempty"`
++	Handshake              string                 `protobuf:"bytes,9,opt,name=handshake,proto3" json:"handshake,omitempty"`
++	Users                  []*User                `protobuf:"bytes,10,rep,name=users,proto3" json:"users,omitempty"`
++	HandshakeForServerName map[string]string      `protobuf:"bytes,11,rep,name=handshake_for_server_name,json=handshakeForServerName,proto3" json:"handshake_for_server_name,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
++	WildcardSni            string                 `protobuf:"bytes,12,opt,name=wildcard_sni,json=wildcardSni,proto3" json:"wildcard_sni,omitempty"`
++	HandshakeTimeout       uint32                 `protobuf:"varint,13,opt,name=handshake_timeout,json=handshakeTimeout,proto3" json:"handshake_timeout,omitempty"`
++	unknownFields          protoimpl.UnknownFields
++	sizeCache              protoimpl.SizeCache
++}
++
++func (x *Config) Reset() {
++	*x = Config{}
++	mi := &file_transport_internet_shadowtls_config_proto_msgTypes[1]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *Config) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*Config) ProtoMessage() {}
++
++func (x *Config) ProtoReflect() protoreflect.Message {
++	mi := &file_transport_internet_shadowtls_config_proto_msgTypes[1]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use Config.ProtoReflect.Descriptor instead.
++func (*Config) Descriptor() ([]byte, []int) {
++	return file_transport_internet_shadowtls_config_proto_rawDescGZIP(), []int{1}
++}
++
++func (x *Config) GetVersion() uint32 {
++	if x != nil {
++		return x.Version
++	}
++	return 0
++}
++
++func (x *Config) GetPassword() string {
++	if x != nil {
++		return x.Password
++	}
++	return ""
++}
++
++func (x *Config) GetServerName() string {
++	if x != nil {
++		return x.ServerName
++	}
++	return ""
++}
++
++func (x *Config) GetFingerprint() string {
++	if x != nil {
++		return x.Fingerprint
++	}
++	return ""
++}
++
++func (x *Config) GetAllowInsecure() bool {
++	if x != nil {
++		return x.AllowInsecure
++	}
++	return false
++}
++
++func (x *Config) GetAlpn() []string {
++	if x != nil {
++		return x.Alpn
++	}
++	return nil
++}
++
++func (x *Config) GetCertificates() [][]byte {
++	if x != nil {
++		return x.Certificates
++	}
++	return nil
++}
++
++func (x *Config) GetStrictMode() bool {
++	if x != nil {
++		return x.StrictMode
++	}
++	return false
++}
++
++func (x *Config) GetHandshake() string {
++	if x != nil {
++		return x.Handshake
++	}
++	return ""
++}
++
++func (x *Config) GetUsers() []*User {
++	if x != nil {
++		return x.Users
++	}
++	return nil
++}
++
++func (x *Config) GetHandshakeForServerName() map[string]string {
++	if x != nil {
++		return x.HandshakeForServerName
++	}
++	return nil
++}
++
++func (x *Config) GetWildcardSni() string {
++	if x != nil {
++		return x.WildcardSni
++	}
++	return ""
++}
++
++func (x *Config) GetHandshakeTimeout() uint32 {
++	if x != nil {
++		return x.HandshakeTimeout
++	}
++	return 0
++}
++
++var File_transport_internet_shadowtls_config_proto protoreflect.FileDescriptor
++
++const file_transport_internet_shadowtls_config_proto_rawDesc = "" +
++	"\n" +
++	")transport/internet/shadowtls/config.proto\x12!xray.transport.internet.shadowtls\"6\n" +
++	"\x04User\x12\x12\n" +
++	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
++	"\bpassword\x18\x02 \x01(\tR\bpassword\"\xfc\x04\n" +
++	"\x06Config\x12\x18\n" +
++	"\aversion\x18\x01 \x01(\rR\aversion\x12\x1a\n" +
++	"\bpassword\x18\x02 \x01(\tR\bpassword\x12\x1f\n" +
++	"\vserver_name\x18\x03 \x01(\tR\n" +
++	"serverName\x12 \n" +
++	"\vfingerprint\x18\x04 \x01(\tR\vfingerprint\x12%\n" +
++	"\x0eallow_insecure\x18\x05 \x01(\bR\rallowInsecure\x12\x12\n" +
++	"\x04alpn\x18\x06 \x03(\tR\x04alpn\x12\"\n" +
++	"\fcertificates\x18\a \x03(\fR\fcertificates\x12\x1f\n" +
++	"\vstrict_mode\x18\b \x01(\bR\n" +
++	"strictMode\x12\x1c\n" +
++	"\thandshake\x18\t \x01(\tR\thandshake\x12=\n" +
++	"\x05users\x18\n" +
++	" \x03(\v2'.xray.transport.internet.shadowtls.UserR\x05users\x12\x80\x01\n" +
++	"\x19handshake_for_server_name\x18\v \x03(\v2E.xray.transport.internet.shadowtls.Config.HandshakeForServerNameEntryR\x16handshakeForServerName\x12!\n" +
++	"\fwildcard_sni\x18\f \x01(\tR\vwildcardSni\x12+\n" +
++	"\x11handshake_timeout\x18\r \x01(\rR\x10handshakeTimeout\x1aI\n" +
++	"\x1bHandshakeForServerNameEntry\x12\x10\n" +
++	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
++	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B8Z6github.com/xtls/xray-core/transport/internet/shadowtlsb\x06proto3"
++
++var (
++	file_transport_internet_shadowtls_config_proto_rawDescOnce sync.Once
++	file_transport_internet_shadowtls_config_proto_rawDescData []byte
++)
++
++func file_transport_internet_shadowtls_config_proto_rawDescGZIP() []byte {
++	file_transport_internet_shadowtls_config_proto_rawDescOnce.Do(func() {
++		file_transport_internet_shadowtls_config_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_transport_internet_shadowtls_config_proto_rawDesc), len(file_transport_internet_shadowtls_config_proto_rawDesc)))
++	})
++	return file_transport_internet_shadowtls_config_proto_rawDescData
++}
++
++var file_transport_internet_shadowtls_config_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
++var file_transport_internet_shadowtls_config_proto_goTypes = []any{
++	(*User)(nil),   // 0: xray.transport.internet.shadowtls.User
++	(*Config)(nil), // 1: xray.transport.internet.shadowtls.Config
++	nil,            // 2: xray.transport.internet.shadowtls.Config.HandshakeForServerNameEntry
++}
++var file_transport_internet_shadowtls_config_proto_depIdxs = []int32{
++	0, // 0: xray.transport.internet.shadowtls.Config.users:type_name -> xray.transport.internet.shadowtls.User
++	2, // 1: xray.transport.internet.shadowtls.Config.handshake_for_server_name:type_name -> xray.transport.internet.shadowtls.Config.HandshakeForServerNameEntry
++	2, // [2:2] is the sub-list for method output_type
++	2, // [2:2] is the sub-list for method input_type
++	2, // [2:2] is the sub-list for extension type_name
++	2, // [2:2] is the sub-list for extension extendee
++	0, // [0:2] is the sub-list for field type_name
++}
++
++func init() { file_transport_internet_shadowtls_config_proto_init() }
++func file_transport_internet_shadowtls_config_proto_init() {
++	if File_transport_internet_shadowtls_config_proto != nil {
++		return
++	}
++	type x struct{}
++	out := protoimpl.TypeBuilder{
++		File: protoimpl.DescBuilder{
++			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
++			RawDescriptor: unsafe.Slice(unsafe.StringData(file_transport_internet_shadowtls_config_proto_rawDesc), len(file_transport_internet_shadowtls_config_proto_rawDesc)),
++			NumEnums:      0,
++			NumMessages:   3,
++			NumExtensions: 0,
++			NumServices:   0,
++		},
++		GoTypes:           file_transport_internet_shadowtls_config_proto_goTypes,
++		DependencyIndexes: file_transport_internet_shadowtls_config_proto_depIdxs,
++		MessageInfos:      file_transport_internet_shadowtls_config_proto_msgTypes,
++	}.Build()
++	File_transport_internet_shadowtls_config_proto = out.File
++	file_transport_internet_shadowtls_config_proto_goTypes = nil
++	file_transport_internet_shadowtls_config_proto_depIdxs = nil
++}
+--- a/transport/internet/shadowtls/config.proto
++++ b/transport/internet/shadowtls/config.proto
+@@ -0,0 +1,19 @@
++syntax = "proto3";
++package xray.transport.internet.shadowtls;
++option go_package = "github.com/xtls/xray-core/transport/internet/shadowtls";
++message User { string name = 1; string password = 2; }
++message Config {
++ uint32 version = 1;
++ string password = 2;
++ string server_name = 3;
++ string fingerprint = 4;
++ bool allow_insecure = 5;
++ repeated string alpn = 6;
++ repeated bytes certificates = 7;
++ bool strict_mode = 8;
++ string handshake = 9;
++ repeated User users = 10;
++ map<string,string> handshake_for_server_name = 11;
++ string wildcard_sni = 12;
++ uint32 handshake_timeout = 13;
++}
+--- a/transport/internet/shadowtls/protocol/client.go
++++ b/transport/internet/shadowtls/protocol/client.go
+@@ -0,0 +1,103 @@
++// Adapted from MetaCubeX/mihomo v1.19.32; GPL-3.0-or-later.
++package shadowtls
++
++import (
++	"context"
++	"crypto/hmac"
++	"crypto/sha1"
++	"errors"
++	"fmt"
++	"net"
++)
++
++const Mode = "shadow-tls"
++
++var (
++	DefaultALPN = []string{"h2", "http/1.1"}
++	WsALPN      = []string{"http/1.1"}
++)
++
++type TLSSessionIDGeneratorFunc func(clientHello []byte, sessionID []byte) error
++
++type TLSHandshakeFunc func(
++	ctx context.Context,
++	conn net.Conn,
++	sessionIDGenerator TLSSessionIDGeneratorFunc, // for shadow-tls version 3
++) error
++
++type ClientConfig struct {
++	Version      int
++	Password     string
++	StrictMode   bool
++	TLSHandshake TLSHandshakeFunc
++}
++
++type Client struct {
++	version      int
++	password     string
++	strictMode   bool
++	tlsHandshake TLSHandshakeFunc
++}
++
++func NewClient(config ClientConfig) (*Client, error) {
++	if err := checkVersion(config.Version); err != nil {
++		return nil, err
++	}
++	return &Client{
++		version:      config.Version,
++		password:     config.Password,
++		strictMode:   config.StrictMode,
++		tlsHandshake: config.TLSHandshake,
++	}, nil
++}
++
++func (c *Client) SetHandshakeFunc(handshakeFunc TLSHandshakeFunc) {
++	c.tlsHandshake = handshakeFunc
++}
++
++func (c *Client) DialContextConn(ctx context.Context, conn net.Conn) (net.Conn, error) {
++	if conn == nil || c.tlsHandshake == nil {
++		return nil, errors.New("shadow-tls: connection and TLS handshake are required")
++	}
++	switch c.version {
++	case 1:
++		if err := c.tlsHandshake(ctx, conn, nil); err != nil {
++			return nil, err
++		}
++		return conn, nil
++	case 2:
++		hashConn := newHashReadConn(conn, c.password)
++		if err := c.tlsHandshake(ctx, hashConn, nil); err != nil {
++			return nil, err
++		}
++		return newClientConn(hashConn), nil
++	case 3:
++		stream := newStreamWrapper(conn, c.password)
++		if err := c.tlsHandshake(ctx, stream, generateSessionID(c.password)); err != nil {
++			return nil, err
++		}
++		isTLS13, authorized, serverRandom, readHMAC := stream.Authorized()
++		if c.strictMode && !isTLS13 {
++			return nil, errors.New("shadow-tls: TLS 1.3 is not supported")
++		}
++		if !authorized {
++			return nil, errors.New("shadow-tls: traffic hijacked")
++		}
++		hmacAdd := hmac.New(sha1.New, []byte(c.password))
++		_, _ = hmacAdd.Write(serverRandom)
++		_, _ = hmacAdd.Write([]byte("C"))
++		hmacVerify := hmac.New(sha1.New, []byte(c.password))
++		_, _ = hmacVerify.Write(serverRandom)
++		_, _ = hmacVerify.Write([]byte("S"))
++		return newVerifiedConn(conn, hmacAdd, hmacVerify, readHMAC), nil
++	default:
++		panic("unreachable")
++	}
++}
++
++func checkVersion(version int) error {
++	if version < 1 || version > 3 {
++		return fmt.Errorf("shadow-tls: unknown protocol version: %d", version)
++	}
++	return nil
++}
+--- a/transport/internet/shadowtls/protocol/net.go
++++ b/transport/internet/shadowtls/protocol/net.go
+@@ -0,0 +1,34 @@
++package shadowtls
++
++import (
++	"bytes"
++	"context"
++	"io"
++	"net"
++)
++
++type cachedConn struct {
++	net.Conn
++	prefix *bytes.Reader
++}
++
++func newCachedConn(conn net.Conn, prefix []byte) net.Conn {
++	return &cachedConn{Conn: conn, prefix: bytes.NewReader(prefix)}
++}
++func (c *cachedConn) Read(b []byte) (int, error) {
++	if c.prefix.Len() > 0 {
++		return c.prefix.Read(b)
++	}
++	return c.Conn.Read(b)
++}
++func relayContext(ctx context.Context, a, b net.Conn) error {
++	stop := context.AfterFunc(ctx, func() { a.Close(); b.Close() })
++	defer stop()
++	done := make(chan error, 1)
++	go func() { _, err := io.Copy(a, b); closeWrite(a); done <- err }()
++	_, err := io.Copy(b, a)
++	closeWrite(b)
++	return joinCopyErrors(err, <-done)
++}
++
++func (c *cachedConn) Upstream() any { return c.Conn }
+--- a/transport/internet/shadowtls/protocol/protocol.go
++++ b/transport/internet/shadowtls/protocol/protocol.go
+@@ -0,0 +1,194 @@
++// Adapted from MetaCubeX/mihomo v1.19.32; GPL-3.0-or-later.
++package shadowtls
++
++import (
++	"encoding/binary"
++	"errors"
++	"fmt"
++	"io"
++	"net"
++)
++
++const (
++	tlsRandomSize    = 32
++	tlsHeaderSize    = 5
++	tlsSessionIDSize = 32
++
++	clientHello = 1
++	serverHello = 2
++
++	changeCipherSpec = 20
++	alert            = 21
++	handshake        = 22
++	applicationData  = 23
++
++	serverRandomIndex    = tlsHeaderSize + 1 + 3 + 2
++	sessionIDLengthIndex = tlsHeaderSize + 1 + 3 + 2 + tlsRandomSize
++	tlsHMACHeaderSize    = tlsHeaderSize + hmacSize
++	hmacSize             = 4
++	maxTLSPlaintext      = 16384
++)
++
++func readFrame(reader io.Reader) ([]byte, error) {
++	var header [tlsHeaderSize]byte
++	if _, err := io.ReadFull(reader, header[:]); err != nil {
++		return nil, err
++	}
++	length := int(binary.BigEndian.Uint16(header[3:]))
++	frame := make([]byte, tlsHeaderSize+length)
++	copy(frame, header[:])
++	if _, err := io.ReadFull(reader, frame[tlsHeaderSize:]); err != nil {
++		return nil, err
++	}
++	return frame, nil
++}
++
++func copyUntilHandshakeFinished(dst io.Writer, src io.Reader) error {
++	seenChangeCipherSpec := false
++	for {
++		frame, err := readFrame(src)
++		if err != nil {
++			return err
++		}
++		if _, err = dst.Write(frame); err != nil {
++			return err
++		}
++		if frame[0] != handshake {
++			if frame[0] != changeCipherSpec {
++				return fmt.Errorf("shadow-tls: unexpected TLS record type: %d", frame[0])
++			}
++			if !seenChangeCipherSpec {
++				seenChangeCipherSpec = true
++				continue
++			}
++		}
++		if seenChangeCipherSpec {
++			return nil
++		}
++	}
++}
++
++func extractServerName(frame []byte) (string, error) {
++	if len(frame) < tlsHeaderSize+4 || frame[0] != handshake || frame[tlsHeaderSize] != clientHello {
++		return "", errors.New("shadow-tls: invalid ClientHello")
++	}
++	helloLength := int(frame[tlsHeaderSize+1])<<16 | int(frame[tlsHeaderSize+2])<<8 | int(frame[tlsHeaderSize+3])
++	hello := frame[tlsHeaderSize+4:]
++	if helloLength > len(hello) {
++		return "", io.ErrUnexpectedEOF
++	}
++	hello = hello[:helloLength]
++	if len(hello) < 2+tlsRandomSize+1 {
++		return "", io.ErrUnexpectedEOF
++	}
++	offset := 2 + tlsRandomSize
++	sessionIDLength := int(hello[offset])
++	offset++
++	if offset+sessionIDLength+2 > len(hello) {
++		return "", io.ErrUnexpectedEOF
++	}
++	offset += sessionIDLength
++	cipherSuitesLength := int(binary.BigEndian.Uint16(hello[offset:]))
++	offset += 2
++	if offset+cipherSuitesLength+1 > len(hello) {
++		return "", io.ErrUnexpectedEOF
++	}
++	offset += cipherSuitesLength
++	compressionMethodsLength := int(hello[offset])
++	offset++
++	if offset+compressionMethodsLength == len(hello) {
++		return "", errors.New("shadow-tls: ClientHello has no SNI")
++	}
++	if offset+compressionMethodsLength+2 > len(hello) {
++		return "", io.ErrUnexpectedEOF
++	}
++	offset += compressionMethodsLength
++	extensionsLength := int(binary.BigEndian.Uint16(hello[offset:]))
++	offset += 2
++	if offset+extensionsLength > len(hello) {
++		return "", io.ErrUnexpectedEOF
++	}
++	extensions := hello[offset : offset+extensionsLength]
++	for len(extensions) >= 4 {
++		extensionType := binary.BigEndian.Uint16(extensions)
++		extensionLength := int(binary.BigEndian.Uint16(extensions[2:]))
++		extensions = extensions[4:]
++		if extensionLength > len(extensions) {
++			return "", io.ErrUnexpectedEOF
++		}
++		if extensionType == 0 {
++			return parseServerNameExtension(extensions[:extensionLength])
++		}
++		extensions = extensions[extensionLength:]
++	}
++	return "", errors.New("shadow-tls: ClientHello has no SNI")
++}
++
++func parseServerNameExtension(extension []byte) (string, error) {
++	if len(extension) < 2 {
++		return "", io.ErrUnexpectedEOF
++	}
++	listLength := int(binary.BigEndian.Uint16(extension))
++	if listLength > len(extension)-2 {
++		return "", io.ErrUnexpectedEOF
++	}
++	list := extension[2 : 2+listLength]
++	for len(list) >= 3 {
++		nameType := list[0]
++		nameLength := int(binary.BigEndian.Uint16(list[1:]))
++		list = list[3:]
++		if nameLength > len(list) {
++			return "", io.ErrUnexpectedEOF
++		}
++		if nameType == 0 && nameLength > 0 {
++			return string(list[:nameLength]), nil
++		}
++		list = list[nameLength:]
++	}
++	return "", errors.New("shadow-tls: ClientHello has no host name")
++}
++
++func extractServerRandom(frame []byte) []byte {
++	if len(frame) < serverRandomIndex+tlsRandomSize || frame[0] != handshake || frame[tlsHeaderSize] != serverHello {
++		return nil
++	}
++	return append([]byte(nil), frame[serverRandomIndex:serverRandomIndex+tlsRandomSize]...)
++}
++
++func isServerHelloSupportTLS13(frame []byte) bool {
++	if len(frame) <= sessionIDLengthIndex || frame[0] != handshake || frame[tlsHeaderSize] != serverHello {
++		return false
++	}
++	offset := sessionIDLengthIndex
++	sessionIDLength := int(frame[offset])
++	offset++
++	if offset+sessionIDLength+3+2 > len(frame) {
++		return false
++	}
++	offset += sessionIDLength + 3
++	extensionsLength := int(binary.BigEndian.Uint16(frame[offset:]))
++	offset += 2
++	if offset+extensionsLength > len(frame) {
++		return false
++	}
++	extensions := frame[offset : offset+extensionsLength]
++	for len(extensions) >= 4 {
++		extensionType := binary.BigEndian.Uint16(extensions)
++		extensionLength := int(binary.BigEndian.Uint16(extensions[2:]))
++		extensions = extensions[4:]
++		if extensionLength > len(extensions) {
++			return false
++		}
++		if extensionType == 43 {
++			return extensionLength == 2 && binary.BigEndian.Uint16(extensions[:2]) == 0x0304
++		}
++		extensions = extensions[extensionLength:]
++	}
++	return false
++}
++
++func writeBuffers(writer io.Writer, buffers ...[]byte) error {
++	netBuffers := net.Buffers(buffers)
++	_, err := netBuffers.WriteTo(writer)
++	return err
++}
+--- a/transport/internet/shadowtls/protocol/server.go
++++ b/transport/internet/shadowtls/protocol/server.go
+@@ -0,0 +1,397 @@
++// Adapted from MetaCubeX/mihomo v1.19.32; GPL-3.0-or-later.
++package shadowtls
++
++import (
++	"context"
++	"crypto/hmac"
++	"crypto/sha1"
++	"errors"
++	"fmt"
++	"hash"
++	"io"
++	"net"
++	"os"
++	"strings"
++	"time"
++)
++
++var ErrFallbackCompleted = errors.New("shadow-tls: connection relayed to fallback")
++
++type WildcardSNI int
++
++const (
++	WildcardSNIOff WildcardSNI = iota
++	WildcardSNIAuthed
++	WildcardSNIAll
++)
++
++type User struct {
++	Name     string
++	Password string
++}
++
++type HandshakeConfig struct {
++	Server      string
++	DialContext func(ctx context.Context, network, address string) (net.Conn, error)
++}
++
++type ServerConfig struct {
++	version                int
++	password               string // for protocol version 2
++	users                  []User // for protocol version 3
++	handshake              HandshakeConfig
++	handshakeForServerName map[string]HandshakeConfig // for protocol version 2/3
++	strictMode             bool                       // for protocol version 3
++	wildcardSNI            WildcardSNI                // for protocol version 3
++}
++
++func NewServerConfig(
++	version int,
++	password string,
++	users []User,
++	handshake HandshakeConfig,
++	handshakeForServerName map[string]HandshakeConfig,
++	strictMode bool,
++	wildcardSNI WildcardSNI,
++) (*ServerConfig, error) {
++	if err := checkVersion(version); err != nil {
++		return nil, err
++	}
++	if version == 3 && len(users) == 0 {
++		return nil, errors.New("shadow-tls: at least one user is required")
++	}
++	if wildcardSNI < WildcardSNIOff || wildcardSNI > WildcardSNIAll {
++		return nil, errors.New("shadow-tls: invalid wildcard SNI mode")
++	}
++	if !handshake.valid() && wildcardSNI == WildcardSNIOff {
++		return nil, errors.New("shadow-tls: missing default handshake information")
++	}
++	if version < 3 && !handshake.valid() {
++		return nil, errors.New("shadow-tls: missing default handshake information")
++	}
++	for serverName, handshakeConfig := range handshakeForServerName {
++		if serverName == "" || !handshakeConfig.valid() {
++			return nil, fmt.Errorf("shadow-tls: invalid handshake for server name %q", serverName)
++		}
++	}
++	return &ServerConfig{
++		version:                version,
++		password:               password,
++		users:                  append([]User(nil), users...),
++		handshake:              handshake,
++		handshakeForServerName: cloneHandshakeMap(handshakeForServerName),
++		strictMode:             strictMode,
++		wildcardSNI:            wildcardSNI,
++	}, nil
++}
++
++func Server(ctx context.Context, conn net.Conn, config *ServerConfig) (net.Conn, error) {
++	if conn == nil || config == nil {
++		return nil, errors.New("shadow-tls: nil connection or server config")
++	}
++	var (
++		serverConn net.Conn
++		user       string
++		err        error
++	)
++	switch config.version {
++	case 1:
++		serverConn, user, err = config.serverV1(ctx, conn)
++	case 2:
++		serverConn, user, err = config.serverV2(ctx, conn)
++	case 3:
++		serverConn, user, err = config.serverV3(ctx, conn)
++	default:
++		panic("unreachable")
++	}
++	if err != nil || user == "" {
++		return serverConn, err
++	}
++	return &authenticatedConn{Conn: serverConn, user: user}, nil
++}
++
++func (s *ServerConfig) serverV1(ctx context.Context, conn net.Conn) (net.Conn, string, error) {
++	handshakeConn, err := s.handshake.dial(ctx)
++	if err != nil {
++		return nil, "", fmt.Errorf("shadow-tls: dial handshake server: %w", err)
++	}
++	defer handshakeConn.Close()
++	if err = relayHandshake(conn, handshakeConn); err != nil {
++		return nil, "", fmt.Errorf("shadow-tls: relay handshake: %w", err)
++	}
++	return conn, "", nil
++}
++
++func (s *ServerConfig) serverV2(ctx context.Context, conn net.Conn) (net.Conn, string, error) {
++	clientHello, err := readFrame(conn)
++	if err != nil {
++		return nil, "", fmt.Errorf("shadow-tls: read client handshake: %w", err)
++	}
++	handshakeConfig := s.selectHandshake(clientHello)
++	handshakeConn, err := handshakeConfig.dial(ctx)
++	if err != nil {
++		return nil, "", fmt.Errorf("shadow-tls: dial handshake server: %w", err)
++	}
++	hashConn := newHashWriteConn(conn, s.password)
++	serverCopyDone := make(chan error, 1)
++	go func() {
++		_, copyErr := io.Copy(hashConn, handshakeConn)
++		serverCopyDone <- copyErr
++	}()
++
++	request, err := copyUntilHandshakeFinishedV2(
++		handshakeConn,
++		newCachedConn(conn, clientHello),
++		hashConn,
++		2,
++	)
++	if err == nil {
++		_ = handshakeConn.Close()
++		<-serverCopyDone
++		return newCachedConn(newConn(conn), request), "", nil
++	}
++	if errors.Is(err, os.ErrPermission) {
++		hashConn.Fallback()
++		clientCopyDone := make(chan error, 1)
++		go func() {
++			_, copyErr := io.Copy(handshakeConn, conn)
++			clientCopyDone <- copyErr
++		}()
++		var clientCopyErr, serverCopyErr error
++		select {
++		case clientCopyErr = <-clientCopyDone:
++			finishCopyDirection(handshakeConn, conn, clientCopyErr)
++			serverCopyErr = <-serverCopyDone
++		case serverCopyErr = <-serverCopyDone:
++			finishCopyDirection(conn, handshakeConn, serverCopyErr)
++			clientCopyErr = <-clientCopyDone
++		}
++		_ = handshakeConn.Close()
++		if relayErr := joinCopyErrors(clientCopyErr, serverCopyErr); relayErr != nil {
++			return nil, "", relayErr
++		}
++		return nil, "", ErrFallbackCompleted
++	}
++	_ = handshakeConn.Close()
++	<-serverCopyDone
++	return nil, "", err
++}
++
++func (s *ServerConfig) serverV3(ctx context.Context, conn net.Conn) (net.Conn, string, error) {
++	clientHello, err := readFrame(conn)
++	if err != nil {
++		return nil, "", fmt.Errorf("shadow-tls: read client handshake: %w", err)
++	}
++	serverName, err := extractServerName(clientHello)
++	if err != nil {
++		return nil, "", fmt.Errorf("shadow-tls: extract server name: %w", err)
++	}
++	user, authErr := verifyClientHello(clientHello, s.users)
++	handshakeConfig := s.selectV3Handshake(serverName, authErr == nil)
++	if authErr != nil {
++		return nil, "", s.relayFallback(ctx, conn, clientHello, handshakeConfig)
++	}
++
++	handshakeConn, err := handshakeConfig.dial(ctx)
++	if err != nil {
++		return nil, "", fmt.Errorf("shadow-tls: dial handshake server: %w", err)
++	}
++	defer handshakeConn.Close()
++	if _, err = handshakeConn.Write(clientHello); err != nil {
++		return nil, "", fmt.Errorf("shadow-tls: write client handshake: %w", err)
++	}
++	serverHello, err := readFrame(handshakeConn)
++	if err != nil {
++		return nil, "", fmt.Errorf("shadow-tls: read server handshake: %w", err)
++	}
++	if _, err = conn.Write(serverHello); err != nil {
++		return nil, "", fmt.Errorf("shadow-tls: write server handshake: %w", err)
++	}
++	serverRandom := extractServerRandom(serverHello)
++	if serverRandom == nil {
++		if err = relayContext(ctx, conn, handshakeConn); err != nil {
++			return nil, "", err
++		}
++		return nil, "", ErrFallbackCompleted
++	}
++	if s.strictMode && !isServerHelloSupportTLS13(serverHello) {
++		if err = relayContext(ctx, conn, handshakeConn); err != nil {
++			return nil, "", err
++		}
++		return nil, "", ErrFallbackCompleted
++	}
++
++	hmacWrite := hmac.New(sha1.New, []byte(user.Password))
++	_, _ = hmacWrite.Write(serverRandom)
++	hmacAdd := hmac.New(sha1.New, []byte(user.Password))
++	_, _ = hmacAdd.Write(serverRandom)
++	_, _ = hmacAdd.Write([]byte("S"))
++	hmacVerify := hmac.New(sha1.New, []byte(user.Password))
++	resetVerify := func() { hmacReset(hmacVerify, serverRandom, 'C') }
++	request, err := relayV3Handshake(conn, handshakeConn, user.Password, serverRandom, hmacWrite, hmacVerify, resetVerify)
++	if err != nil {
++		return nil, "", fmt.Errorf("shadow-tls: relay handshake: %w", err)
++	}
++	return newCachedConn(newVerifiedConn(conn, hmacAdd, hmacVerify, nil), request), user.Name, nil
++}
++
++func (s *ServerConfig) relayFallback(ctx context.Context, conn net.Conn, prefix []byte, handshakeConfig HandshakeConfig) error {
++	handshakeConn, err := handshakeConfig.dial(ctx)
++	if err != nil {
++		return fmt.Errorf("shadow-tls: dial fallback server: %w", err)
++	}
++	defer handshakeConn.Close()
++	if err = relayContext(ctx, newCachedConn(conn, prefix), handshakeConn); err != nil {
++		return err
++	}
++	return ErrFallbackCompleted
++}
++
++func (s *ServerConfig) selectHandshake(clientHello []byte) HandshakeConfig {
++	serverName, err := extractServerName(clientHello)
++	if err == nil {
++		if custom, found := s.handshakeForServerName[serverName]; found {
++			return custom
++		}
++	}
++	return s.handshake
++}
++
++func (s *ServerConfig) selectV3Handshake(serverName string, authenticated bool) HandshakeConfig {
++	if custom, found := s.handshakeForServerName[serverName]; found {
++		return custom
++	}
++	handshakeConfig := s.handshake
++	if s.wildcardSNI == WildcardSNIAll || (authenticated && s.wildcardSNI == WildcardSNIAuthed) {
++		handshakeConfig.Server = net.JoinHostPort(serverName, "443")
++	}
++	return handshakeConfig
++}
++
++type authenticatedConn struct {
++	net.Conn
++	user string
++}
++
++func (c *authenticatedConn) Upstream() any { return c.Conn }
++
++func (c HandshakeConfig) valid() bool {
++	return c.Server != "" && c.DialContext != nil
++}
++
++func (c HandshakeConfig) dial(ctx context.Context) (net.Conn, error) {
++	if !c.valid() {
++		return nil, errors.New("shadow-tls: missing handshake information")
++	}
++	return c.DialContext(ctx, "tcp", c.Server)
++}
++
++func cloneHandshakeMap(source map[string]HandshakeConfig) map[string]HandshakeConfig {
++	if source == nil {
++		return nil
++	}
++	cloned := make(map[string]HandshakeConfig, len(source))
++	for key, value := range source {
++		cloned[key] = value
++	}
++	return cloned
++}
++
++func relayHandshake(clientConn, serverConn net.Conn) error {
++	type result struct {
++		err error
++	}
++	results := make(chan result, 2)
++	go func() {
++		results <- result{err: copyUntilHandshakeFinished(serverConn, clientConn)}
++	}()
++	go func() {
++		results <- result{err: copyUntilHandshakeFinished(clientConn, serverConn)}
++	}()
++	first := <-results
++	if first.err != nil {
++		_ = clientConn.SetDeadline(time.Now())
++		_ = serverConn.Close()
++	}
++	second := <-results
++	if first.err != nil {
++		return first.err
++	}
++	return second.err
++}
++
++func relayV3Handshake(clientConn, serverConn net.Conn, password string, serverRandom []byte, hmacWrite, hmacVerify hash.Hash, resetVerify func()) ([]byte, error) {
++	type result struct {
++		request []byte
++		client  bool
++		err     error
++	}
++	results := make(chan result, 2)
++	go func() {
++		request, err := copyByFrameUntilHMACMatches(clientConn, serverConn, hmacVerify, resetVerify)
++		results <- result{request: request, client: true, err: err}
++	}()
++	go func() {
++		err := copyByFrameWithModification(serverConn, clientConn, password, serverRandom, hmacWrite)
++		results <- result{err: err}
++	}()
++	first := <-results
++	if first.client && first.err == nil {
++		_ = serverConn.Close()
++		<-results
++		return first.request, nil
++	}
++	_ = serverConn.Close()
++	_ = clientConn.SetDeadline(time.Now())
++	second := <-results
++	if first.err != nil {
++		return nil, first.err
++	}
++	return nil, second.err
++}
++
++func finishCopyDirection(dst, src net.Conn, err error) {
++	if err == nil {
++		closeWrite(dst)
++		return
++	}
++	_ = dst.Close()
++	_ = src.Close()
++}
++
++func closeWrite(conn net.Conn) {
++	if closer, ok := conn.(interface{ CloseWrite() error }); ok {
++		_ = closer.CloseWrite()
++		return
++	}
++	_ = conn.Close()
++}
++
++func joinCopyErrors(copyErrors ...error) error {
++	var result error
++	for _, err := range copyErrors {
++		if err == nil || errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, os.ErrDeadlineExceeded) {
++			continue
++		}
++		if strings.Contains(err.Error(), "use of closed network connection") {
++			continue
++		}
++		result = errors.Join(result, err)
++	}
++	return result
++}
++
++// UserFromConn returns the authenticated ShadowTLS v3 user through wrappers.
++func UserFromConn(conn net.Conn) (string, bool) {
++	for conn != nil {
++		if authenticated, ok := conn.(*authenticatedConn); ok {
++			return authenticated.user, true
++		}
++		wrapper, ok := conn.(interface{ Upstream() any })
++		if !ok {
++			break
++		}
++		conn, _ = wrapper.Upstream().(net.Conn)
++	}
++	return "", false
++}
+--- a/transport/internet/shadowtls/protocol/v2.go
++++ b/transport/internet/shadowtls/protocol/v2.go
+@@ -0,0 +1,208 @@
++// Adapted from MetaCubeX/mihomo v1.19.32; GPL-3.0-or-later.
++package shadowtls
++
++import (
++	"bytes"
++	"crypto/hmac"
++	"crypto/sha1"
++	"encoding/binary"
++	"fmt"
++	"hash"
++	"io"
++	"net"
++	"os"
++	"sync"
++)
++
++type hashReadConn struct {
++	net.Conn
++	hmac hash.Hash
++}
++
++func newHashReadConn(conn net.Conn, password string) *hashReadConn {
++	return &hashReadConn{Conn: conn, hmac: hmac.New(sha1.New, []byte(password))}
++}
++
++func (c *hashReadConn) Read(p []byte) (int, error) {
++	n, err := c.Conn.Read(p)
++	if n > 0 {
++		_, _ = c.hmac.Write(p[:n])
++	}
++	return n, err
++}
++
++func (c *hashReadConn) Sum() []byte {
++	return append([]byte(nil), c.hmac.Sum(nil)[:8]...)
++}
++
++type hashWriteConn struct {
++	net.Conn
++	mu         sync.Mutex
++	hmac       hash.Hash
++	hasContent bool
++	lastSum    []byte
++}
++
++func newHashWriteConn(conn net.Conn, password string) *hashWriteConn {
++	return &hashWriteConn{Conn: conn, hmac: hmac.New(sha1.New, []byte(password))}
++}
++
++func (c *hashWriteConn) Write(p []byte) (int, error) {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	n, err := c.Conn.Write(p)
++	if c.hmac != nil && n > 0 {
++		if c.hasContent {
++			c.lastSum = append(c.lastSum[:0], c.hmac.Sum(nil)[:8]...)
++		}
++		_, _ = c.hmac.Write(p[:n])
++		c.hasContent = true
++	}
++	return n, err
++}
++
++func (c *hashWriteConn) sums() (current, previous []byte, hasContent bool) {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	if c.hmac != nil {
++		current = append([]byte(nil), c.hmac.Sum(nil)[:8]...)
++	}
++	previous = append([]byte(nil), c.lastSum...)
++	return current, previous, c.hasContent
++}
++
++func (c *hashWriteConn) Fallback() {
++	c.mu.Lock()
++	c.hmac = nil
++	c.mu.Unlock()
++}
++
++type shadowConn struct {
++	net.Conn
++	readRemaining    int
++	readHeader       [tlsHeaderSize]byte
++	readHeaderOffset int
++	writeMu          sync.Mutex
++}
++
++func newConn(conn net.Conn) *shadowConn {
++	return &shadowConn{Conn: conn}
++}
++
++func (c *shadowConn) Read(p []byte) (int, error) {
++	if c.readRemaining > 0 {
++		if len(p) > c.readRemaining {
++			p = p[:c.readRemaining]
++		}
++		n, err := c.Conn.Read(p)
++		c.readRemaining -= n
++		return n, err
++	}
++	// Keep an incomplete header so a read deadline only interrupts the current Read.
++	n, err := io.ReadFull(c.Conn, c.readHeader[c.readHeaderOffset:])
++	c.readHeaderOffset += n
++	if err != nil {
++		return 0, err
++	}
++	c.readHeaderOffset = 0
++	if c.readHeader[0] != applicationData {
++		return 0, fmt.Errorf("shadow-tls: unexpected TLS record type: %d", c.readHeader[0])
++	}
++	length := int(binary.BigEndian.Uint16(c.readHeader[3:]))
++	readLength := len(p)
++	if readLength > length {
++		readLength = length
++	}
++	n, err = c.Conn.Read(p[:readLength])
++	c.readRemaining = length - n
++	return n, err
++}
++
++func (c *shadowConn) Write(p []byte) (int, error) {
++	c.writeMu.Lock()
++	defer c.writeMu.Unlock()
++	total := len(p)
++	if total == 0 {
++		if err := c.writeRecord(nil); err != nil {
++			return 0, err
++		}
++		return 0, nil
++	}
++	for len(p) > 0 {
++		length := len(p)
++		if length > maxTLSPlaintext {
++			length = maxTLSPlaintext
++		}
++		if err := c.writeRecord(p[:length]); err != nil {
++			return total - len(p), err
++		}
++		p = p[length:]
++	}
++	return total, nil
++}
++
++func (c *shadowConn) writeRecord(p []byte) error {
++	var header [tlsHeaderSize]byte
++	header[0] = applicationData
++	header[1] = 3
++	header[2] = 3
++	binary.BigEndian.PutUint16(header[3:], uint16(len(p)))
++	return writeBuffers(c.Conn, header[:], p)
++}
++
++func (c *shadowConn) Upstream() any { return c.Conn }
++
++type clientConn struct {
++	*shadowConn
++	mu       sync.Mutex
++	hashConn *hashReadConn
++}
++
++func newClientConn(hashConn *hashReadConn) *clientConn {
++	return &clientConn{shadowConn: newConn(hashConn.Conn), hashConn: hashConn}
++}
++
++func (c *clientConn) Write(p []byte) (int, error) {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	if c.hashConn == nil {
++		return c.shadowConn.Write(p)
++	}
++	prefixed := make([]byte, 8+len(p))
++	copy(prefixed, c.hashConn.Sum())
++	copy(prefixed[8:], p)
++	c.hashConn = nil
++	if _, err := c.shadowConn.Write(prefixed); err != nil {
++		return 0, err
++	}
++	return len(p), nil
++}
++
++func copyUntilHandshakeFinishedV2(dst net.Conn, src io.Reader, hashConn *hashWriteConn, fallbackAfter int) ([]byte, error) {
++	applicationDataCount := 0
++	for {
++		frame, err := readFrame(src)
++		if err != nil {
++			return nil, err
++		}
++		if frame[0] == applicationData {
++			payload := frame[tlsHeaderSize:]
++			current, previous, hasContent := hashConn.sums()
++			if hasContent && len(payload) >= 8 {
++				if bytes.Equal(payload[:8], current) {
++					return append([]byte(nil), payload[8:]...), nil
++				}
++				if len(previous) > 0 && bytes.Equal(payload[:8], previous) {
++					return append([]byte(nil), payload[8:]...), nil
++				}
++			}
++			applicationDataCount++
++		}
++		if _, err = dst.Write(frame); err != nil {
++			return nil, err
++		}
++		if applicationDataCount > fallbackAfter {
++			return nil, os.ErrPermission
++		}
++	}
++}
+--- a/transport/internet/shadowtls/protocol/v3.go
++++ b/transport/internet/shadowtls/protocol/v3.go
+@@ -0,0 +1,332 @@
++// Adapted from MetaCubeX/mihomo v1.19.32; GPL-3.0-or-later.
++package shadowtls
++
++import (
++	"crypto/hmac"
++	"crypto/rand"
++	"crypto/sha1"
++	"crypto/sha256"
++	"encoding/binary"
++	"errors"
++	"fmt"
++	"hash"
++	"io"
++	"net"
++	"sync"
++)
++
++func generateSessionID(password string) TLSSessionIDGeneratorFunc {
++	return func(clientHello []byte, sessionID []byte) error {
++		const sessionIDStart = 1 + 3 + 2 + tlsRandomSize + 1
++		if len(clientHello) < sessionIDStart+tlsSessionIDSize || len(sessionID) < tlsSessionIDSize {
++			return errors.New("shadow-tls: unexpected ClientHello length")
++		}
++		if _, err := rand.Read(sessionID[:tlsSessionIDSize-hmacSize]); err != nil {
++			return err
++		}
++		for i := tlsSessionIDSize - hmacSize; i < tlsSessionIDSize; i++ {
++			sessionID[i] = 0
++		}
++		h := hmac.New(sha1.New, []byte(password))
++		_, _ = h.Write(clientHello[:sessionIDStart])
++		_, _ = h.Write(sessionID[:tlsSessionIDSize])
++		_, _ = h.Write(clientHello[sessionIDStart+tlsSessionIDSize:])
++		copy(sessionID[tlsSessionIDSize-hmacSize:], h.Sum(nil)[:hmacSize])
++		return nil
++	}
++}
++
++type streamWrapper struct {
++	net.Conn
++	password     string
++	pending      []byte
++	serverRandom []byte
++	readHMAC     hash.Hash
++	readHMACKey  []byte
++	isTLS13      bool
++	authorized   bool
++}
++
++func newStreamWrapper(conn net.Conn, password string) *streamWrapper {
++	return &streamWrapper{Conn: conn, password: password}
++}
++
++func (c *streamWrapper) Authorized() (bool, bool, []byte, hash.Hash) {
++	return c.isTLS13, c.authorized, c.serverRandom, c.readHMAC
++}
++
++func (c *streamWrapper) Read(p []byte) (int, error) {
++	if len(c.pending) > 0 {
++		return c.readPending(p), nil
++	}
++	frame, err := readFrame(c.Conn)
++	if err != nil {
++		return 0, err
++	}
++	switch frame[0] {
++	case handshake:
++		// Mirror the server's one-shot seed: only initialize the HMAC chain on the first
++		// ServerHello so a TLS 1.3 HelloRetryRequest (RFC 8446 section 4.1.4) aligns both peers.
++		if len(frame) >= serverRandomIndex+tlsRandomSize && frame[tlsHeaderSize] == serverHello && c.readHMAC == nil {
++			c.serverRandom = append([]byte(nil), frame[serverRandomIndex:serverRandomIndex+tlsRandomSize]...)
++			c.readHMAC = hmac.New(sha1.New, []byte(c.password))
++			_, _ = c.readHMAC.Write(c.serverRandom)
++			c.readHMACKey = kdf(c.password, c.serverRandom)
++			c.isTLS13 = isServerHelloSupportTLS13(frame)
++			c.authorized = !c.isTLS13
++		}
++	case applicationData:
++		c.authorized = false
++		if len(frame) > tlsHMACHeaderSize && c.readHMAC != nil {
++			_, _ = c.readHMAC.Write(frame[tlsHMACHeaderSize:])
++			if !hmac.Equal(c.readHMAC.Sum(nil)[:hmacSize], frame[tlsHeaderSize:tlsHMACHeaderSize]) {
++				return 0, errors.New("shadow-tls v3: HMAC mismatch, possible data corruption")
++			}
++			xorSlice(frame[tlsHMACHeaderSize:], c.readHMACKey)
++			copy(frame[hmacSize:hmacSize+tlsHeaderSize], frame[:tlsHeaderSize])
++			frame = frame[hmacSize:]
++			binary.BigEndian.PutUint16(frame[3:5], uint16(len(frame)-tlsHeaderSize))
++			c.authorized = true
++		}
++	}
++	c.pending = frame
++	return c.readPending(p), nil
++}
++
++func (c *streamWrapper) readPending(p []byte) int {
++	n := copy(p, c.pending)
++	c.pending = c.pending[n:]
++	return n
++}
++
++type verifiedConn struct {
++	net.Conn
++	writeMu    sync.Mutex
++	hmacAdd    hash.Hash
++	hmacVerify hash.Hash
++	hmacIgnore hash.Hash
++	pending    []byte
++	readBuffer []byte
++	readOffset int
++}
++
++func newVerifiedConn(conn net.Conn, hmacAdd, hmacVerify, hmacIgnore hash.Hash) *verifiedConn {
++	return &verifiedConn{
++		Conn:       conn,
++		hmacAdd:    hmacAdd,
++		hmacVerify: hmacVerify,
++		hmacIgnore: hmacIgnore,
++	}
++}
++
++func (c *verifiedConn) Read(p []byte) (int, error) {
++	if len(c.pending) > 0 {
++		return c.readPending(p), nil
++	}
++	for {
++		frame, err := c.readRecord()
++		if err != nil {
++			var netErr net.Error
++			if errors.As(err, &netErr) && netErr.Timeout() {
++				return 0, err
++			}
++			sendAlert(c.Conn)
++			return 0, err
++		}
++		switch frame[0] {
++		case alert:
++			return 0, fmt.Errorf("shadow-tls: remote alert: %w", net.ErrClosed)
++		case applicationData:
++			if c.hmacIgnore != nil {
++				if verifyApplicationData(frame, c.hmacIgnore, false) {
++					continue
++				}
++				c.hmacIgnore = nil
++			}
++			if !verifyApplicationData(frame, c.hmacVerify, true) {
++				sendAlert(c.Conn)
++				return 0, errors.New("shadow-tls: application data verification failed")
++			}
++			c.pending = frame[tlsHMACHeaderSize:]
++			return c.readPending(p), nil
++		default:
++			sendAlert(c.Conn)
++			return 0, fmt.Errorf("shadow-tls: unexpected TLS record type: %d", frame[0])
++		}
++	}
++}
++
++func (c *verifiedConn) readRecord() ([]byte, error) {
++	// Keep an incomplete record so a read deadline only interrupts the current Read.
++	if c.readBuffer == nil {
++		c.readBuffer = make([]byte, tlsHeaderSize)
++	}
++	if c.readOffset < tlsHeaderSize {
++		n, err := io.ReadFull(c.Conn, c.readBuffer[c.readOffset:tlsHeaderSize])
++		c.readOffset += n
++		if err != nil {
++			return nil, err
++		}
++		length := int(binary.BigEndian.Uint16(c.readBuffer[3:]))
++		c.readBuffer = append(c.readBuffer, make([]byte, length)...)
++	}
++	if c.readOffset < len(c.readBuffer) {
++		n, err := io.ReadFull(c.Conn, c.readBuffer[c.readOffset:])
++		c.readOffset += n
++		if err != nil {
++			return nil, err
++		}
++	}
++	frame := c.readBuffer
++	c.readBuffer = nil
++	c.readOffset = 0
++	return frame, nil
++}
++
++func (c *verifiedConn) readPending(p []byte) int {
++	n := copy(p, c.pending)
++	c.pending = c.pending[n:]
++	return n
++}
++
++func (c *verifiedConn) Write(p []byte) (int, error) {
++	c.writeMu.Lock()
++	defer c.writeMu.Unlock()
++	total := len(p)
++	for len(p) > 0 {
++		length := len(p)
++		if length > maxTLSPlaintext {
++			length = maxTLSPlaintext
++		}
++		if err := c.writeRecord(p[:length]); err != nil {
++			return total - len(p), err
++		}
++		p = p[length:]
++	}
++	return total, nil
++}
++
++func (c *verifiedConn) writeRecord(p []byte) error {
++	var header [tlsHMACHeaderSize]byte
++	header[0] = applicationData
++	header[1] = 3
++	header[2] = 3
++	binary.BigEndian.PutUint16(header[3:tlsHeaderSize], uint16(hmacSize+len(p)))
++	_, _ = c.hmacAdd.Write(p)
++	hmacHash := c.hmacAdd.Sum(nil)[:hmacSize]
++	_, _ = c.hmacAdd.Write(hmacHash)
++	copy(header[tlsHeaderSize:], hmacHash)
++	return writeBuffers(c.Conn, header[:], p)
++}
++
++func (c *verifiedConn) Upstream() any { return c.Conn }
++
++func verifyApplicationData(frame []byte, h hash.Hash, update bool) bool {
++	if len(frame) < tlsHMACHeaderSize || frame[0] != applicationData || frame[1] != 3 || frame[2] != 3 {
++		return false
++	}
++	_, _ = h.Write(frame[tlsHMACHeaderSize:])
++	hmacHash := h.Sum(nil)[:hmacSize]
++	if update {
++		_, _ = h.Write(hmacHash)
++	}
++	return hmac.Equal(frame[tlsHeaderSize:tlsHMACHeaderSize], hmacHash)
++}
++
++func verifyClientHello(frame []byte, users []User) (*User, error) {
++	const minLength = tlsHeaderSize + 1 + 3 + 2 + tlsRandomSize + 1 + tlsSessionIDSize
++	const hmacIndex = sessionIDLengthIndex + 1 + tlsSessionIDSize - hmacSize
++	if len(frame) < minLength {
++		return nil, io.ErrUnexpectedEOF
++	}
++	if frame[0] != handshake || frame[tlsHeaderSize] != clientHello {
++		return nil, errors.New("shadow-tls: unexpected ClientHello record")
++	}
++	if frame[sessionIDLengthIndex] != tlsSessionIDSize {
++		return nil, errors.New("shadow-tls: unexpected session ID length")
++	}
++	for i := range users {
++		user := &users[i]
++		h := hmac.New(sha1.New, []byte(user.Password))
++		_, _ = h.Write(frame[tlsHeaderSize:hmacIndex])
++		_, _ = h.Write([]byte{0, 0, 0, 0})
++		_, _ = h.Write(frame[hmacIndex+hmacSize:])
++		if hmac.Equal(frame[hmacIndex:hmacIndex+hmacSize], h.Sum(nil)[:hmacSize]) {
++			return user, nil
++		}
++	}
++	return nil, errors.New("shadow-tls: ClientHello HMAC mismatch")
++}
++
++func copyByFrameUntilHMACMatches(conn, handshakeConn net.Conn, hmacVerify hash.Hash, hmacReset func()) ([]byte, error) {
++	for {
++		frame, err := readFrame(conn)
++		if err != nil {
++			return nil, fmt.Errorf("shadow-tls: read client record: %w", err)
++		}
++		if len(frame) > tlsHMACHeaderSize && frame[0] == applicationData {
++			hmacReset()
++			_, _ = hmacVerify.Write(frame[tlsHMACHeaderSize:])
++			hmacHash := hmacVerify.Sum(nil)[:hmacSize]
++			if hmac.Equal(hmacHash, frame[tlsHeaderSize:tlsHMACHeaderSize]) {
++				hmacReset()
++				_, _ = hmacVerify.Write(frame[tlsHMACHeaderSize:])
++				_, _ = hmacVerify.Write(frame[tlsHeaderSize:tlsHMACHeaderSize])
++				return append([]byte(nil), frame[tlsHMACHeaderSize:]...), nil
++			}
++		}
++		if _, err = handshakeConn.Write(frame); err != nil {
++			return nil, fmt.Errorf("shadow-tls: write client record: %w", err)
++		}
++	}
++}
++
++func copyByFrameWithModification(conn, handshakeConn net.Conn, password string, serverRandom []byte, hmacWrite hash.Hash) error {
++	writeKey := kdf(password, serverRandom)
++	for {
++		frame, err := readFrame(conn)
++		if err != nil {
++			return fmt.Errorf("shadow-tls: read server record: %w", err)
++		}
++		if frame[0] != applicationData {
++			if _, err = handshakeConn.Write(frame); err != nil {
++				return fmt.Errorf("shadow-tls: write server record: %w", err)
++			}
++			continue
++		}
++		xorSlice(frame[tlsHeaderSize:], writeKey)
++		_, _ = hmacWrite.Write(frame[tlsHeaderSize:])
++		binary.BigEndian.PutUint16(frame[3:5], uint16(len(frame)-tlsHeaderSize+hmacSize))
++		hmacHash := hmacWrite.Sum(nil)[:hmacSize]
++		if err = writeBuffers(handshakeConn, frame[:tlsHeaderSize], hmacHash, frame[tlsHeaderSize:]); err != nil {
++			return fmt.Errorf("shadow-tls: write modified server record: %w", err)
++		}
++	}
++}
++
++func kdf(password string, serverRandom []byte) []byte {
++	hasher := sha256.New()
++	_, _ = hasher.Write([]byte(password))
++	_, _ = hasher.Write(serverRandom)
++	return hasher.Sum(nil)
++}
++
++func xorSlice(data, key []byte) {
++	for i := range data {
++		data[i] ^= key[i%len(key)]
++	}
++}
++
++func sendAlert(writer io.Writer) {
++	const recordSize = 31
++	record := [recordSize]byte{alert, 3, 3, 0, recordSize - tlsHeaderSize}
++	if _, err := rand.Read(record[tlsHeaderSize:]); err == nil {
++		_, _ = writer.Write(record[:])
++	}
++}
++
++func hmacReset(h hash.Hash, serverRandom []byte, side byte) {
++	h.Reset()
++	_, _ = h.Write(serverRandom)
++	_, _ = h.Write([]byte{side})
++}
+--- a/transport/internet/tcp/dialer.go
++++ b/transport/internet/tcp/dialer.go
+@@ -12,6 +12,7 @@
+ 	"github.com/xtls/xray-core/common/session"
+ 	"github.com/xtls/xray-core/transport/internet"
+ 	"github.com/xtls/xray-core/transport/internet/reality"
++	"github.com/xtls/xray-core/transport/internet/shadowtls"
+ 	"github.com/xtls/xray-core/transport/internet/stat"
+ 	"github.com/xtls/xray-core/transport/internet/tls"
+ )
+@@ -98,6 +99,14 @@
+ 		}
+ 	}
+ 
++	if config := shadowtls.ConfigFromStreamSettings(streamSettings); config != nil {
++		raw := conn
++		conn, err = config.Client(ctx, raw, dest)
++		if err != nil {
++			raw.Close()
++			return nil, err
++		}
++	}
+ 	tcpSettings := streamSettings.ProtocolSettings.(*Config)
+ 	if tcpSettings.HeaderSettings != nil {
+ 		headerConfig, err := tcpSettings.HeaderSettings.GetInstance()
+--- a/transport/internet/tcp/hub.go
++++ b/transport/internet/tcp/hub.go
+@@ -12,12 +12,18 @@
+ 	"github.com/xtls/xray-core/common/net"
+ 	"github.com/xtls/xray-core/transport/internet"
+ 	"github.com/xtls/xray-core/transport/internet/reality"
++	"github.com/xtls/xray-core/transport/internet/shadowtls"
++	shadowprotocol "github.com/xtls/xray-core/transport/internet/shadowtls/protocol"
+ 	"github.com/xtls/xray-core/transport/internet/stat"
+ 	"github.com/xtls/xray-core/transport/internet/tls"
+ )
+ 
+ // Listener is an internet.Listener that listens for TCP connections.
+ type Listener struct {
++	shadowConfig  *shadowprotocol.ServerConfig
++	shadowTimeout time.Duration
++	ctx           context.Context
++	cancel        context.CancelFunc
+ 	listener      net.Listener
+ 	tlsConfig     *gotls.Config
+ 	realityConfig *goreality.Config
+@@ -31,6 +37,15 @@
+ 	l := &Listener{
+ 		addConn: handler,
+ 	}
++
++	if config := shadowtls.ConfigFromStreamSettings(streamSettings); config != nil {
++		var err error
++		l.shadowConfig, err = config.ServerConfig(streamSettings.SocketSettings)
++		if err != nil {
++			return nil, err
++		}
++		l.shadowTimeout = config.Timeout()
++	}
+ 	tcpSettings := streamSettings.ProtocolSettings.(*Config)
+ 	l.config = tcpSettings
+ 	if l.config != nil {
+@@ -83,6 +98,7 @@
+ 		l.authConfig = auth
+ 	}
+ 
++	l.ctx, l.cancel = context.WithCancel(ctx)
+ 	go l.keepAccepting()
+ 	return l, nil
+ }
+@@ -102,7 +118,19 @@
+ 			continue
+ 		}
+ 
+-		go func() {
++		go func(conn net.Conn) {
++			if v.shadowConfig != nil {
++				ctx, cancel := context.WithTimeout(v.ctx, v.shadowTimeout)
++				stop := context.AfterFunc(ctx, func() { conn.Close() })
++				wrapped, handshakeErr := shadowprotocol.Server(ctx, conn, v.shadowConfig)
++				stopped := stop()
++				cancel()
++				if handshakeErr != nil || !stopped {
++					conn.Close()
++					return
++				}
++				conn = wrapped
++			}
+ 			if v.tlsConfig != nil {
+ 				conn = tls.Server(conn, v.tlsConfig)
+ 			} else if v.realityConfig != nil {
+@@ -115,7 +143,7 @@
+ 				conn = v.authConfig.Server(conn)
+ 			}
+ 			v.addConn(stat.Connection(conn))
+-		}()
++		}(conn)
+ 	}
+ }
+ 
+@@ -126,6 +154,7 @@
+ 
+ // Close implements internet.Listener.Close.
+ func (v *Listener) Close() error {
++	v.cancel()
+ 	return v.listener.Close()
+ }
+ 

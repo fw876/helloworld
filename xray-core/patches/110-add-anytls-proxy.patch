@@ -9,7 +9,7 @@ inbound copy loops before releasing stream state. Retain outbound TLS,
 socket marks, dialer chains and session-pool lifecycle handling.
 
 Reference: https://github.com/XTLS/Xray-core/pull/5907
-Signed-off-by: lean <chenlin@fnnas.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 
 --- a/go.mod
 +++ b/go.mod

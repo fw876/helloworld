@@ -935,6 +935,24 @@ if server.v2ray_protocol == "naive" or server.v2ray_protocol == "shadowsocksr" o
     ob.mux = nil
 end
 
+if server.type == "v2ray" and server.xray_shadowtls == "1" then
+    local supported = {vmess = true, vless = true, trojan = true, shadowsocks = true}
+    assert(supported[server.v2ray_protocol], "ShadowTLS requires a supported TCP proxy protocol")
+    assert((server.transport or "raw") == "raw" or server.transport == "tcp", "ShadowTLS requires RAW/TCP")
+    assert(server.tls ~= "1" and server.reality ~= "1", "ShadowTLS cannot be combined with TLS or REALITY")
+    assert(not server.tls_flow or server.tls_flow == "", "ShadowTLS cannot be combined with XTLS flow")
+    local stream = Xray.outbounds[1].streamSettings
+    stream.security = "shadowtls"
+    stream.shadowtlsSettings = {
+        version = tonumber(server.xray_shadowtls_version) or 3,
+        password = server.xray_shadowtls_password,
+        serverName = server.xray_shadowtls_sni,
+        fingerprint = server.xray_shadowtls_fingerprint or "chrome",
+        strictMode = server.xray_shadowtls_strict ~= "0",
+        allowInsecure = server.xray_shadowtls_insecure == "1"
+    }
+end
+
 if xray_builtin_dns then
 	table.insert(Xray.outbounds, {
 		protocol = "dns",

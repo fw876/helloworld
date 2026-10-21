@@ -1493,6 +1493,39 @@ o.validate = function(self, value)
 	end
 end
 
+-- ShadowTLS wraps the existing TCP proxy protocol in Xray.
+o = s:option(Flag, "xray_shadowtls", "ShadowTLS (Xray)")
+o.default = "0"
+for _, proto in ipairs({"vmess", "vless", "trojan", "shadowsocks"}) do
+    o:depends({type = "v2ray", v2ray_protocol = proto, transport = "raw", tls = false, reality = false})
+end
+o.description = translate("ShadowTLS protects TCP connections. The inner proxy protocol must provide encryption.")
+o = s:option(ListValue, "xray_shadowtls_version", "ShadowTLS Version")
+o:depends("xray_shadowtls", "1")
+o:value("3", "v3")
+o:value("2", "v2")
+o:value("1", "v1")
+o.default = "3"
+o = s:option(Value, "xray_shadowtls_password", "ShadowTLS Password")
+o:depends({xray_shadowtls = "1", xray_shadowtls_version = "2"})
+o:depends({xray_shadowtls = "1", xray_shadowtls_version = "3"})
+o.password = true
+o.rmempty = false
+o = s:option(Value, "xray_shadowtls_sni", "ShadowTLS SNI")
+o:depends("xray_shadowtls", "1")
+o.datatype = "hostname"
+o.rmempty = false
+o = s:option(ListValue, "xray_shadowtls_fingerprint", translate("TLS Client Fingerprint"))
+o:depends("xray_shadowtls", "1")
+for _, fp in ipairs({"chrome", "firefox", "safari", "ios", "android", "edge", "none"}) do o:value(fp, fp) end
+o.default = "chrome"
+o = s:option(Flag, "xray_shadowtls_strict", translate("TLS 1.3 Strict mode"))
+o:depends({xray_shadowtls = "1", xray_shadowtls_version = "3"})
+o.default = "1"
+o = s:option(Flag, "xray_shadowtls_insecure", translate("Allow Insecure"))
+o:depends("xray_shadowtls", "1")
+o.default = "0"
+
 -- [[ TLS ]]--
 o = s:option(Flag, "tls", translate("TLS"))
 o.rmempty = true

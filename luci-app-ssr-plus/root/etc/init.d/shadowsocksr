@@ -992,6 +992,7 @@ use_mihomo_for_ss_rust_server() {
 }
 
 start_v2ray_with_mihomo() {
+	[ "$(uci_get_by_name "$1" xray_shadowtls 0)" = "1" ] && return 1
 	# These nodes use Xray-specific settings.
 	case "$(uci_get_by_name "$1" v2ray_protocol)" in naive|shadowsocksr|tuic) return 1 ;; esac
 	local sid="$1"

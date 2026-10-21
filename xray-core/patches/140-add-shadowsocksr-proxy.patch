@@ -11,7 +11,7 @@ plain, HTTP, random_head and TLS ticket camouflage; all existing ciphers.
 Wire format references: shadowsocksrr/shadowsocksr server auth/auth_chain,
 and the shadowsocksr-libev server HTTP/TLS patches in this package feed.
 Mihomo-derived code is GPL-3.0-or-later; include its license.
-Signed-off-by: lean <chenlin@fnnas.com>
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 
 --- a/go.mod
 +++ b/go.mod
