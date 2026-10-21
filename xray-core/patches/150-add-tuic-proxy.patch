@@ -1,0 +1,2295 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Subject: [PATCH] proxy: add Mihomo TUIC v4/v5 inbound and outbound
+
+Use the pinned Mihomo v1.19.32 TUIC implementation and its QUIC/TLS stack.
+Adapt authenticated streams and UDP associations to Xray routing. Support
+v4 tokens and v5 UUID/password users, native datagrams and QUIC stream UDP,
+congestion control, early handshakes, reusable clients and socket options.
+Join packet copy loops before closing upstream packet state and preserve
+Xray private-target restrictions on the TUIC inbound.
+
+Mihomo is GPL-3.0-or-later; include its license with the adapter.
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/go.mod
++++ b/go.mod
+@@ -5,6 +5,7 @@
+ require (
+ 	github.com/apernet/quic-go v0.61.1-0.20260806010916-184d081eef3e
+ 	github.com/ghodss/yaml v1.0.1-0.20220118164431-d8423dcdf344
++	github.com/gofrs/uuid/v5 v5.4.0
+ 	github.com/golang/mock v1.7.0-rc.1
+ 	github.com/google/go-cmp v0.7.0
+ 	github.com/google/uuid v1.6.0
+@@ -12,6 +13,9 @@
+ 	github.com/klauspost/cpuid/v2 v2.4.0
+ 	github.com/libp2p/go-nat v1.0.1-0.20250821073202-01afc089f138
+ 	github.com/metacubex/chacha v0.1.5
++	github.com/metacubex/mihomo v1.19.32
++	github.com/metacubex/quic-go v0.61.1-0.20260727080200-2548683b76f4
++	github.com/metacubex/tls v0.1.8
+ 	github.com/miekg/dns v1.1.73
+ 	github.com/pelletier/go-toml v1.9.5
+ 	github.com/pion/stun/v3 v3.1.7
+@@ -39,10 +43,10 @@
+ 	github.com/vishvananda/netlink v1.3.1
+ 	github.com/xtls/reality v0.0.0-20261014101318-83f621788ca8
+ 	github.com/yuin/gopher-lua v1.1.2
+-	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
++	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb
+ 	golang.org/x/crypto v0.58.0
+ 	golang.org/x/crypto/x509roots/fallback v0.0.0-20261005185213-c3db4df58582
+-	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842
++	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e
+ 	golang.org/x/net v0.61.0
+ 	golang.org/x/sync v0.24.0
+ 	golang.org/x/sys v0.49.0
+@@ -59,6 +63,7 @@
+ 
+ require (
+ 	github.com/andybalholm/brotli v1.2.3 // indirect
++	github.com/bahlo/generic-list-go v0.2.0 // indirect
+ 	github.com/ebitengine/purego v0.10.0 // indirect
+ 	github.com/google/gopacket v1.1.19 // indirect
+ 	github.com/huin/goupnp v1.2.0 // indirect
+@@ -67,10 +72,24 @@
+ 	github.com/klauspost/compress v1.20.0 // indirect
+ 	github.com/koron/go-ssdp v0.0.4 // indirect
+ 	github.com/libp2p/go-netroute v0.2.1 // indirect
++	github.com/metacubex/bart v0.29.0 // indirect
++	github.com/metacubex/blake3 v0.1.0 // indirect
++	github.com/metacubex/cpu v0.1.2 // indirect
++	github.com/metacubex/hkdf v0.1.0 // indirect
++	github.com/metacubex/hpke v0.1.0 // indirect
++	github.com/metacubex/http v0.1.8 // indirect
++	github.com/metacubex/mlkem v0.1.0 // indirect
++	github.com/metacubex/randv2 v0.2.0 // indirect
++	github.com/metacubex/sing v0.5.8 // indirect
++	github.com/metacubex/tfo-go v0.0.0-20260623020846-376a77860b8c // indirect
++	github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f // indirect
++	github.com/openacid/low v0.1.21 // indirect
+ 	github.com/pion/dtls/v3 v3.1.5 // indirect
+ 	github.com/pion/logging v0.2.4 // indirect
+ 	github.com/pion/transport/v4 v4.1.0 // indirect
+ 	github.com/quic-go/qpack v0.6.0 // indirect
++	github.com/samber/lo v1.53.0 // indirect
++	github.com/sirupsen/logrus v1.9.4 // indirect
+ 	github.com/vishvananda/netns v0.0.5 // indirect
+ 	github.com/wlynxg/anet v0.0.5 // indirect
+ 	go.yaml.in/yaml/v3 v3.0.5 // indirect
+--- a/go.sum
++++ b/go.sum
+@@ -2,21 +2,28 @@
+ github.com/andybalholm/brotli v1.2.3/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
+ github.com/apernet/quic-go v0.61.1-0.20260806010916-184d081eef3e h1:5mgtR5gwIgBKMiGI1QdXldZZ+SNor06Nbu1wCBulQBg=
+ github.com/apernet/quic-go v0.61.1-0.20260806010916-184d081eef3e/go.mod h1:x7qxEvX6MCVtDuBKHj3E+88+BtrbEMuAL5qGUKItjW8=
++github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=
++github.com/bahlo/generic-list-go v0.2.0/go.mod h1:2KvAjgMlE5NNynlg/5iLrrCCZ2+5xWbdbCW3pNTGyYg=
++github.com/blang/semver v3.5.1+incompatible/go.mod h1:kRBLl5iJ+tD4TcOOxsy/0fnwebNt5EWlYSAyrTnjyyk=
+ github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
+ github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
+ github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMnBNeIyt5eFwwo7qiLfzFZmjNmxjkiQlU=
++github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+ github.com/ebitengine/purego v0.10.0 h1:QIw4xfpWT6GWTzaW5XEKy3HXoqrJGx1ijYHzTF0/ISU=
+ github.com/ebitengine/purego v0.10.0/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
+ github.com/ghodss/yaml v1.0.1-0.20220118164431-d8423dcdf344 h1:Arcl6UOIS/kgO2nW3A65HN+7CMjSDP/gofXL4CZt1V4=
+ github.com/ghodss/yaml v1.0.1-0.20220118164431-d8423dcdf344/go.mod h1:GIjDIg/heH5DOkXY3YJ/wNhfHsQHoXGjl8G8amsYQ1I=
+ github.com/go-quicktest/qt v1.102.0 h1:HSQxCeh5YZH3EL3W39ixjtyaEhcWSXQHtHnMBzSs474=
+ github.com/go-quicktest/qt v1.102.0/go.mod h1:p4lGIVX+8Wa6ZPNDvqcxq36XpUDLh42FLetFU7odllI=
++github.com/gofrs/uuid/v5 v5.4.0 h1:EfbpCTjqMuGyq5ZJwxqzn3Cbr2d0rUZU7v5ycAk/e/0=
++github.com/gofrs/uuid/v5 v5.4.0/go.mod h1:CDOjlDMVAtN56jqyRUZh58JT31Tiw7/oQyEXZV+9bD8=
+ github.com/golang/mock v1.7.0-rc.1 h1:YojYx61/OLFsiv6Rw1Z96LpldJIy31o+UHmwAUMJ6/U=
+ github.com/golang/mock v1.7.0-rc.1/go.mod h1:s42URUywIqd+OcERslBJvOjepvNymP31m3q8d/GkuRs=
++github.com/golang/protobuf v1.3.1/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
+ github.com/golang/protobuf v1.5.4 h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+ github.com/golang/protobuf v1.5.4/go.mod h1:lnTiLA8Wa4RWRcIUkrtSVa5nRhsEGBg48fD6rSs7xps=
+-github.com/google/btree v1.1.2 h1:xf4v41cLI2Z6FxbKm+8Bu+m8ifhj15JuZ9sa0jZCMUU=
+-github.com/google/btree v1.1.2/go.mod h1:qOPhT0dTNdNzV6Z/lhRX0YXUafgPLFUh+gZMl761Gm4=
++github.com/google/btree v1.1.3 h1:CVpQJjYgC4VbzxeGVHfvZrv1ctoYCAI8vbl07Fcxlyg=
++github.com/google/btree v1.1.3/go.mod h1:qOPhT0dTNdNzV6Z/lhRX0YXUafgPLFUh+gZMl761Gm4=
+ github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
+ github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
+ github.com/google/gopacket v1.1.19 h1:ves8RnFZPGiFnTS0uPQStjwru6uO6h+nlr9j6fL7kF8=
+@@ -47,10 +54,43 @@
+ github.com/libp2p/go-nat v1.0.1-0.20250821073202-01afc089f138/go.mod h1:TXQg5tfSy+bUjnhT5728j5j/MBj7keIYqqZ1+8k/ui8=
+ github.com/libp2p/go-netroute v0.2.1 h1:V8kVrpD8GK0Riv15/7VN6RbUQ3URNZVosw7H2v9tksU=
+ github.com/libp2p/go-netroute v0.2.1/go.mod h1:hraioZr0fhBjG0ZRXJJ6Zj2IVEVNx6tDTFQfSmcq7mQ=
++github.com/metacubex/bart v0.29.0 h1:yVc/lLdDqn+7FShI0qUghStHl0/d3mn4EH/I5R5niKk=
++github.com/metacubex/bart v0.29.0/go.mod h1:DCcyfP4MC+Zy7sLK7XeGuMw+P5K9mIRsYOBgiE8icsI=
++github.com/metacubex/blake3 v0.1.0 h1:KGnjh/56REO7U+cgZA8dnBhxdP7jByrG7hTP+bu6cqY=
++github.com/metacubex/blake3 v0.1.0/go.mod h1:CCkLdzFrqf7xmxCdhQFvJsRRV2mwOLDoSPg6vUTB9Uk=
+ github.com/metacubex/chacha v0.1.5 h1:fKWMb/5c7ZrY8Uoqi79PPFxl+qwR7X/q0OrsAubyX2M=
+ github.com/metacubex/chacha v0.1.5/go.mod h1:Djn9bPZxLTXbJFSeyo0/qzEzQI+gUSSzttuzZM75GH8=
++github.com/metacubex/cpu v0.1.2 h1:xJHPWLkGilSWm6vEvzz8Loe+UusODRkVnuXz96TWAZo=
++github.com/metacubex/cpu v0.1.2/go.mod h1:09VEt4dSRLR+bOA8l4w4NDuzGZ8n5dkMv7e8axgEeTU=
++github.com/metacubex/hkdf v0.1.0 h1:fPA6VzXK8cU1foc/TOmGCDmSa7pZbxlnqhl3RNsthaA=
++github.com/metacubex/hkdf v0.1.0/go.mod h1:3seEfds3smgTAXqUGn+tgEJH3uXdsUjOiduG/2EtvZ4=
++github.com/metacubex/hpke v0.1.0 h1:gu2jUNhraehWi0P/z5HX2md3d7L1FhPQE6/Q0E9r9xQ=
++github.com/metacubex/hpke v0.1.0/go.mod h1:vfDm6gfgrwlXUxKDkWbcE44hXtmc1uxLDm2BcR11b3U=
++github.com/metacubex/http v0.1.8 h1:d91onDan2ZXYE8W/uAy5oFmXHH2xi1L7LbGPV5EmCM0=
++github.com/metacubex/http v0.1.8/go.mod h1:Nxx0zZAo2AhRfanyL+fmmK6ACMtVsfpwIl1aFAik2Eg=
++github.com/metacubex/mihomo v1.19.32 h1:uD7ZC3P77isWD554NNvtee65L+99+/C5hyc+Lk8rVEk=
++github.com/metacubex/mihomo v1.19.32/go.mod h1:d7xWi5iEktkC9PqXkD/Vo4AEcb0Q92XikfLoySUDWls=
++github.com/metacubex/mlkem v0.1.0 h1:wFClitonSFcmipzzQvax75beLQU+D7JuC+VK1RzSL8I=
++github.com/metacubex/mlkem v0.1.0/go.mod h1:amhaXZVeYNShuy9BILcR7P0gbeo/QLZsnqCdL8U2PDQ=
++github.com/metacubex/quic-go v0.61.1-0.20260727080200-2548683b76f4 h1:7oX6CpHVqoUXNyyt0MTuO5ywd1qVe1S1t3jXWMW7bYc=
++github.com/metacubex/quic-go v0.61.1-0.20260727080200-2548683b76f4/go.mod h1:KTmibo7vZo0gCxdFWrPEQ/u/RGt92mJkrXDE2Qg2/AU=
++github.com/metacubex/randv2 v0.2.0 h1:uP38uBvV2SxYfLj53kuvAjbND4RUDfFJjwr4UigMiLs=
++github.com/metacubex/randv2 v0.2.0/go.mod h1:kFi2SzrQ5WuneuoLLCMkABtiBu6VRrMrWFqSPyj2cxY=
++github.com/metacubex/sing v0.5.8 h1:OwJDSPP+pza6Ywt7NMR4kEYq+UNrsIywSk/eAMlqxz8=
++github.com/metacubex/sing v0.5.8/go.mod h1:ypf0mjwlZm0sKdQSY+yQvmsbWa0hNPtkeqyRMGgoN+w=
++github.com/metacubex/tfo-go v0.0.0-20260623020846-376a77860b8c h1:+2C1UshSLzaogLY/IDz1XhOLxjhs3rkhVHB4eCN9Zto=
++github.com/metacubex/tfo-go v0.0.0-20260623020846-376a77860b8c/go.mod h1:l9oLnLoEXyGZ5RVLsh7QCC5XsouTUyKk4F2nLm2DHLw=
++github.com/metacubex/tls v0.1.8 h1:BHF2payjtxC7wdR3tnq8vl3FAgEQB6/pPjP2tJNTsP4=
++github.com/metacubex/tls v0.1.8/go.mod h1:0XeVdL0cBw+8i5Hqy3lVeP9IyD/LFTq02ExvHM6rzEM=
++github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f h1:FGBPRb1zUabhPhDrlKEjQ9lgIwQ6cHL4x8M9lrERhbk=
++github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f/go.mod h1:oPGcV994OGJedmmxrcK9+ni7jUEMGhR+uVQAdaduIP4=
+ github.com/miekg/dns v1.1.73 h1:uhT8nJxmTrPJYClxVxTCX+CVn6qnzSiybRk72Z6DgrE=
+ github.com/miekg/dns v1.1.73/go.mod h1:RW2Obtfd5NZHvOFe3zYG0W8koWOQtAzyHaLo8vASBuQ=
++github.com/openacid/errors v0.8.1/go.mod h1:GUQEJJOJE3W9skHm8E8Y4phdl2LLEN8iD7c5gcGgdx0=
++github.com/openacid/low v0.1.21 h1:Tr2GNu4N/+rGRYdOsEHOE89cxUIaDViZbVmKz29uKGo=
++github.com/openacid/low v0.1.21/go.mod h1:q+MsKI6Pz2xsCkzV4BLj7NR5M4EX0sGz5AqotpZDVh0=
++github.com/openacid/must v0.1.3/go.mod h1:luPiXCuJlEo3UUFQngVQokV0MPGryeYvtCbQPs3U1+I=
++github.com/openacid/testkeys v0.1.6/go.mod h1:MfA7cACzBpbiwekivj8StqX0WIRmqlMsci1c37CA3Do=
+ github.com/pelletier/go-toml v1.9.5 h1:4yBQzkHv+7BHq2PQUZF3Mx0IYxG7LsP222s7Agd3ve8=
+ github.com/pelletier/go-toml v1.9.5/go.mod h1:u1nR/EPcESfeI/szUZKdtJ0xRNbUoANCkoOuaOx1Y+c=
+ github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2 h1:JhzVVoYvbOACxoUmOs6V/G4D5nPVUW73rKvXxP4XUJc=
+@@ -65,6 +105,8 @@
+ github.com/pion/transport/v4 v4.1.0/go.mod h1:06hFI+jCFcok2X2MekVufNZ/uzNZXivGBPfviSVcjgM=
+ github.com/pires/go-proxyproto v0.15.0 h1:dTshmNbFm/D+0+sbrxUuddPOZ5Y0B7c5NhtsBkm6LqI=
+ github.com/pires/go-proxyproto v0.15.0/go.mod h1:OXsCrKwrK2tXS9YrI5tkHx5xaQlO8FH3lFW76orFh24=
++github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
++github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+ github.com/quic-go/go-ossfuzz-seeds v0.1.0 h1:APacT+iIaNF6fd8AGEiN3bT/Jtkd2jz4v4TzM7MFjy0=
+ github.com/quic-go/go-ossfuzz-seeds v0.1.0/go.mod h1:3IOHRbJIc+L6YKMwfDtJAM9Vj9k0YY4muhuyUYk5tbk=
+ github.com/quic-go/qpack v0.6.0 h1:g7W+BMYynC1LbYLSqRt8PBg5Tgwxn214ZZR34VIOjz8=
+@@ -109,6 +151,14 @@
+ github.com/sagernet/sing v0.8.14/go.mod h1:olXxWQNqRW/l2Q6JI3b2Qmz8iQnIFlOeeH8bx6JhgUA=
+ github.com/sagernet/sing-anytls v0.0.0-20260928104022-580984e4d8cb h1:n4sF2zv0CR1gcb4awh61t11t0FZmcP40x5enB8HARjE=
+ github.com/sagernet/sing-anytls v0.0.0-20260928104022-580984e4d8cb/go.mod h1:VRKLnj0ObEsN228h+zuzf91p+6sjtYE8SBaLPVsBy5o=
++github.com/samber/lo v1.53.0 h1:t975lj2py4kJPQ6haz1QMgtId2gtmfktACxIXArw3HM=
++github.com/samber/lo v1.53.0/go.mod h1:4+MXEGsJzbKGaUEQFKBq2xtfuznW9oz/WrgyzMzRoM0=
++github.com/sirupsen/logrus v1.9.4 h1:TsZE7l11zFCLZnZ+teH4Umoq5BhEIfIzfRDZ1Uzql2w=
++github.com/sirupsen/logrus v1.9.4/go.mod h1:ftWc9WdOfJ0a92nsE2jF5u5ZwH8Bv2zdeOC42RjbV2g=
++github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
++github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
++github.com/stretchr/testify v1.6.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
++github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
+ github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
+ github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
+ github.com/vishvananda/netlink v1.3.1 h1:3AEMt62VKqz90r0tmNhog0r/PpWKmrEShJU0wJW6bV0=
+@@ -129,16 +179,16 @@
+ go.uber.org/mock v0.5.2/go.mod h1:wLlUxC2vVTPTaE3UD51E0BGOAElKrILxhVSDYQLld5o=
+ go.yaml.in/yaml/v3 v3.0.5 h1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw=
+ go.yaml.in/yaml/v3 v3.0.5/go.mod h1:HVTZu1O7/Vkt2N+BFy8Zza+lnLsABggaTM2ZpNIGuKg=
+-go4.org/netipx v0.0.0-20231129151722-fdeea329fbba h1:0b9z3AuHCjxk0x/opv64kcgZLBseWJUpBw5I82+2U4M=
+-go4.org/netipx v0.0.0-20231129151722-fdeea329fbba/go.mod h1:PLyyIXexvUFg3Owu6p/WfdlivPbZJsZdgWZlrGope/Y=
++go4.org/netipx v0.0.0-20260823151212-3075585bcbeb h1:XBM4hvfwGAttkkiTIFfeigdfcL1xIfdKXqFdgiHGtDs=
++go4.org/netipx v0.0.0-20260823151212-3075585bcbeb/go.mod h1:PLyyIXexvUFg3Owu6p/WfdlivPbZJsZdgWZlrGope/Y=
+ golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
+ golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=
+ golang.org/x/crypto v0.58.0 h1:COkYLr4k7nDI4r6QtMML2AfzeIswWHAJthLS6K/M/54=
+ golang.org/x/crypto v0.58.0/go.mod h1:Xh+kl5A+M0gMiWDytH2Hhr5Z7WbNCpv/eB/EFgfSk+w=
+ golang.org/x/crypto/x509roots/fallback v0.0.0-20261005185213-c3db4df58582 h1:wjDBrGbfLuifgrVLFEWUBJYAfh5Q1wkMc5t0FY0tCbs=
+ golang.org/x/crypto/x509roots/fallback v0.0.0-20261005185213-c3db4df58582/go.mod h1:HPze8vhfG6fO06AM+VSvxRm4E3+5Yk375mgrJ5M2z1E=
+-golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 h1:vr/HnozRka3pE4EsMEg1lgkXJkTFJCVUX+S/ZT6wYzM=
+-golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842/go.mod h1:XtvwrStGgqGPLc4cjQfWqZHG1YFdYs6swckp8vpsjnc=
++golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e h1:I88y4caeGeuDQxgdoFPUq097j7kNfw6uvuiNxUBfcBk=
++golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e/go.mod h1:akd2r19cwCdwSwWeIdzYQGa/EZZyqcOdwWiwj5L5eKQ=
+ golang.org/x/lint v0.0.0-20200302205851-738671d3881b/go.mod h1:3xt1FjdF8hUf6vQPIChWIBhFzV8gjjsPE/fR3IyQdNY=
+ golang.org/x/mod v0.1.1-0.20191105210325-c90efee705ee/go.mod h1:QqPTAvyqsEbceGzBzNggFXnrqF1CaUcvgkdR5Ot7KZg=
+ golang.org/x/mod v0.5.1/go.mod h1:5OXOZSfqPIIbmVBIIKWRFfZjPR0E5r58TLhUjH0a2Ro=
+@@ -198,6 +248,7 @@
+ gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
+ gopkg.in/yaml.v2 v2.4.0 h1:D8xgwECY7CYvx+Y2n4sBz93Jn9JRvxdiyyo8CTfuKaY=
+ gopkg.in/yaml.v2 v2.4.0/go.mod h1:RDklbk79AGWmwhnvt/jBztapEOGDOx6ZbXqjP6csGnQ=
++gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+ gvisor.dev/gvisor v0.0.0-20260122175437-89a5d21be8f0 h1:Lk6hARj5UPY47dBep70OD/TIMwikJ5fGUGX0Rm3Xigk=
+ gvisor.dev/gvisor v0.0.0-20260122175437-89a5d21be8f0/go.mod h1:QkHjoMIBaYtpVufgwv3keYAbln78mBoCuShZrPrer1Q=
+ h12.io/socks v1.0.3 h1:Ka3qaQewws4j4/eDQnOdpr4wXsC//dXtWvftlIcCQUo=
+--- a/infra/conf/transport_internet.go
++++ b/infra/conf/transport_internet.go
+@@ -38,6 +38,8 @@
+ 		return "", errors.PrintRemovedFeatureError("QUIC transport (without web service, etc.)", "XHTTP stream-one H3")
+ 	case "hysteria":
+ 		return "hysteria", nil
++	case "tuic":
++		return "tuic", nil
+ 	case "naive":
+ 		return "naive", nil
+ 	case "masque":
+--- a/infra/conf/tuic.go
++++ b/infra/conf/tuic.go
+@@ -0,0 +1,145 @@
++package conf
++
++import (
++	"github.com/gofrs/uuid/v5"
++	"github.com/xtls/xray-core/common/errors"
++	P "github.com/xtls/xray-core/proxy/tuic"
++	T "github.com/xtls/xray-core/transport/internet/tuic"
++	"google.golang.org/protobuf/proto"
++	"strings"
++)
++
++func tuicCC(s string) (string, error) {
++	if s == "" {
++		return "cubic", nil
++	}
++	switch s {
++	case "cubic", "new_reno", "bbr", "bbr_meta_v1", "bbr_meta_v2":
++		return s, nil
++	}
++	return "", errors.New("tuic: unsupported congestion control")
++}
++
++type TUICClientConfig struct {
++	Address               *Address `json:"address"`
++	Port                  uint16   `json:"port"`
++	Version               uint32   `json:"version"`
++	Token                 string   `json:"token"`
++	UUID                  string   `json:"uuid"`
++	Password              string   `json:"password"`
++	ServerName            string   `json:"serverName"`
++	CertificateFile       string   `json:"certificateFile"`
++	AllowInsecure         bool     `json:"allowInsecure"`
++	ALPN                  []string `json:"alpn"`
++	CongestionControl     string   `json:"congestionControl"`
++	UDPRelayMode          string   `json:"udpRelayMode"`
++	ReduceRTT             bool     `json:"reduceRtt"`
++	FastOpen              bool     `json:"fastOpen"`
++	HeartbeatInterval     uint32   `json:"heartbeatInterval"`
++	RequestTimeout        uint32   `json:"requestTimeout"`
++	MaxOpenStreams        uint32   `json:"maxOpenStreams"`
++	MaxUDPRelayPacketSize uint32   `json:"maxUdpRelayPacketSize"`
++	Level                 uint32   `json:"level"`
++}
++
++func (c *TUICClientConfig) Build() (proto.Message, error) {
++	if c.Address == nil || c.Port == 0 {
++		return nil, errors.New("tuic: address and port required")
++	}
++	v := c.Version
++	if v == 0 {
++		v = 5
++		if c.Token != "" {
++			v = 4
++		}
++	}
++	if v == 4 {
++		if c.Token == "" || c.UUID != "" || c.Password != "" {
++			return nil, errors.New("tuic v4 requires token only")
++		}
++	} else if v == 5 {
++		if _, e := uuid.FromString(c.UUID); e != nil || c.Password == "" || c.Token != "" {
++			return nil, errors.New("tuic v5 requires UUID and password")
++		}
++	} else {
++		return nil, errors.New("tuic version must be 4 or 5")
++	}
++	cc, e := tuicCC(c.CongestionControl)
++	if e != nil {
++		return nil, e
++	}
++	mode := c.UDPRelayMode
++	if mode == "" {
++		mode = "native"
++	}
++	if mode != "native" && mode != "quic" {
++		return nil, errors.New("tuic: invalid UDP relay mode")
++	}
++	heartbeat := c.HeartbeatInterval
++	if heartbeat == 0 {
++		heartbeat = 10000
++	}
++	timeout := c.RequestTimeout
++	if timeout == 0 {
++		timeout = 8000
++	}
++	streams := c.MaxOpenStreams
++	if streams == 0 {
++		streams = 100
++	}
++	if streams < 2 {
++		return nil, errors.New("tuic: maxOpenStreams must be at least 2")
++	}
++	size := c.MaxUDPRelayPacketSize
++	if size == 0 {
++		size = 1200
++	}
++	if size < 256 || size > 1252 {
++		return nil, errors.New("tuic: UDP relay packet size must be 256..1252")
++	}
++	return &P.ClientConfig{Address: c.Address.Build(), Port: uint32(c.Port), Version: v, Token: c.Token, Uuid: c.UUID, Password: c.Password, ServerName: c.ServerName, CertificateFile: c.CertificateFile, AllowInsecure: c.AllowInsecure, Alpn: c.ALPN, CongestionControl: cc, UdpRelayMode: mode, ReduceRtt: c.ReduceRTT, FastOpen: c.FastOpen, HeartbeatInterval: heartbeat, RequestTimeout: timeout, MaxOpenStreams: streams, MaxUdpRelayPacketSize: size, Level: c.Level}, nil
++}
++
++type TUICServerConfig struct {
++	Tokens                []string          `json:"tokens"`
++	Users                 map[string]string `json:"users"`
++	CertificateFile       string            `json:"certificateFile"`
++	KeyFile               string            `json:"keyFile"`
++	ALPN                  []string          `json:"alpn"`
++	CongestionControl     string            `json:"congestionControl"`
++	AuthenticationTimeout uint32            `json:"authenticationTimeout"`
++	MaxUDPRelayPacketSize uint32            `json:"maxUdpRelayPacketSize"`
++	Level                 uint32            `json:"level"`
++}
++
++func (c *TUICServerConfig) Build() (proto.Message, error) {
++	if len(c.Tokens)+len(c.Users) == 0 || c.CertificateFile == "" || c.KeyFile == "" {
++		return nil, errors.New("tuic: credentials and TLS certificate/key required")
++	}
++	for _, t := range c.Tokens {
++		if strings.TrimSpace(t) == "" {
++			return nil, errors.New("tuic: empty token")
++		}
++	}
++	for id, p := range c.Users {
++		if _, e := uuid.FromString(id); e != nil || p == "" {
++			return nil, errors.New("tuic: invalid user")
++		}
++	}
++	cc, e := tuicCC(c.CongestionControl)
++	if e != nil {
++		return nil, e
++	}
++	timeout := c.AuthenticationTimeout
++	if timeout == 0 {
++		timeout = 3000
++	}
++	size := c.MaxUDPRelayPacketSize
++	if size == 0 {
++		size = 1200
++	}
++	if size < 256 || size > 1252 {
++		return nil, errors.New("tuic: invalid UDP packet size")
++	}
++	return &T.Config{Tokens: c.Tokens, Users: c.Users, CertificateFile: c.CertificateFile, KeyFile: c.KeyFile, Alpn: c.ALPN, CongestionControl: cc, AuthenticationTimeout: timeout, MaxUdpRelayPacketSize: size, Level: c.Level}, nil
++}
+--- a/infra/conf/xray.go
++++ b/infra/conf/xray.go
+@@ -27,6 +27,7 @@
+ var (
+ 	inboundConfigLoader = NewJSONConfigLoader(ConfigCreatorCache{
+ 		"tunnel":        func() interface{} { return new(DokodemoConfig) },
++		"tuic":          func() interface{} { return new(TUICServerConfig) },
+ 		"naive":         func() interface{} { return new(NaiveServerConfig) },
+ 		"dokodemo-door": func() interface{} { return new(DokodemoConfig) },
+ 		"http":          func() interface{} { return new(HTTPServerConfig) },
+@@ -55,6 +56,7 @@
+ 		"vmess":        func() interface{} { return new(VMessOutboundConfig) },
+ 		"trojan":       func() interface{} { return new(TrojanClientConfig) },
+ 		"naive":        func() interface{} { return new(NaiveClientConfig) },
++		"tuic":         func() interface{} { return new(TUICClientConfig) },
+ 		"shadowsocksr": func() interface{} { return new(ShadowsocksRClientConfig) },
+ 		"anytls":       func() interface{} { return new(AnyTLSClientConfig) },
+ 		"hysteria":     func() interface{} { return new(HysteriaClientConfig) },
+--- a/main/distro/all/all.go
++++ b/main/distro/all/all.go
+@@ -48,6 +48,7 @@
+ 	_ "github.com/xtls/xray-core/proxy/shadowsocksr"
+ 	_ "github.com/xtls/xray-core/proxy/socks"
+ 	_ "github.com/xtls/xray-core/proxy/trojan"
++	_ "github.com/xtls/xray-core/proxy/tuic"
+ 	_ "github.com/xtls/xray-core/proxy/vless/inbound"
+ 	_ "github.com/xtls/xray-core/proxy/vless/outbound"
+ 	_ "github.com/xtls/xray-core/proxy/vmess/inbound"
+--- a/proxy/freedom/freedom.go
++++ b/proxy/freedom/freedom.go
+@@ -164,7 +164,7 @@
+ 	switch inbound.Name {
+ 	case "vless-reverse":
+ 		return defaultBlockAllRule
+-	case "vless", "vmess", "trojan", "hysteria", "wireguard", "naive":
++	case "vless", "vmess", "trojan", "hysteria", "wireguard", "naive", "tuic":
+ 		return defaultBlockPrivateRule
+ 	default:
+ 		if strings.HasPrefix(inbound.Name, "shadowsocks") {
+--- a/proxy/tuic/LICENSE.mihomo
++++ b/proxy/tuic/LICENSE.mihomo
+@@ -0,0 +1,674 @@
++                    GNU GENERAL PUBLIC LICENSE
++                       Version 3, 29 June 2007
++
++ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
++ Everyone is permitted to copy and distribute verbatim copies
++ of this license document, but changing it is not allowed.
++
++                            Preamble
++
++  The GNU General Public License is a free, copyleft license for
++software and other kinds of works.
++
++  The licenses for most software and other practical works are designed
++to take away your freedom to share and change the works.  By contrast,
++the GNU General Public License is intended to guarantee your freedom to
++share and change all versions of a program--to make sure it remains free
++software for all its users.  We, the Free Software Foundation, use the
++GNU General Public License for most of our software; it applies also to
++any other work released this way by its authors.  You can apply it to
++your programs, too.
++
++  When we speak of free software, we are referring to freedom, not
++price.  Our General Public Licenses are designed to make sure that you
++have the freedom to distribute copies of free software (and charge for
++them if you wish), that you receive source code or can get it if you
++want it, that you can change the software or use pieces of it in new
++free programs, and that you know you can do these things.
++
++  To protect your rights, we need to prevent others from denying you
++these rights or asking you to surrender the rights.  Therefore, you have
++certain responsibilities if you distribute copies of the software, or if
++you modify it: responsibilities to respect the freedom of others.
++
++  For example, if you distribute copies of such a program, whether
++gratis or for a fee, you must pass on to the recipients the same
++freedoms that you received.  You must make sure that they, too, receive
++or can get the source code.  And you must show them these terms so they
++know their rights.
++
++  Developers that use the GNU GPL protect your rights with two steps:
++(1) assert copyright on the software, and (2) offer you this License
++giving you legal permission to copy, distribute and/or modify it.
++
++  For the developers' and authors' protection, the GPL clearly explains
++that there is no warranty for this free software.  For both users' and
++authors' sake, the GPL requires that modified versions be marked as
++changed, so that their problems will not be attributed erroneously to
++authors of previous versions.
++
++  Some devices are designed to deny users access to install or run
++modified versions of the software inside them, although the manufacturer
++can do so.  This is fundamentally incompatible with the aim of
++protecting users' freedom to change the software.  The systematic
++pattern of such abuse occurs in the area of products for individuals to
++use, which is precisely where it is most unacceptable.  Therefore, we
++have designed this version of the GPL to prohibit the practice for those
++products.  If such problems arise substantially in other domains, we
++stand ready to extend this provision to those domains in future versions
++of the GPL, as needed to protect the freedom of users.
++
++  Finally, every program is threatened constantly by software patents.
++States should not allow patents to restrict development and use of
++software on general-purpose computers, but in those that do, we wish to
++avoid the special danger that patents applied to a free program could
++make it effectively proprietary.  To prevent this, the GPL assures that
++patents cannot be used to render the program non-free.
++
++  The precise terms and conditions for copying, distribution and
++modification follow.
++
++                       TERMS AND CONDITIONS
++
++  0. Definitions.
++
++  "This License" refers to version 3 of the GNU General Public License.
++
++  "Copyright" also means copyright-like laws that apply to other kinds of
++works, such as semiconductor masks.
++
++  "The Program" refers to any copyrightable work licensed under this
++License.  Each licensee is addressed as "you".  "Licensees" and
++"recipients" may be individuals or organizations.
++
++  To "modify" a work means to copy from or adapt all or part of the work
++in a fashion requiring copyright permission, other than the making of an
++exact copy.  The resulting work is called a "modified version" of the
++earlier work or a work "based on" the earlier work.
++
++  A "covered work" means either the unmodified Program or a work based
++on the Program.
++
++  To "propagate" a work means to do anything with it that, without
++permission, would make you directly or secondarily liable for
++infringement under applicable copyright law, except executing it on a
++computer or modifying a private copy.  Propagation includes copying,
++distribution (with or without modification), making available to the
++public, and in some countries other activities as well.
++
++  To "convey" a work means any kind of propagation that enables other
++parties to make or receive copies.  Mere interaction with a user through
++a computer network, with no transfer of a copy, is not conveying.
++
++  An interactive user interface displays "Appropriate Legal Notices"
++to the extent that it includes a convenient and prominently visible
++feature that (1) displays an appropriate copyright notice, and (2)
++tells the user that there is no warranty for the work (except to the
++extent that warranties are provided), that licensees may convey the
++work under this License, and how to view a copy of this License.  If
++the interface presents a list of user commands or options, such as a
++menu, a prominent item in the list meets this criterion.
++
++  1. Source Code.
++
++  The "source code" for a work means the preferred form of the work
++for making modifications to it.  "Object code" means any non-source
++form of a work.
++
++  A "Standard Interface" means an interface that either is an official
++standard defined by a recognized standards body, or, in the case of
++interfaces specified for a particular programming language, one that
++is widely used among developers working in that language.
++
++  The "System Libraries" of an executable work include anything, other
++than the work as a whole, that (a) is included in the normal form of
++packaging a Major Component, but which is not part of that Major
++Component, and (b) serves only to enable use of the work with that
++Major Component, or to implement a Standard Interface for which an
++implementation is available to the public in source code form.  A
++"Major Component", in this context, means a major essential component
++(kernel, window system, and so on) of the specific operating system
++(if any) on which the executable work runs, or a compiler used to
++produce the work, or an object code interpreter used to run it.
++
++  The "Corresponding Source" for a work in object code form means all
++the source code needed to generate, install, and (for an executable
++work) run the object code and to modify the work, including scripts to
++control those activities.  However, it does not include the work's
++System Libraries, or general-purpose tools or generally available free
++programs which are used unmodified in performing those activities but
++which are not part of the work.  For example, Corresponding Source
++includes interface definition files associated with source files for
++the work, and the source code for shared libraries and dynamically
++linked subprograms that the work is specifically designed to require,
++such as by intimate data communication or control flow between those
++subprograms and other parts of the work.
++
++  The Corresponding Source need not include anything that users
++can regenerate automatically from other parts of the Corresponding
++Source.
++
++  The Corresponding Source for a work in source code form is that
++same work.
++
++  2. Basic Permissions.
++
++  All rights granted under this License are granted for the term of
++copyright on the Program, and are irrevocable provided the stated
++conditions are met.  This License explicitly affirms your unlimited
++permission to run the unmodified Program.  The output from running a
++covered work is covered by this License only if the output, given its
++content, constitutes a covered work.  This License acknowledges your
++rights of fair use or other equivalent, as provided by copyright law.
++
++  You may make, run and propagate covered works that you do not
++convey, without conditions so long as your license otherwise remains
++in force.  You may convey covered works to others for the sole purpose
++of having them make modifications exclusively for you, or provide you
++with facilities for running those works, provided that you comply with
++the terms of this License in conveying all material for which you do
++not control copyright.  Those thus making or running the covered works
++for you must do so exclusively on your behalf, under your direction
++and control, on terms that prohibit them from making any copies of
++your copyrighted material outside their relationship with you.
++
++  Conveying under any other circumstances is permitted solely under
++the conditions stated below.  Sublicensing is not allowed; section 10
++makes it unnecessary.
++
++  3. Protecting Users' Legal Rights From Anti-Circumvention Law.
++
++  No covered work shall be deemed part of an effective technological
++measure under any applicable law fulfilling obligations under article
++11 of the WIPO copyright treaty adopted on 20 December 1996, or
++similar laws prohibiting or restricting circumvention of such
++measures.
++
++  When you convey a covered work, you waive any legal power to forbid
++circumvention of technological measures to the extent such circumvention
++is effected by exercising rights under this License with respect to
++the covered work, and you disclaim any intention to limit operation or
++modification of the work as a means of enforcing, against the work's
++users, your or third parties' legal rights to forbid circumvention of
++technological measures.
++
++  4. Conveying Verbatim Copies.
++
++  You may convey verbatim copies of the Program's source code as you
++receive it, in any medium, provided that you conspicuously and
++appropriately publish on each copy an appropriate copyright notice;
++keep intact all notices stating that this License and any
++non-permissive terms added in accord with section 7 apply to the code;
++keep intact all notices of the absence of any warranty; and give all
++recipients a copy of this License along with the Program.
++
++  You may charge any price or no price for each copy that you convey,
++and you may offer support or warranty protection for a fee.
++
++  5. Conveying Modified Source Versions.
++
++  You may convey a work based on the Program, or the modifications to
++produce it from the Program, in the form of source code under the
++terms of section 4, provided that you also meet all of these conditions:
++
++    a) The work must carry prominent notices stating that you modified
++    it, and giving a relevant date.
++
++    b) The work must carry prominent notices stating that it is
++    released under this License and any conditions added under section
++    7.  This requirement modifies the requirement in section 4 to
++    "keep intact all notices".
++
++    c) You must license the entire work, as a whole, under this
++    License to anyone who comes into possession of a copy.  This
++    License will therefore apply, along with any applicable section 7
++    additional terms, to the whole of the work, and all its parts,
++    regardless of how they are packaged.  This License gives no
++    permission to license the work in any other way, but it does not
++    invalidate such permission if you have separately received it.
++
++    d) If the work has interactive user interfaces, each must display
++    Appropriate Legal Notices; however, if the Program has interactive
++    interfaces that do not display Appropriate Legal Notices, your
++    work need not make them do so.
++
++  A compilation of a covered work with other separate and independent
++works, which are not by their nature extensions of the covered work,
++and which are not combined with it such as to form a larger program,
++in or on a volume of a storage or distribution medium, is called an
++"aggregate" if the compilation and its resulting copyright are not
++used to limit the access or legal rights of the compilation's users
++beyond what the individual works permit.  Inclusion of a covered work
++in an aggregate does not cause this License to apply to the other
++parts of the aggregate.
++
++  6. Conveying Non-Source Forms.
++
++  You may convey a covered work in object code form under the terms
++of sections 4 and 5, provided that you also convey the
++machine-readable Corresponding Source under the terms of this License,
++in one of these ways:
++
++    a) Convey the object code in, or embodied in, a physical product
++    (including a physical distribution medium), accompanied by the
++    Corresponding Source fixed on a durable physical medium
++    customarily used for software interchange.
++
++    b) Convey the object code in, or embodied in, a physical product
++    (including a physical distribution medium), accompanied by a
++    written offer, valid for at least three years and valid for as
++    long as you offer spare parts or customer support for that product
++    model, to give anyone who possesses the object code either (1) a
++    copy of the Corresponding Source for all the software in the
++    product that is covered by this License, on a durable physical
++    medium customarily used for software interchange, for a price no
++    more than your reasonable cost of physically performing this
++    conveying of source, or (2) access to copy the
++    Corresponding Source from a network server at no charge.
++
++    c) Convey individual copies of the object code with a copy of the
++    written offer to provide the Corresponding Source.  This
++    alternative is allowed only occasionally and noncommercially, and
++    only if you received the object code with such an offer, in accord
++    with subsection 6b.
++
++    d) Convey the object code by offering access from a designated
++    place (gratis or for a charge), and offer equivalent access to the
++    Corresponding Source in the same way through the same place at no
++    further charge.  You need not require recipients to copy the
++    Corresponding Source along with the object code.  If the place to
++    copy the object code is a network server, the Corresponding Source
++    may be on a different server (operated by you or a third party)
++    that supports equivalent copying facilities, provided you maintain
++    clear directions next to the object code saying where to find the
++    Corresponding Source.  Regardless of what server hosts the
++    Corresponding Source, you remain obligated to ensure that it is
++    available for as long as needed to satisfy these requirements.
++
++    e) Convey the object code using peer-to-peer transmission, provided
++    you inform other peers where the object code and Corresponding
++    Source of the work are being offered to the general public at no
++    charge under subsection 6d.
++
++  A separable portion of the object code, whose source code is excluded
++from the Corresponding Source as a System Library, need not be
++included in conveying the object code work.
++
++  A "User Product" is either (1) a "consumer product", which means any
++tangible personal property which is normally used for personal, family,
++or household purposes, or (2) anything designed or sold for incorporation
++into a dwelling.  In determining whether a product is a consumer product,
++doubtful cases shall be resolved in favor of coverage.  For a particular
++product received by a particular user, "normally used" refers to a
++typical or common use of that class of product, regardless of the status
++of the particular user or of the way in which the particular user
++actually uses, or expects or is expected to use, the product.  A product
++is a consumer product regardless of whether the product has substantial
++commercial, industrial or non-consumer uses, unless such uses represent
++the only significant mode of use of the product.
++
++  "Installation Information" for a User Product means any methods,
++procedures, authorization keys, or other information required to install
++and execute modified versions of a covered work in that User Product from
++a modified version of its Corresponding Source.  The information must
++suffice to ensure that the continued functioning of the modified object
++code is in no case prevented or interfered with solely because
++modification has been made.
++
++  If you convey an object code work under this section in, or with, or
++specifically for use in, a User Product, and the conveying occurs as
++part of a transaction in which the right of possession and use of the
++User Product is transferred to the recipient in perpetuity or for a
++fixed term (regardless of how the transaction is characterized), the
++Corresponding Source conveyed under this section must be accompanied
++by the Installation Information.  But this requirement does not apply
++if neither you nor any third party retains the ability to install
++modified object code on the User Product (for example, the work has
++been installed in ROM).
++
++  The requirement to provide Installation Information does not include a
++requirement to continue to provide support service, warranty, or updates
++for a work that has been modified or installed by the recipient, or for
++the User Product in which it has been modified or installed.  Access to a
++network may be denied when the modification itself materially and
++adversely affects the operation of the network or violates the rules and
++protocols for communication across the network.
++
++  Corresponding Source conveyed, and Installation Information provided,
++in accord with this section must be in a format that is publicly
++documented (and with an implementation available to the public in
++source code form), and must require no special password or key for
++unpacking, reading or copying.
++
++  7. Additional Terms.
++
++  "Additional permissions" are terms that supplement the terms of this
++License by making exceptions from one or more of its conditions.
++Additional permissions that are applicable to the entire Program shall
++be treated as though they were included in this License, to the extent
++that they are valid under applicable law.  If additional permissions
++apply only to part of the Program, that part may be used separately
++under those permissions, but the entire Program remains governed by
++this License without regard to the additional permissions.
++
++  When you convey a copy of a covered work, you may at your option
++remove any additional permissions from that copy, or from any part of
++it.  (Additional permissions may be written to require their own
++removal in certain cases when you modify the work.)  You may place
++additional permissions on material, added by you to a covered work,
++for which you have or can give appropriate copyright permission.
++
++  Notwithstanding any other provision of this License, for material you
++add to a covered work, you may (if authorized by the copyright holders of
++that material) supplement the terms of this License with terms:
++
++    a) Disclaiming warranty or limiting liability differently from the
++    terms of sections 15 and 16 of this License; or
++
++    b) Requiring preservation of specified reasonable legal notices or
++    author attributions in that material or in the Appropriate Legal
++    Notices displayed by works containing it; or
++
++    c) Prohibiting misrepresentation of the origin of that material, or
++    requiring that modified versions of such material be marked in
++    reasonable ways as different from the original version; or
++
++    d) Limiting the use for publicity purposes of names of licensors or
++    authors of the material; or
++
++    e) Declining to grant rights under trademark law for use of some
++    trade names, trademarks, or service marks; or
++
++    f) Requiring indemnification of licensors and authors of that
++    material by anyone who conveys the material (or modified versions of
++    it) with contractual assumptions of liability to the recipient, for
++    any liability that these contractual assumptions directly impose on
++    those licensors and authors.
++
++  All other non-permissive additional terms are considered "further
++restrictions" within the meaning of section 10.  If the Program as you
++received it, or any part of it, contains a notice stating that it is
++governed by this License along with a term that is a further
++restriction, you may remove that term.  If a license document contains
++a further restriction but permits relicensing or conveying under this
++License, you may add to a covered work material governed by the terms
++of that license document, provided that the further restriction does
++not survive such relicensing or conveying.
++
++  If you add terms to a covered work in accord with this section, you
++must place, in the relevant source files, a statement of the
++additional terms that apply to those files, or a notice indicating
++where to find the applicable terms.
++
++  Additional terms, permissive or non-permissive, may be stated in the
++form of a separately written license, or stated as exceptions;
++the above requirements apply either way.
++
++  8. Termination.
++
++  You may not propagate or modify a covered work except as expressly
++provided under this License.  Any attempt otherwise to propagate or
++modify it is void, and will automatically terminate your rights under
++this License (including any patent licenses granted under the third
++paragraph of section 11).
++
++  However, if you cease all violation of this License, then your
++license from a particular copyright holder is reinstated (a)
++provisionally, unless and until the copyright holder explicitly and
++finally terminates your license, and (b) permanently, if the copyright
++holder fails to notify you of the violation by some reasonable means
++prior to 60 days after the cessation.
++
++  Moreover, your license from a particular copyright holder is
++reinstated permanently if the copyright holder notifies you of the
++violation by some reasonable means, this is the first time you have
++received notice of violation of this License (for any work) from that
++copyright holder, and you cure the violation prior to 30 days after
++your receipt of the notice.
++
++  Termination of your rights under this section does not terminate the
++licenses of parties who have received copies or rights from you under
++this License.  If your rights have been terminated and not permanently
++reinstated, you do not qualify to receive new licenses for the same
++material under section 10.
++
++  9. Acceptance Not Required for Having Copies.
++
++  You are not required to accept this License in order to receive or
++run a copy of the Program.  Ancillary propagation of a covered work
++occurring solely as a consequence of using peer-to-peer transmission
++to receive a copy likewise does not require acceptance.  However,
++nothing other than this License grants you permission to propagate or
++modify any covered work.  These actions infringe copyright if you do
++not accept this License.  Therefore, by modifying or propagating a
++covered work, you indicate your acceptance of this License to do so.
++
++  10. Automatic Licensing of Downstream Recipients.
++
++  Each time you convey a covered work, the recipient automatically
++receives a license from the original licensors, to run, modify and
++propagate that work, subject to this License.  You are not responsible
++for enforcing compliance by third parties with this License.
++
++  An "entity transaction" is a transaction transferring control of an
++organization, or substantially all assets of one, or subdividing an
++organization, or merging organizations.  If propagation of a covered
++work results from an entity transaction, each party to that
++transaction who receives a copy of the work also receives whatever
++licenses to the work the party's predecessor in interest had or could
++give under the previous paragraph, plus a right to possession of the
++Corresponding Source of the work from the predecessor in interest, if
++the predecessor has it or can get it with reasonable efforts.
++
++  You may not impose any further restrictions on the exercise of the
++rights granted or affirmed under this License.  For example, you may
++not impose a license fee, royalty, or other charge for exercise of
++rights granted under this License, and you may not initiate litigation
++(including a cross-claim or counterclaim in a lawsuit) alleging that
++any patent claim is infringed by making, using, selling, offering for
++sale, or importing the Program or any portion of it.
++
++  11. Patents.
++
++  A "contributor" is a copyright holder who authorizes use under this
++License of the Program or a work on which the Program is based.  The
++work thus licensed is called the contributor's "contributor version".
++
++  A contributor's "essential patent claims" are all patent claims
++owned or controlled by the contributor, whether already acquired or
++hereafter acquired, that would be infringed by some manner, permitted
++by this License, of making, using, or selling its contributor version,
++but do not include claims that would be infringed only as a
++consequence of further modification of the contributor version.  For
++purposes of this definition, "control" includes the right to grant
++patent sublicenses in a manner consistent with the requirements of
++this License.
++
++  Each contributor grants you a non-exclusive, worldwide, royalty-free
++patent license under the contributor's essential patent claims, to
++make, use, sell, offer for sale, import and otherwise run, modify and
++propagate the contents of its contributor version.
++
++  In the following three paragraphs, a "patent license" is any express
++agreement or commitment, however denominated, not to enforce a patent
++(such as an express permission to practice a patent or covenant not to
++sue for patent infringement).  To "grant" such a patent license to a
++party means to make such an agreement or commitment not to enforce a
++patent against the party.
++
++  If you convey a covered work, knowingly relying on a patent license,
++and the Corresponding Source of the work is not available for anyone
++to copy, free of charge and under the terms of this License, through a
++publicly available network server or other readily accessible means,
++then you must either (1) cause the Corresponding Source to be so
++available, or (2) arrange to deprive yourself of the benefit of the
++patent license for this particular work, or (3) arrange, in a manner
++consistent with the requirements of this License, to extend the patent
++license to downstream recipients.  "Knowingly relying" means you have
++actual knowledge that, but for the patent license, your conveying the
++covered work in a country, or your recipient's use of the covered work
++in a country, would infringe one or more identifiable patents in that
++country that you have reason to believe are valid.
++
++  If, pursuant to or in connection with a single transaction or
++arrangement, you convey, or propagate by procuring conveyance of, a
++covered work, and grant a patent license to some of the parties
++receiving the covered work authorizing them to use, propagate, modify
++or convey a specific copy of the covered work, then the patent license
++you grant is automatically extended to all recipients of the covered
++work and works based on it.
++
++  A patent license is "discriminatory" if it does not include within
++the scope of its coverage, prohibits the exercise of, or is
++conditioned on the non-exercise of one or more of the rights that are
++specifically granted under this License.  You may not convey a covered
++work if you are a party to an arrangement with a third party that is
++in the business of distributing software, under which you make payment
++to the third party based on the extent of your activity of conveying
++the work, and under which the third party grants, to any of the
++parties who would receive the covered work from you, a discriminatory
++patent license (a) in connection with copies of the covered work
++conveyed by you (or copies made from those copies), or (b) primarily
++for and in connection with specific products or compilations that
++contain the covered work, unless you entered into that arrangement,
++or that patent license was granted, prior to 28 March 2007.
++
++  Nothing in this License shall be construed as excluding or limiting
++any implied license or other defenses to infringement that may
++otherwise be available to you under applicable patent law.
++
++  12. No Surrender of Others' Freedom.
++
++  If conditions are imposed on you (whether by court order, agreement or
++otherwise) that contradict the conditions of this License, they do not
++excuse you from the conditions of this License.  If you cannot convey a
++covered work so as to satisfy simultaneously your obligations under this
++License and any other pertinent obligations, then as a consequence you may
++not convey it at all.  For example, if you agree to terms that obligate you
++to collect a royalty for further conveying from those to whom you convey
++the Program, the only way you could satisfy both those terms and this
++License would be to refrain entirely from conveying the Program.
++
++  13. Use with the GNU Affero General Public License.
++
++  Notwithstanding any other provision of this License, you have
++permission to link or combine any covered work with a work licensed
++under version 3 of the GNU Affero General Public License into a single
++combined work, and to convey the resulting work.  The terms of this
++License will continue to apply to the part which is the covered work,
++but the special requirements of the GNU Affero General Public License,
++section 13, concerning interaction through a network will apply to the
++combination as such.
++
++  14. Revised Versions of this License.
++
++  The Free Software Foundation may publish revised and/or new versions of
++the GNU General Public License from time to time.  Such new versions will
++be similar in spirit to the present version, but may differ in detail to
++address new problems or concerns.
++
++  Each version is given a distinguishing version number.  If the
++Program specifies that a certain numbered version of the GNU General
++Public License "or any later version" applies to it, you have the
++option of following the terms and conditions either of that numbered
++version or of any later version published by the Free Software
++Foundation.  If the Program does not specify a version number of the
++GNU General Public License, you may choose any version ever published
++by the Free Software Foundation.
++
++  If the Program specifies that a proxy can decide which future
++versions of the GNU General Public License can be used, that proxy's
++public statement of acceptance of a version permanently authorizes you
++to choose that version for the Program.
++
++  Later license versions may give you additional or different
++permissions.  However, no additional obligations are imposed on any
++author or copyright holder as a result of your choosing to follow a
++later version.
++
++  15. Disclaimer of Warranty.
++
++  THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
++APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
++HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY
++OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
++THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
++IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
++ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
++
++  16. Limitation of Liability.
++
++  IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
++WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS
++THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY
++GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE
++USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF
++DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD
++PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS),
++EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
++SUCH DAMAGES.
++
++  17. Interpretation of Sections 15 and 16.
++
++  If the disclaimer of warranty and limitation of liability provided
++above cannot be given local legal effect according to their terms,
++reviewing courts shall apply local law that most closely approximates
++an absolute waiver of all civil liability in connection with the
++Program, unless a warranty or assumption of liability accompanies a
++copy of the Program in return for a fee.
++
++                     END OF TERMS AND CONDITIONS
++
++            How to Apply These Terms to Your New Programs
++
++  If you develop a new program, and you want it to be of the greatest
++possible use to the public, the best way to achieve this is to make it
++free software which everyone can redistribute and change under these terms.
++
++  To do so, attach the following notices to the program.  It is safest
++to attach them to the start of each source file to most effectively
++state the exclusion of warranty; and each file should have at least
++the "copyright" line and a pointer to where the full notice is found.
++
++    <one line to give the program's name and a brief idea of what it does.>
++    Copyright (C) <year>  <name of author>
++
++    This program is free software: you can redistribute it and/or modify
++    it under the terms of the GNU General Public License as published by
++    the Free Software Foundation, either version 3 of the License, or
++    (at your option) any later version.
++
++    This program is distributed in the hope that it will be useful,
++    but WITHOUT ANY WARRANTY; without even the implied warranty of
++    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++    GNU General Public License for more details.
++
++    You should have received a copy of the GNU General Public License
++    along with this program.  If not, see <https://www.gnu.org/licenses/>.
++
++Also add information on how to contact you by electronic and paper mail.
++
++  If the program does terminal interaction, make it output a short
++notice like this when it starts in an interactive mode:
++
++    <program>  Copyright (C) <year>  <name of author>
++    This program comes with ABSOLUTELY NO WARRANTY; for details type `show w'.
++    This is free software, and you are welcome to redistribute it
++    under certain conditions; type `show c' for details.
++
++The hypothetical commands `show w' and `show c' should show the appropriate
++parts of the General Public License.  Of course, your program's commands
++might be different; for a GUI interface, you would use an "about box".
++
++  You should also get your employer (if you work as a programmer) or school,
++if any, to sign a "copyright disclaimer" for the program, if necessary.
++For more information on this, and how to apply and follow the GNU GPL, see
++<https://www.gnu.org/licenses/>.
++
++  The GNU General Public License does not permit incorporating your program
++into proprietary programs.  If your program is a subroutine library, you
++may consider it more useful to permit linking proprietary applications with
++the library.  If this is what you want to do, use the GNU Lesser General
++Public License instead of this License.  But first, please read
++<https://www.gnu.org/licenses/why-not-lgpl.html>.
+--- a/proxy/tuic/client.go
++++ b/proxy/tuic/client.go
+@@ -0,0 +1,230 @@
++package tuic
++
++import (
++	"context"
++	"crypto/x509"
++	stderrors "errors"
++	"github.com/gofrs/uuid/v5"
++	C "github.com/metacubex/mihomo/constant"
++	T "github.com/metacubex/mihomo/transport/tuic"
++	TC "github.com/metacubex/mihomo/transport/tuic/common"
++	Q "github.com/metacubex/quic-go"
++	TLS "github.com/metacubex/tls"
++	"github.com/xtls/xray-core/common"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/session"
++	"github.com/xtls/xray-core/core"
++	"github.com/xtls/xray-core/features/policy"
++	"github.com/xtls/xray-core/transport"
++	"github.com/xtls/xray-core/transport/internet"
++	"net/netip"
++	"os"
++	"sync"
++	"time"
++)
++
++type Client struct {
++	config      *ClientConfig
++	tls         *TLS.Config
++	policy      policy.Session
++	mu          sync.Mutex
++	clients     []T.Client
++	udpClients  map[T.Client]bool
++	closed      bool
++	connections map[*Q.Conn]struct{}
++}
++
++func NewClient(ctx context.Context, c *ClientConfig) (*Client, error) {
++	if c.Address == nil || c.Port == 0 || c.Port > 65535 {
++		return nil, errors.New("tuic: invalid server")
++	}
++	name := c.ServerName
++	if name == "" {
++		name = c.Address.AsAddress().String()
++	}
++	tls := &TLS.Config{ServerName: name, InsecureSkipVerify: c.AllowInsecure, NextProtos: c.Alpn, MinVersion: TLS.VersionTLS13}
++	if len(tls.NextProtos) == 0 {
++		tls.NextProtos = []string{"h3"}
++	}
++	if c.CertificateFile != "" {
++		pem, err := os.ReadFile(c.CertificateFile)
++		if err != nil {
++			return nil, err
++		}
++		roots, err := x509.SystemCertPool()
++		if err != nil {
++			roots = x509.NewCertPool()
++		}
++		if !roots.AppendCertsFromPEM(pem) {
++			return nil, errors.New("tuic: invalid CA")
++		}
++		tls.RootCAs = roots
++	}
++	return &Client{config: c, tls: tls, policy: core.MustFromContext(ctx).GetFeature(policy.ManagerType()).(policy.Manager).ForLevel(c.Level)}, nil
++}
++func (c *Client) Close() error {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	c.closed = true
++	for conn := range c.connections {
++		conn.CloseWithError(0, "outbound closed")
++	}
++	for _, v := range c.clients {
++		v.Close()
++	}
++	c.clients = nil
++	return nil
++}
++func (c *Client) newClient(dialer internet.Dialer, udp bool, force bool) (T.Client, error) {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	if c.closed {
++		return nil, errors.New("tuic: closed")
++	}
++	active := c.clients[:0]
++	for _, v := range c.clients {
++		if v.OpenStreams() == 0 && !v.LastVisited().IsZero() && time.Since(v.LastVisited()) > 10*time.Minute {
++			v.Close()
++			delete(c.udpClients, v)
++		} else {
++			active = append(active, v)
++		}
++	}
++	c.clients = active
++	for _, v := range c.clients {
++		if !force && c.udpClients[v] == udp && v.OpenStreams()+1 < int64(c.config.MaxOpenStreams) {
++			v.SetLastVisited(time.Now())
++			return v, nil
++		}
++	}
++	if c.udpClients == nil {
++		c.udpClients = make(map[T.Client]bool)
++	}
++	conf := c.config
++	dial := func(ctx context.Context) (*Q.Conn, error) {
++		raw, err := dialer.Dial(ctx, net.UDPDestination(conf.Address.AsAddress(), net.Port(conf.Port)))
++		if err != nil {
++			return nil, err
++		}
++		pc := &connectedPacketConn{Conn: raw}
++		qc := &Q.Config{EnableDatagrams: true, MaxIncomingStreams: 1024, MaxIncomingUniStreams: 1024, KeepAlivePeriod: time.Duration(conf.HeartbeatInterval) * time.Millisecond, MaxDatagramFrameSize: 1400, InitialStreamReceiveWindow: TC.DefaultStreamReceiveWindow / 10, MaxStreamReceiveWindow: TC.DefaultStreamReceiveWindow, InitialConnectionReceiveWindow: TC.DefaultConnectionReceiveWindow / 10, MaxConnectionReceiveWindow: TC.DefaultConnectionReceiveWindow}
++		tr := &Q.Transport{Conn: pc}
++		var conn *Q.Conn
++		if conf.ReduceRtt {
++			conn, err = tr.DialEarly(ctx, raw.RemoteAddr(), c.tls, qc)
++		} else {
++			conn, err = tr.Dial(ctx, raw.RemoteAddr(), c.tls, qc)
++		}
++		if err != nil {
++			tr.Close()
++			raw.Close()
++			return nil, err
++		}
++		c.mu.Lock()
++		if c.closed {
++			c.mu.Unlock()
++			conn.CloseWithError(0, "closed")
++			tr.Close()
++			raw.Close()
++			return nil, errors.New("tuic: closed")
++		}
++		if c.connections == nil {
++			c.connections = make(map[*Q.Conn]struct{})
++		}
++		c.connections[conn] = struct{}{}
++		c.mu.Unlock()
++		TC.SetCongestionController(conn, conf.CongestionControl, 32, "")
++		go func() {
++			<-conn.Context().Done()
++			c.mu.Lock()
++			delete(c.connections, conn)
++			c.mu.Unlock()
++			tr.Close()
++			raw.Close()
++		}()
++		return conn, nil
++	}
++	mode := T.NATIVE
++	if conf.UdpRelayMode == "quic" {
++		mode = T.QUIC
++	}
++	var v T.Client
++	if conf.Version == 4 {
++		v = T.NewClientV4(&T.ClientOptionV4{Token: T.GenTKN(conf.Token), UdpRelayMode: mode, RequestTimeout: time.Duration(conf.RequestTimeout) * time.Millisecond, FastOpen: conf.FastOpen, MaxOpenStreams: int64(conf.MaxOpenStreams), MaxUdpRelayPacketSize: int(conf.MaxUdpRelayPacketSize)}, udp, dial)
++	} else {
++		id, _ := uuid.FromString(conf.Uuid)
++		v = T.NewClientV5(&T.ClientOptionV5{Uuid: id, Password: conf.Password, UdpRelayMode: mode, MaxOpenStreams: int64(conf.MaxOpenStreams), MaxUdpRelayPacketSize: int(conf.MaxUdpRelayPacketSize)}, udp, dial)
++	}
++	v.SetLastVisited(time.Now())
++	c.clients = append(c.clients, v)
++	c.udpClients[v] = udp
++	return v, nil
++}
++func metadata(d net.Destination) *C.Metadata {
++	m := &C.Metadata{DstPort: uint16(d.Port)}
++	if d.Address.Family().IsDomain() {
++		m.Host = d.Address.Domain()
++	} else {
++		m.DstIP, _ = netip.AddrFromSlice(d.Address.IP())
++	}
++	return m
++}
++func (c *Client) Process(ctx context.Context, link *transport.Link, dialer internet.Dialer) error {
++	obs := session.OutboundsFromContext(ctx)
++	if len(obs) == 0 {
++		return errors.New("tuic: missing target")
++	}
++	ob := obs[len(obs)-1]
++	target := ob.Target
++	if !target.IsValid() || (target.Network != net.Network_TCP && target.Network != net.Network_UDP) {
++		return errors.New("tuic: invalid target")
++	}
++	ob.Name = "tuic"
++	ob.CanSpliceCopy = 3
++	v, err := c.newClient(dialer, target.Network == net.Network_UDP, false)
++	if err != nil {
++		return err
++	}
++	var reader buf.Reader
++	var writer buf.Writer
++	var stopIO func()
++	if target.Network == net.Network_TCP {
++		conn, e := v.DialContext(ctx, metadata(target))
++		if stderrors.Is(e, T.TooManyOpenStreams) {
++			v, e = c.newClient(dialer, false, true)
++			if e == nil {
++				conn, e = v.DialContext(ctx, metadata(target))
++			}
++		}
++		if e != nil {
++			return e
++		}
++		defer conn.Close()
++		stopIO = func() { conn.SetDeadline(time.Now()) }
++		reader = buf.NewReader(conn)
++		writer = buf.NewWriter(conn)
++	} else {
++		pc, e := v.ListenPacket(ctx, metadata(target))
++		if stderrors.Is(e, T.TooManyOpenStreams) {
++			v, e = c.newClient(dialer, true, true)
++			if e == nil {
++				pc, e = v.ListenPacket(ctx, metadata(target))
++			}
++		}
++		if e != nil {
++			return e
++		}
++		defer pc.Close()
++		stopIO = func() { pc.SetReadDeadline(time.Now()) }
++		reader = &packetReader{conn: pc}
++		writer = &packetWriter{conn: pc, destination: target}
++	}
++	return relay(ctx, link.Reader, writer, reader, link.Writer, stopIO, c.policy)
++}
++func init() {
++	common.Must(common.RegisterConfig((*ClientConfig)(nil), func(ctx context.Context, c interface{}) (interface{}, error) {
++		return NewClient(ctx, c.(*ClientConfig))
++	}))
++}
+--- a/proxy/tuic/config.pb.go
++++ b/proxy/tuic/config.pb.go
+@@ -0,0 +1,290 @@
++// Code generated by protoc-gen-go. DO NOT EDIT.
++// versions:
++// 	protoc-gen-go v1.36.12
++// 	protoc        v3.21.12
++// source: proxy/tuic/config.proto
++
++package tuic
++
++import (
++	net "github.com/xtls/xray-core/common/net"
++	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
++	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
++	reflect "reflect"
++	sync "sync"
++	unsafe "unsafe"
++)
++
++const (
++	// Verify that this generated code is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
++	// Verify that runtime/protoimpl is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
++)
++
++type ClientConfig struct {
++	state                 protoimpl.MessageState `protogen:"open.v1"`
++	Address               *net.IPOrDomain        `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
++	Port                  uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
++	Version               uint32                 `protobuf:"varint,3,opt,name=version,proto3" json:"version,omitempty"`
++	Token                 string                 `protobuf:"bytes,4,opt,name=token,proto3" json:"token,omitempty"`
++	Uuid                  string                 `protobuf:"bytes,5,opt,name=uuid,proto3" json:"uuid,omitempty"`
++	Password              string                 `protobuf:"bytes,6,opt,name=password,proto3" json:"password,omitempty"`
++	ServerName            string                 `protobuf:"bytes,7,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`
++	CertificateFile       string                 `protobuf:"bytes,8,opt,name=certificate_file,json=certificateFile,proto3" json:"certificate_file,omitempty"`
++	AllowInsecure         bool                   `protobuf:"varint,9,opt,name=allow_insecure,json=allowInsecure,proto3" json:"allow_insecure,omitempty"`
++	Alpn                  []string               `protobuf:"bytes,10,rep,name=alpn,proto3" json:"alpn,omitempty"`
++	CongestionControl     string                 `protobuf:"bytes,11,opt,name=congestion_control,json=congestionControl,proto3" json:"congestion_control,omitempty"`
++	UdpRelayMode          string                 `protobuf:"bytes,12,opt,name=udp_relay_mode,json=udpRelayMode,proto3" json:"udp_relay_mode,omitempty"`
++	ReduceRtt             bool                   `protobuf:"varint,13,opt,name=reduce_rtt,json=reduceRtt,proto3" json:"reduce_rtt,omitempty"`
++	FastOpen              bool                   `protobuf:"varint,14,opt,name=fast_open,json=fastOpen,proto3" json:"fast_open,omitempty"`
++	HeartbeatInterval     uint32                 `protobuf:"varint,15,opt,name=heartbeat_interval,json=heartbeatInterval,proto3" json:"heartbeat_interval,omitempty"`
++	RequestTimeout        uint32                 `protobuf:"varint,16,opt,name=request_timeout,json=requestTimeout,proto3" json:"request_timeout,omitempty"`
++	MaxOpenStreams        uint32                 `protobuf:"varint,17,opt,name=max_open_streams,json=maxOpenStreams,proto3" json:"max_open_streams,omitempty"`
++	MaxUdpRelayPacketSize uint32                 `protobuf:"varint,18,opt,name=max_udp_relay_packet_size,json=maxUdpRelayPacketSize,proto3" json:"max_udp_relay_packet_size,omitempty"`
++	Level                 uint32                 `protobuf:"varint,19,opt,name=level,proto3" json:"level,omitempty"`
++	unknownFields         protoimpl.UnknownFields
++	sizeCache             protoimpl.SizeCache
++}
++
++func (x *ClientConfig) Reset() {
++	*x = ClientConfig{}
++	mi := &file_proxy_tuic_config_proto_msgTypes[0]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *ClientConfig) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*ClientConfig) ProtoMessage() {}
++
++func (x *ClientConfig) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_tuic_config_proto_msgTypes[0]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use ClientConfig.ProtoReflect.Descriptor instead.
++func (*ClientConfig) Descriptor() ([]byte, []int) {
++	return file_proxy_tuic_config_proto_rawDescGZIP(), []int{0}
++}
++
++func (x *ClientConfig) GetAddress() *net.IPOrDomain {
++	if x != nil {
++		return x.Address
++	}
++	return nil
++}
++
++func (x *ClientConfig) GetPort() uint32 {
++	if x != nil {
++		return x.Port
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetVersion() uint32 {
++	if x != nil {
++		return x.Version
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetToken() string {
++	if x != nil {
++		return x.Token
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetUuid() string {
++	if x != nil {
++		return x.Uuid
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetPassword() string {
++	if x != nil {
++		return x.Password
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetServerName() string {
++	if x != nil {
++		return x.ServerName
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetCertificateFile() string {
++	if x != nil {
++		return x.CertificateFile
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetAllowInsecure() bool {
++	if x != nil {
++		return x.AllowInsecure
++	}
++	return false
++}
++
++func (x *ClientConfig) GetAlpn() []string {
++	if x != nil {
++		return x.Alpn
++	}
++	return nil
++}
++
++func (x *ClientConfig) GetCongestionControl() string {
++	if x != nil {
++		return x.CongestionControl
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetUdpRelayMode() string {
++	if x != nil {
++		return x.UdpRelayMode
++	}
++	return ""
++}
++
++func (x *ClientConfig) GetReduceRtt() bool {
++	if x != nil {
++		return x.ReduceRtt
++	}
++	return false
++}
++
++func (x *ClientConfig) GetFastOpen() bool {
++	if x != nil {
++		return x.FastOpen
++	}
++	return false
++}
++
++func (x *ClientConfig) GetHeartbeatInterval() uint32 {
++	if x != nil {
++		return x.HeartbeatInterval
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetRequestTimeout() uint32 {
++	if x != nil {
++		return x.RequestTimeout
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetMaxOpenStreams() uint32 {
++	if x != nil {
++		return x.MaxOpenStreams
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetMaxUdpRelayPacketSize() uint32 {
++	if x != nil {
++		return x.MaxUdpRelayPacketSize
++	}
++	return 0
++}
++
++func (x *ClientConfig) GetLevel() uint32 {
++	if x != nil {
++		return x.Level
++	}
++	return 0
++}
++
++var File_proxy_tuic_config_proto protoreflect.FileDescriptor
++
++const file_proxy_tuic_config_proto_rawDesc = "" +
++	"\n" +
++	"\x17proxy/tuic/config.proto\x12\x0fxray.proxy.tuic\x1a\x18common/net/address.proto\"\xa3\x05\n" +
++	"\fClientConfig\x125\n" +
++	"\aaddress\x18\x01 \x01(\v2\x1b.xray.common.net.IPOrDomainR\aaddress\x12\x12\n" +
++	"\x04port\x18\x02 \x01(\rR\x04port\x12\x18\n" +
++	"\aversion\x18\x03 \x01(\rR\aversion\x12\x14\n" +
++	"\x05token\x18\x04 \x01(\tR\x05token\x12\x12\n" +
++	"\x04uuid\x18\x05 \x01(\tR\x04uuid\x12\x1a\n" +
++	"\bpassword\x18\x06 \x01(\tR\bpassword\x12\x1f\n" +
++	"\vserver_name\x18\a \x01(\tR\n" +
++	"serverName\x12)\n" +
++	"\x10certificate_file\x18\b \x01(\tR\x0fcertificateFile\x12%\n" +
++	"\x0eallow_insecure\x18\t \x01(\bR\rallowInsecure\x12\x12\n" +
++	"\x04alpn\x18\n" +
++	" \x03(\tR\x04alpn\x12-\n" +
++	"\x12congestion_control\x18\v \x01(\tR\x11congestionControl\x12$\n" +
++	"\x0eudp_relay_mode\x18\f \x01(\tR\fudpRelayMode\x12\x1d\n" +
++	"\n" +
++	"reduce_rtt\x18\r \x01(\bR\treduceRtt\x12\x1b\n" +
++	"\tfast_open\x18\x0e \x01(\bR\bfastOpen\x12-\n" +
++	"\x12heartbeat_interval\x18\x0f \x01(\rR\x11heartbeatInterval\x12'\n" +
++	"\x0frequest_timeout\x18\x10 \x01(\rR\x0erequestTimeout\x12(\n" +
++	"\x10max_open_streams\x18\x11 \x01(\rR\x0emaxOpenStreams\x128\n" +
++	"\x19max_udp_relay_packet_size\x18\x12 \x01(\rR\x15maxUdpRelayPacketSize\x12\x14\n" +
++	"\x05level\x18\x13 \x01(\rR\x05levelB&Z$github.com/xtls/xray-core/proxy/tuicb\x06proto3"
++
++var (
++	file_proxy_tuic_config_proto_rawDescOnce sync.Once
++	file_proxy_tuic_config_proto_rawDescData []byte
++)
++
++func file_proxy_tuic_config_proto_rawDescGZIP() []byte {
++	file_proxy_tuic_config_proto_rawDescOnce.Do(func() {
++		file_proxy_tuic_config_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proxy_tuic_config_proto_rawDesc), len(file_proxy_tuic_config_proto_rawDesc)))
++	})
++	return file_proxy_tuic_config_proto_rawDescData
++}
++
++var file_proxy_tuic_config_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
++var file_proxy_tuic_config_proto_goTypes = []any{
++	(*ClientConfig)(nil),   // 0: xray.proxy.tuic.ClientConfig
++	(*net.IPOrDomain)(nil), // 1: xray.common.net.IPOrDomain
++}
++var file_proxy_tuic_config_proto_depIdxs = []int32{
++	1, // 0: xray.proxy.tuic.ClientConfig.address:type_name -> xray.common.net.IPOrDomain
++	1, // [1:1] is the sub-list for method output_type
++	1, // [1:1] is the sub-list for method input_type
++	1, // [1:1] is the sub-list for extension type_name
++	1, // [1:1] is the sub-list for extension extendee
++	0, // [0:1] is the sub-list for field type_name
++}
++
++func init() { file_proxy_tuic_config_proto_init() }
++func file_proxy_tuic_config_proto_init() {
++	if File_proxy_tuic_config_proto != nil {
++		return
++	}
++	type x struct{}
++	out := protoimpl.TypeBuilder{
++		File: protoimpl.DescBuilder{
++			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
++			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proxy_tuic_config_proto_rawDesc), len(file_proxy_tuic_config_proto_rawDesc)),
++			NumEnums:      0,
++			NumMessages:   1,
++			NumExtensions: 0,
++			NumServices:   0,
++		},
++		GoTypes:           file_proxy_tuic_config_proto_goTypes,
++		DependencyIndexes: file_proxy_tuic_config_proto_depIdxs,
++		MessageInfos:      file_proxy_tuic_config_proto_msgTypes,
++	}.Build()
++	File_proxy_tuic_config_proto = out.File
++	file_proxy_tuic_config_proto_goTypes = nil
++	file_proxy_tuic_config_proto_depIdxs = nil
++}
+--- a/proxy/tuic/config.proto
++++ b/proxy/tuic/config.proto
+@@ -0,0 +1,25 @@
++syntax = "proto3";
++package xray.proxy.tuic;
++option go_package = "github.com/xtls/xray-core/proxy/tuic";
++import "common/net/address.proto";
++message ClientConfig {
++ xray.common.net.IPOrDomain address = 1;
++ uint32 port = 2;
++ uint32 version = 3;
++ string token = 4;
++ string uuid = 5;
++ string password = 6;
++ string server_name = 7;
++ string certificate_file = 8;
++ bool allow_insecure = 9;
++ repeated string alpn = 10;
++ string congestion_control = 11;
++ string udp_relay_mode = 12;
++ bool reduce_rtt = 13;
++ bool fast_open = 14;
++ uint32 heartbeat_interval = 15;
++ uint32 request_timeout = 16;
++ uint32 max_open_streams = 17;
++ uint32 max_udp_relay_packet_size = 18;
++ uint32 level = 19;
++}
+--- a/proxy/tuic/packet.go
++++ b/proxy/tuic/packet.go
+@@ -0,0 +1,51 @@
++package tuic
++
++import (
++	M "github.com/sagernet/sing/common/metadata"
++	"github.com/xtls/xray-core/common/buf"
++	N "github.com/xtls/xray-core/common/net"
++	"net"
++)
++
++type connectedPacketConn struct{ net.Conn }
++
++func (c *connectedPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
++	n, e := c.Read(b)
++	return n, c.RemoteAddr(), e
++}
++func (c *connectedPacketConn) WriteTo(b []byte, _ net.Addr) (int, error) { return c.Write(b) }
++
++type packetReader struct{ conn net.PacketConn }
++
++func (r *packetReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
++	data := make([]byte, 65535)
++	n, a, e := r.conn.ReadFrom(data)
++	if e != nil {
++		return nil, e
++	}
++	b := buf.FromBytes(data[:n])
++	m := M.SocksaddrFromNet(a)
++	d := N.UDPDestination(N.ParseAddress(m.AddrString()), N.Port(m.Port))
++	b.UDP = &d
++	return buf.MultiBuffer{b}, nil
++}
++
++type packetWriter struct {
++	conn        net.PacketConn
++	destination N.Destination
++}
++
++func (w *packetWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
++	defer buf.ReleaseMulti(mb)
++	for _, b := range mb {
++		d := w.destination
++		if b.UDP != nil {
++			d = *b.UDP
++		}
++		a := M.ParseSocksaddrHostPort(d.Address.String(), uint16(d.Port))
++		if _, e := w.conn.WriteTo(b.Bytes(), a); e != nil {
++			return e
++		}
++	}
++	return nil
++}
+--- a/proxy/tuic/relay.go
++++ b/proxy/tuic/relay.go
+@@ -0,0 +1,60 @@
++package tuic
++
++import (
++	"context"
++	"github.com/xtls/xray-core/common"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/signal"
++	"github.com/xtls/xray-core/features/policy"
++)
++
++// Stop blocked reads and join both copy loops before closing Mihomo packet state.
++func relay(ctx context.Context, upR buf.Reader, upW buf.Writer, downR buf.Reader, downW buf.Writer, stopIO func(), p policy.Session) error {
++	ctx, cancel := context.WithCancel(ctx)
++	defer cancel()
++	timer := signal.CancelAfterInactivity(ctx, cancel, p.Timeouts.ConnectionIdle)
++	defer timer.SetTimeout(0)
++	results := make(chan error, 2)
++	go func() {
++		e := buf.Copy(upR, upW, buf.UpdateActivity(timer))
++		if e == nil {
++			common.Close(upW)
++		}
++		timer.SetTimeout(p.Timeouts.DownlinkOnly)
++		results <- e
++	}()
++	go func() {
++		e := buf.Copy(downR, downW, buf.UpdateActivity(timer))
++		if e == nil {
++			common.Close(downW)
++		}
++		timer.SetTimeout(p.Timeouts.UplinkOnly)
++		results <- e
++	}()
++	var first error
++	count := 0
++	for count < 2 {
++		select {
++		case e := <-results:
++			count++
++			if e != nil {
++				first = e
++			}
++		case <-ctx.Done():
++			first = ctx.Err()
++		}
++		if first != nil || count == 2 {
++			break
++		}
++	}
++	stopIO()
++	common.Interrupt(upR)
++	common.Interrupt(upW)
++	common.Interrupt(downR)
++	common.Interrupt(downW)
++	for count < 2 {
++		<-results
++		count++
++	}
++	return first
++}
+--- a/proxy/tuic/server.go
++++ b/proxy/tuic/server.go
+@@ -0,0 +1,96 @@
++package tuic
++
++import (
++	"context"
++	M "github.com/sagernet/sing/common/metadata"
++	"github.com/xtls/xray-core/common"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/protocol"
++	"github.com/xtls/xray-core/common/session"
++	"github.com/xtls/xray-core/common/signal"
++	"github.com/xtls/xray-core/common/task"
++	"github.com/xtls/xray-core/features/routing"
++	"github.com/xtls/xray-core/transport/internet"
++	"github.com/xtls/xray-core/transport/internet/stat"
++	T "github.com/xtls/xray-core/transport/internet/tuic"
++	"time"
++)
++
++type Server struct{ config *T.Config }
++
++func (s *Server) Network() []net.Network { return []net.Network{net.Network_TCP} }
++func (s *Server) Process(ctx context.Context, _ net.Network, conn stat.Connection, d routing.Dispatcher) error {
++	c, ok := stat.TryUnwrapStatsConn(conn).(*T.Conn)
++	if !ok {
++		return errors.New("tuic: requires TUIC transport")
++	}
++	defer c.Close()
++	if in := session.InboundFromContext(ctx); in != nil {
++		copy := *in
++		copy.Name = "tuic"
++		copy.User = &protocol.MemoryUser{Email: c.User, Level: s.config.Level}
++		ctx = session.ContextWithInbound(ctx, &copy)
++	}
++	ctx, cancel := context.WithCancel(ctx)
++	defer cancel()
++	stop := context.AfterFunc(ctx, func() { c.Close() })
++	defer stop()
++	timer := signal.CancelAfterInactivity(ctx, cancel, 5*time.Minute)
++	defer timer.SetTimeout(0)
++	link, err := d.Dispatch(ctx, c.Target)
++	if err != nil {
++		return err
++	}
++	var reader buf.Reader = buf.NewReader(c)
++	var writer buf.Writer = buf.NewWriter(c)
++	if c.Packets != nil {
++		reader = &inPacketReader{c}
++		writer = &inPacketWriter{c}
++	}
++	err = task.Run(ctx, func() error { return buf.Copy(reader, link.Writer, buf.UpdateActivity(timer)) }, task.OnSuccess(func() error { return buf.Copy(link.Reader, writer, buf.UpdateActivity(timer)) }, task.Close(link.Writer)))
++	common.Interrupt(link.Reader)
++	common.Interrupt(link.Writer)
++	return err
++}
++
++type inPacketReader struct{ c *T.Conn }
++
++func (r *inPacketReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
++	p, e := r.c.ReadPacket()
++	if e != nil {
++		return nil, e
++	}
++	b := buf.FromBytes(append([]byte(nil), p.Packet.Data()...))
++	p.Packet.Drop()
++	b.UDP = &p.Target
++	return buf.MultiBuffer{b}, nil
++}
++
++type inPacketWriter struct{ c *T.Conn }
++
++func (w *inPacketWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
++	defer buf.ReleaseMulti(mb)
++	for _, b := range mb {
++		d := w.c.Target
++		if b.UDP != nil {
++			d = *b.UDP
++		}
++		a := M.ParseSocksaddrHostPort(d.Address.String(), uint16(d.Port))
++		if e := w.c.WritePacket(b.Bytes(), a); e != nil {
++			return e
++		}
++	}
++	return nil
++}
++func init() {
++	common.Must(common.RegisterConfig((*T.Config)(nil), func(ctx context.Context, c interface{}) (interface{}, error) {
++		m, _ := session.StreamSettingsFromContext(ctx).(*internet.MemoryStreamConfig)
++		if m == nil || m.ProtocolName != "tuic" {
++			return nil, errors.New("tuic inbound requires network tuic")
++		}
++		m.ProtocolSettings = c
++		return &Server{c.(*T.Config)}, nil
++	}))
++}
+--- a/transport/internet/tuic/config.pb.go
++++ b/transport/internet/tuic/config.pb.go
+@@ -0,0 +1,200 @@
++// Code generated by protoc-gen-go. DO NOT EDIT.
++// versions:
++// 	protoc-gen-go v1.36.12
++// 	protoc        v3.21.12
++// source: transport/internet/tuic/config.proto
++
++package tuic
++
++import (
++	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
++	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
++	reflect "reflect"
++	sync "sync"
++	unsafe "unsafe"
++)
++
++const (
++	// Verify that this generated code is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
++	// Verify that runtime/protoimpl is sufficiently up-to-date.
++	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
++)
++
++type Config struct {
++	state                 protoimpl.MessageState `protogen:"open.v1"`
++	Tokens                []string               `protobuf:"bytes,1,rep,name=tokens,proto3" json:"tokens,omitempty"`
++	Users                 map[string]string      `protobuf:"bytes,2,rep,name=users,proto3" json:"users,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
++	CertificateFile       string                 `protobuf:"bytes,3,opt,name=certificate_file,json=certificateFile,proto3" json:"certificate_file,omitempty"`
++	KeyFile               string                 `protobuf:"bytes,4,opt,name=key_file,json=keyFile,proto3" json:"key_file,omitempty"`
++	Alpn                  []string               `protobuf:"bytes,5,rep,name=alpn,proto3" json:"alpn,omitempty"`
++	CongestionControl     string                 `protobuf:"bytes,6,opt,name=congestion_control,json=congestionControl,proto3" json:"congestion_control,omitempty"`
++	AuthenticationTimeout uint32                 `protobuf:"varint,7,opt,name=authentication_timeout,json=authenticationTimeout,proto3" json:"authentication_timeout,omitempty"`
++	MaxUdpRelayPacketSize uint32                 `protobuf:"varint,8,opt,name=max_udp_relay_packet_size,json=maxUdpRelayPacketSize,proto3" json:"max_udp_relay_packet_size,omitempty"`
++	Level                 uint32                 `protobuf:"varint,9,opt,name=level,proto3" json:"level,omitempty"`
++	unknownFields         protoimpl.UnknownFields
++	sizeCache             protoimpl.SizeCache
++}
++
++func (x *Config) Reset() {
++	*x = Config{}
++	mi := &file_transport_internet_tuic_config_proto_msgTypes[0]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *Config) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*Config) ProtoMessage() {}
++
++func (x *Config) ProtoReflect() protoreflect.Message {
++	mi := &file_transport_internet_tuic_config_proto_msgTypes[0]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use Config.ProtoReflect.Descriptor instead.
++func (*Config) Descriptor() ([]byte, []int) {
++	return file_transport_internet_tuic_config_proto_rawDescGZIP(), []int{0}
++}
++
++func (x *Config) GetTokens() []string {
++	if x != nil {
++		return x.Tokens
++	}
++	return nil
++}
++
++func (x *Config) GetUsers() map[string]string {
++	if x != nil {
++		return x.Users
++	}
++	return nil
++}
++
++func (x *Config) GetCertificateFile() string {
++	if x != nil {
++		return x.CertificateFile
++	}
++	return ""
++}
++
++func (x *Config) GetKeyFile() string {
++	if x != nil {
++		return x.KeyFile
++	}
++	return ""
++}
++
++func (x *Config) GetAlpn() []string {
++	if x != nil {
++		return x.Alpn
++	}
++	return nil
++}
++
++func (x *Config) GetCongestionControl() string {
++	if x != nil {
++		return x.CongestionControl
++	}
++	return ""
++}
++
++func (x *Config) GetAuthenticationTimeout() uint32 {
++	if x != nil {
++		return x.AuthenticationTimeout
++	}
++	return 0
++}
++
++func (x *Config) GetMaxUdpRelayPacketSize() uint32 {
++	if x != nil {
++		return x.MaxUdpRelayPacketSize
++	}
++	return 0
++}
++
++func (x *Config) GetLevel() uint32 {
++	if x != nil {
++		return x.Level
++	}
++	return 0
++}
++
++var File_transport_internet_tuic_config_proto protoreflect.FileDescriptor
++
++const file_transport_internet_tuic_config_proto_rawDesc = "" +
++	"\n" +
++	"$transport/internet/tuic/config.proto\x12\x1cxray.transport.internet.tuic\"\xb1\x03\n" +
++	"\x06Config\x12\x16\n" +
++	"\x06tokens\x18\x01 \x03(\tR\x06tokens\x12E\n" +
++	"\x05users\x18\x02 \x03(\v2/.xray.transport.internet.tuic.Config.UsersEntryR\x05users\x12)\n" +
++	"\x10certificate_file\x18\x03 \x01(\tR\x0fcertificateFile\x12\x19\n" +
++	"\bkey_file\x18\x04 \x01(\tR\akeyFile\x12\x12\n" +
++	"\x04alpn\x18\x05 \x03(\tR\x04alpn\x12-\n" +
++	"\x12congestion_control\x18\x06 \x01(\tR\x11congestionControl\x125\n" +
++	"\x16authentication_timeout\x18\a \x01(\rR\x15authenticationTimeout\x128\n" +
++	"\x19max_udp_relay_packet_size\x18\b \x01(\rR\x15maxUdpRelayPacketSize\x12\x14\n" +
++	"\x05level\x18\t \x01(\rR\x05level\x1a8\n" +
++	"\n" +
++	"UsersEntry\x12\x10\n" +
++	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
++	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B3Z1github.com/xtls/xray-core/transport/internet/tuicb\x06proto3"
++
++var (
++	file_transport_internet_tuic_config_proto_rawDescOnce sync.Once
++	file_transport_internet_tuic_config_proto_rawDescData []byte
++)
++
++func file_transport_internet_tuic_config_proto_rawDescGZIP() []byte {
++	file_transport_internet_tuic_config_proto_rawDescOnce.Do(func() {
++		file_transport_internet_tuic_config_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_transport_internet_tuic_config_proto_rawDesc), len(file_transport_internet_tuic_config_proto_rawDesc)))
++	})
++	return file_transport_internet_tuic_config_proto_rawDescData
++}
++
++var file_transport_internet_tuic_config_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
++var file_transport_internet_tuic_config_proto_goTypes = []any{
++	(*Config)(nil), // 0: xray.transport.internet.tuic.Config
++	nil,            // 1: xray.transport.internet.tuic.Config.UsersEntry
++}
++var file_transport_internet_tuic_config_proto_depIdxs = []int32{
++	1, // 0: xray.transport.internet.tuic.Config.users:type_name -> xray.transport.internet.tuic.Config.UsersEntry
++	1, // [1:1] is the sub-list for method output_type
++	1, // [1:1] is the sub-list for method input_type
++	1, // [1:1] is the sub-list for extension type_name
++	1, // [1:1] is the sub-list for extension extendee
++	0, // [0:1] is the sub-list for field type_name
++}
++
++func init() { file_transport_internet_tuic_config_proto_init() }
++func file_transport_internet_tuic_config_proto_init() {
++	if File_transport_internet_tuic_config_proto != nil {
++		return
++	}
++	type x struct{}
++	out := protoimpl.TypeBuilder{
++		File: protoimpl.DescBuilder{
++			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
++			RawDescriptor: unsafe.Slice(unsafe.StringData(file_transport_internet_tuic_config_proto_rawDesc), len(file_transport_internet_tuic_config_proto_rawDesc)),
++			NumEnums:      0,
++			NumMessages:   2,
++			NumExtensions: 0,
++			NumServices:   0,
++		},
++		GoTypes:           file_transport_internet_tuic_config_proto_goTypes,
++		DependencyIndexes: file_transport_internet_tuic_config_proto_depIdxs,
++		MessageInfos:      file_transport_internet_tuic_config_proto_msgTypes,
++	}.Build()
++	File_transport_internet_tuic_config_proto = out.File
++	file_transport_internet_tuic_config_proto_goTypes = nil
++	file_transport_internet_tuic_config_proto_depIdxs = nil
++}
+--- a/transport/internet/tuic/config.proto
++++ b/transport/internet/tuic/config.proto
+@@ -0,0 +1,14 @@
++syntax = "proto3";
++package xray.transport.internet.tuic;
++option go_package = "github.com/xtls/xray-core/transport/internet/tuic";
++message Config {
++ repeated string tokens = 1;
++ map<string,string> users = 2;
++ string certificate_file = 3;
++ string key_file = 4;
++ repeated string alpn = 5;
++ string congestion_control = 6;
++ uint32 authentication_timeout = 7;
++ uint32 max_udp_relay_packet_size = 8;
++ uint32 level = 9;
++}
+--- a/transport/internet/tuic/hub.go
++++ b/transport/internet/tuic/hub.go
+@@ -0,0 +1,218 @@
++package tuic
++
++import (
++	"context"
++	"errors"
++	"github.com/gofrs/uuid/v5"
++	I "github.com/metacubex/mihomo/adapter/inbound"
++	C "github.com/metacubex/mihomo/constant"
++	S "github.com/metacubex/mihomo/transport/socks5"
++	T "github.com/metacubex/mihomo/transport/tuic"
++	Q "github.com/metacubex/quic-go"
++	TLS "github.com/metacubex/tls"
++	"github.com/xtls/xray-core/common"
++	N "github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/transport/internet"
++	"io"
++	"net"
++	"sync"
++	"time"
++)
++
++type Datagram struct {
++	Packet C.UDPPacket
++	Target N.Destination
++}
++type Conn struct {
++	net.Conn
++	Target        N.Destination
++	Packets       chan Datagram
++	ctx           context.Context
++	cancel        context.CancelFunc
++	local, remote net.Addr
++	User          string
++	mu            sync.Mutex
++	last          C.UDPPacket
++	packetMu      sync.Mutex
++}
++
++func (c *Conn) ReadPacket() (Datagram, error) {
++	select {
++	case p := <-c.Packets:
++		c.mu.Lock()
++		c.last = p.Packet
++		c.mu.Unlock()
++		return p, nil
++	case <-c.ctx.Done():
++		return Datagram{}, io.EOF
++	}
++}
++func (c *Conn) WritePacket(b []byte, a net.Addr) error {
++	c.mu.Lock()
++	p := c.last
++	c.mu.Unlock()
++	if p == nil {
++		return errors.New("tuic: no UDP association")
++	}
++	_, e := p.WriteBack(b, a)
++	return e
++}
++func (c *Conn) Close() error {
++	if c.cancel != nil {
++		c.packetMu.Lock()
++		defer c.packetMu.Unlock()
++		c.cancel()
++		for {
++			select {
++			case p := <-c.Packets:
++				p.Packet.Drop()
++			default:
++				return nil
++			}
++		}
++	}
++	return c.Conn.Close()
++}
++func (c *Conn) LocalAddr() net.Addr {
++	if c.Packets != nil {
++		return c.local
++	}
++	return c.Conn.LocalAddr()
++}
++func (c *Conn) RemoteAddr() net.Addr {
++	if c.Packets != nil {
++		if raw, ok := c.remote.(interface{ RawAddr() net.Addr }); ok {
++			return raw.RawAddr()
++		}
++		return c.remote
++	}
++	return c.Conn.RemoteAddr()
++}
++func (c *Conn) SetDeadline(t time.Time) error {
++	if c.Packets != nil {
++		return nil
++	}
++	return c.Conn.SetDeadline(t)
++}
++func (c *Conn) SetReadDeadline(t time.Time) error {
++	if c.Packets != nil {
++		return nil
++	}
++	return c.Conn.SetReadDeadline(t)
++}
++func (c *Conn) SetWriteDeadline(t time.Time) error {
++	if c.Packets != nil {
++		return nil
++	}
++	return c.Conn.SetWriteDeadline(t)
++}
++
++type Listener struct {
++	server *T.Server
++	pc     net.PacketConn
++	cancel context.CancelFunc
++}
++
++func (l *Listener) Addr() net.Addr { return l.pc.LocalAddr() }
++func (l *Listener) Close() error   { l.cancel(); return errors.Join(l.server.Close(), l.pc.Close()) }
++func target(a S.Addr, network N.Network) (N.Destination, error) {
++	d, e := N.ParseDestination("tcp:" + a.String())
++	d.Network = network
++	return d, e
++}
++func Listen(ctx context.Context, address N.Address, port N.Port, settings *internet.MemoryStreamConfig, add internet.ConnHandler) (internet.Listener, error) {
++	c := settings.ProtocolSettings.(*Config)
++	cert, e := TLS.LoadX509KeyPair(c.CertificateFile, c.KeyFile)
++	if e != nil {
++		return nil, e
++	}
++	alpn := c.Alpn
++	if len(alpn) == 0 {
++		alpn = []string{"h3"}
++	}
++	pc, e := internet.ListenSystemPacket(ctx, &net.UDPAddr{IP: address.IP(), Port: int(port)}, settings.SocketSettings)
++	if e != nil {
++		return nil, e
++	}
++	ctx, cancel := context.WithCancel(ctx)
++	var mu sync.Mutex
++	associations := map[string]*Conn{}
++	option := &T.ServerOption{TlsConfig: &TLS.Config{Certificates: []TLS.Certificate{cert}, NextProtos: alpn, MinVersion: TLS.VersionTLS13}, QuicConfig: &Q.Config{EnableDatagrams: true, Allow0RTT: true, MaxIncomingStreams: 1024, MaxIncomingUniStreams: 1024, MaxDatagramFrameSize: 1400}, CongestionController: c.CongestionControl, AuthenticationTimeout: time.Duration(c.AuthenticationTimeout) * time.Millisecond, MaxUdpRelayPacketSize: int(c.MaxUdpRelayPacketSize), Users: map[[16]byte]string{}}
++	for _, token := range c.Tokens {
++		option.Tokens = append(option.Tokens, T.GenTKN(token))
++	}
++	for id, pass := range c.Users {
++		u, err := uuid.FromString(id)
++		if err != nil {
++			cancel()
++			pc.Close()
++			return nil, err
++		}
++		option.Users[u] = pass
++	}
++	user := func(a []I.Addition) string { m := &C.Metadata{}; I.ApplyAdditions(m, a...); return m.InUser }
++	option.HandleTcpFn = func(conn net.Conn, a S.Addr, adds ...I.Addition) error {
++		d, err := target(a, N.Network_TCP)
++		if err != nil {
++			conn.Close()
++			return err
++		}
++		add(&Conn{Conn: conn, Target: d, User: user(adds)})
++		return nil
++	}
++	option.HandleUdpFn = func(a S.Addr, p C.UDPPacket, adds ...I.Addition) error {
++		d, err := target(a, N.Network_UDP)
++		if err != nil {
++			p.Drop()
++			return err
++		}
++		key := p.LocalAddr().String() + "|" + user(adds)
++		mu.Lock()
++		conn := associations[key]
++		if conn != nil && conn.ctx.Err() != nil {
++			delete(associations, key)
++			conn = nil
++		}
++		if conn == nil {
++			cc, stop := context.WithCancel(ctx)
++			conn = &Conn{Target: d, Packets: make(chan Datagram, 64), ctx: cc, cancel: stop, local: pc.LocalAddr(), remote: p.LocalAddr(), User: user(adds)}
++			associations[key] = conn
++			add(conn)
++			go func(cn *Conn) {
++				<-cn.ctx.Done()
++				mu.Lock()
++				if associations[key] == cn {
++					delete(associations, key)
++				}
++				mu.Unlock()
++				cn.Close()
++			}(conn)
++		}
++		mu.Unlock()
++		conn.packetMu.Lock()
++		if conn.ctx.Err() != nil {
++			p.Drop()
++		} else {
++			select {
++			case conn.Packets <- Datagram{p, d}:
++			default:
++				p.Drop()
++			}
++		}
++		conn.packetMu.Unlock()
++		return nil
++	}
++	server, err := T.NewServer(option, pc)
++	if err != nil {
++		cancel()
++		pc.Close()
++		return nil, err
++	}
++	l := &Listener{server: server, pc: pc, cancel: cancel}
++	go server.Serve()
++	return l, nil
++}
++func init() {
++	common.Must(internet.RegisterProtocolConfigCreator("tuic", func() interface{} { return &Config{} }))
++	common.Must(internet.RegisterTransportListener("tuic", Listen))
++}

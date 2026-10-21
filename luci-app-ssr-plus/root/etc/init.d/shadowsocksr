@@ -993,7 +993,7 @@ use_mihomo_for_ss_rust_server() {
 
 start_v2ray_with_mihomo() {
 	# These nodes use Xray-specific settings.
-	case "$(uci_get_by_name "$1" v2ray_protocol)" in naive|shadowsocksr) return 1 ;; esac
+	case "$(uci_get_by_name "$1" v2ray_protocol)" in naive|shadowsocksr|tuic) return 1 ;; esac
 	local sid="$1"
 	local local_port="$2"
 	local socks_port="$3"
@@ -1798,7 +1798,7 @@ start_udp() {
 		;;
 	v2ray)
 		enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
-		if [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "naive" ] && [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "shadowsocksr" ] && [ "$enable_mihomo" = "1" ] && has_mihomo_binary; then
+		if [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "naive" ] && [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "shadowsocksr" ] && [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "tuic" ] && [ "$enable_mihomo" = "1" ] && has_mihomo_binary; then
 			redir_udp=0
 			ARG_UDP=""
 			echolog "UDP TPROXY Relay:V2Ray/Xray 单节点由主 Mihomo 实例处理。"
@@ -1811,7 +1811,7 @@ start_udp() {
 				echolog "UDP TPROXY Relay:$($(first_type xray) version | head -1) Started!"
 			else
 				# Xray 不存在但 Mihomo 存在，回退到 Mihomo（当 enable_mihomo=0 时）
-				if [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "naive" ] && [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "shadowsocksr" ] && has_mihomo_binary; then
+				if [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "naive" ] && [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "shadowsocksr" ] && [ "$(uci_get_by_name "$UDP_RELAY_SERVER" v2ray_protocol)" != "tuic" ] && has_mihomo_binary; then
 					redir_udp=0
 					ARG_UDP=""
 					echolog "UDP TPROXY Relay:Xray 内核不存在，已回退到 Mihomo 内核启动。"
@@ -2750,6 +2750,16 @@ start_server() {
 			"$xray_bin" run -test -c "$config_file" >> /var/ssrplus.log 2>&1 || return 1
 			ln_start_bin "$xray_bin" xray-server-$server_count run -c "$config_file"
 			echolog "Server: Xray NaiveProxy Server$server_count Started!"
+			;;
+
+		tuic)
+			xray_bin="$(first_type xray)"
+			[ -x "$xray_bin" ] || return 1
+			config_file="$TMP_PATH/xray-server-$server_count.json"
+			lua /usr/share/shadowsocksr/gen_tuic_server.lua "$1" > "$config_file" || return 1
+			"$xray_bin" run -test -c "$config_file" >> /var/ssrplus.log 2>&1 || return 1
+			ln_start_bin "$xray_bin" xray-server-$server_count run -c "$config_file"
+			echolog "Server: Xray TUIC Server$server_count Started!"
 			;;
 
 		vmess|vless|trojan|shadowsocks)

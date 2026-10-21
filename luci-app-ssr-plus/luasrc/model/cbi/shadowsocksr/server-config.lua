@@ -74,6 +74,7 @@ then
 end
 if nixio.fs.access("/usr/bin/xray") or nixio.fs.access("/usr/libexec/xray") then
 	o:value("naive", "NaiveProxy (Xray)")
+	o:value("tuic", "TUIC (Xray)")
 end
 o.default = "socks5"
 
@@ -235,6 +236,7 @@ o = s:option(Value, "tls_certificateFile", translate("Certificate File Path"))
 o.description = translate("e.g.: /etc/ssl/fullchain.pem")
 o.rmempty = true
 o:depends("tls", "1")
+o:depends("type", "tuic")
 
 o:depends("type", "naive")
 
@@ -242,6 +244,7 @@ o = s:option(Value, "tls_keyFile", translate("Private Key File Path"))
 o.description = translate("e.g.: /etc/ssl/private.key")
 o.rmempty = true
 o:depends("tls", "1")
+o:depends("type", "tuic")
 
 -- ========== 传输层设置 (Transport) ==========
 o:depends("type", "naive")
@@ -410,5 +413,12 @@ o:value("h3", "HTTP/3")
 o:value("h2,h3", "HTTP/2 + HTTP/3")
 o.default = "h2"
 o:depends("type", "naive")
+
+-- TUIC credentials are independent of the legacy server settings.
+for _, field in ipairs({{"tuic_uuid", "TUIC UUID"}, {"tuic_password", "TUIC Password"}, {"tuic_token", "TUIC v4 Token"}}) do
+	o = s:option(Value, field[1], field[2])
+	o.password = field[1] ~= "tuic_uuid"
+	o:depends("type", "tuic")
+end
 
 return m
