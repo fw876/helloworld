@@ -1116,6 +1116,7 @@ end
 o = s:option(ListValue, "transport", translate("Transport"))
 o:value("raw", "RAW (TCP)")
 o:value("kcp", "mKCP")
+o:value("kcptun", "Kcptun (Xray)")
 o:value("ws", "WebSocket")
 o:value("httpupgrade", "HTTPUpgrade")
 o:value("xhttp", "XHTTP (SplitHTTP)")
@@ -1129,6 +1130,43 @@ o:depends({type = "v2ray", v2ray_protocol = "trojan"})
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o:depends({type = "v2ray", v2ray_protocol = "http"})
+
+-- Native Kcptun transport (separate from mKCP and the external Kcptun client).
+o = s:option(Value, "xray_kcptun_key", "Kcptun Key")
+o:depends("transport", "kcptun")
+o.password = true
+o.rmempty = false
+o = s:option(ListValue, "xray_kcptun_crypt", "Kcptun Encryption")
+o:depends("transport", "kcptun")
+for _, crypt in ipairs({"aes", "aes-128", "aes-192", "aes-128-gcm", "salsa20", "tea", "xor", "none", "null", "blowfish", "twofish", "cast5", "3des", "xtea"}) do o:value(crypt, crypt) end
+o.default = "aes"
+o = s:option(ListValue, "xray_kcptun_mode", "Kcptun Mode")
+o:depends("transport", "kcptun")
+for _, mode in ipairs({"normal", "fast", "fast2", "fast3", "manual"}) do o:value(mode, mode) end
+o.default = "fast"
+o = s:option(ListValue, "xray_kcptun_smuxver", "Kcptun smux Version")
+o:depends("transport", "kcptun")
+o:value("1", "v1")
+o:value("2", "v2")
+o.default = "1"
+o = s:option(Flag, "xray_kcptun_nocomp", translate("Disable Compression"))
+o:depends("transport", "kcptun")
+o.default = "0"
+o = s:option(Value, "xray_kcptun_conn", translate("Connections"))
+o:depends("transport", "kcptun")
+o.datatype = "range(1,256)"
+o.default = "1"
+o = s:option(TextValue, "xray_kcptun_options", "Kcptun Advanced Options (JSON)")
+o:depends("transport", "kcptun")
+o.rows = 4
+o.rmempty = true
+o.description = translate("Optional MTU, FEC, windows and expiry settings. Encryption, key, compression and smux version must match the server. This transports streams over UDP; native proxy UDP is separate.")
+function o.validate(self, value, section)
+    if not value or value:match("^%s*$") then return "" end
+    local ok, parsed = pcall(luci.jsonc.parse, value)
+    if ok and type(parsed) == "table" and value:match("^%s*{") then return value end
+    return nil, translate("Must be a JSON object")
+end
 
 -- [[ RAW部分 ]]--
 -- TCP伪装

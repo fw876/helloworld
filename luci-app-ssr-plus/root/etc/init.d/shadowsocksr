@@ -992,6 +992,7 @@ use_mihomo_for_ss_rust_server() {
 }
 
 start_v2ray_with_mihomo() {
+	[ "$(uci_get_by_name "$1" transport)" = "kcptun" ] && return 1
 	[ "$(uci_get_by_name "$1" xray_shadowtls 0)" = "1" ] && return 1
 	# These nodes use Xray-specific settings.
 	case "$(uci_get_by_name "$1" v2ray_protocol)" in naive|shadowsocksr|tuic) return 1 ;; esac
@@ -2248,6 +2249,10 @@ get_udp_relay_mode() {
 		;;
 	v2ray)
 		proto=$(uci_get_by_name "$node" v2ray_protocol)
+		if [ "$(uci_get_by_name "$node" transport)" = "kcptun" ]; then
+			case "$proto" in vmess|vless|trojan) echo "native" ;; *) echo "disabled" ;; esac
+			return
+		fi
 		case "$proto" in
 		snell)
 			case "$(uci_get_by_name "$node" snell_version 4)" in 1|2) echo "disabled" ;; *) echo "native" ;; esac
