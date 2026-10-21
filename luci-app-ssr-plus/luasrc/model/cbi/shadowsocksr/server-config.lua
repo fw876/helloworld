@@ -76,6 +76,7 @@ if nixio.fs.access("/usr/bin/xray") or nixio.fs.access("/usr/libexec/xray") then
 	o:value("naive", "NaiveProxy (Xray)")
 	o:value("tuic", "TUIC (Xray)")
 	o:value("snell", "Snell (Xray)")
+	o:value("anytls", "AnyTLS (Xray)")
 end
 o.default = "socks5"
 
@@ -238,6 +239,7 @@ o.description = translate("e.g.: /etc/ssl/fullchain.pem")
 o.rmempty = true
 o:depends("tls", "1")
 o:depends("type", "tuic")
+o:depends("type", "anytls")
 
 o:depends("type", "naive")
 
@@ -246,6 +248,7 @@ o.description = translate("e.g.: /etc/ssl/private.key")
 o.rmempty = true
 o:depends("tls", "1")
 o:depends("type", "tuic")
+o:depends("type", "anytls")
 
 -- ========== 传输层设置 (Transport) ==========
 o:depends("type", "naive")
@@ -439,5 +442,13 @@ o.default = "1"
 for _, version in ipairs({"3", "4", "5"}) do
 	o:depends({type = "snell", snell_version = version})
 end
+
+o = s:option(Value, "anytls_password", translate("Password"))
+o.password = true
+o:depends("type", "anytls")
+o = s:option(TextValue, "anytls_padding", "AnyTLS Padding Scheme")
+o.rows = 5
+o.rmempty = true
+o:depends("type", "anytls")
 
 return m

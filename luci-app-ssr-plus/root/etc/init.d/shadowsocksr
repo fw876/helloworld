@@ -2749,6 +2749,16 @@ start_server() {
 			echolog "Server: Xray NaiveProxy Server$server_count Started!"
 			;;
 
+		anytls)
+			xray_bin="$(first_type xray)"
+			[ -x "$xray_bin" ] || return 1
+			config_file="$TMP_PATH/xray-server-$server_count.json"
+			lua /usr/share/shadowsocksr/gen_anytls_server.lua "$1" > "$config_file" || return 1
+			"$xray_bin" run -test -c "$config_file" >> /var/ssrplus.log 2>&1 || return 1
+			ln_start_bin "$xray_bin" xray-server-$server_count run -c "$config_file"
+			echolog "Server: Xray AnyTLS Server$server_count Started!"
+			;;
+
 		snell)
 			xray_bin="$(first_type xray)"
 			[ -x "$xray_bin" ] || return 1

@@ -1,19 +1,19 @@
 From: coolsnowwolf <coolsnowwolf@gmail.com>
-Subject: [PATCH] proxy: add AnyTLS outbound with session reuse and UoT
+Subject: [PATCH] proxy: add AnyTLS inbound and outbound
 
-Use the outbound JSON schema proposed in Xray-core PR #5907 and the same
-AnyTLS implementation as sing-box at 580984e4d8cb. Adapt Xray's transport
-and lifecycle interfaces, preserving TLS, socket marks and dialer chains.
-Support TCP and UDP-over-TCP v2 without nesting Xray Mux.Cool. Close the
-session pool when the outbound is removed and interrupt pending copies
-on cancellation. Include protocol, lifecycle and configuration tests.
+Use sing-anytls at 580984e4d8cb for authenticated reusable TLS sessions.
+Adapt both directions to Xray routing, TCP and UDP-over-TCP. Support
+multiple inbound users, padding negotiation and fragmented prologues.
+Require TLS on inbound, preserve private-target restrictions, and join
+inbound copy loops before releasing stream state. Retain outbound TLS,
+socket marks, dialer chains and session-pool lifecycle handling.
 
 Reference: https://github.com/XTLS/Xray-core/pull/5907
-Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+Signed-off-by: lean <chenlin@fnnas.com>
 
 --- a/go.mod
 +++ b/go.mod
-@@ -52,6 +52,8 @@ require (
+@@ -52,6 +52,8 @@
  	github.com/pion/logging v0.2.4 // indirect
  	github.com/pion/transport/v4 v4.1.0 // indirect
  	github.com/quic-go/qpack v0.6.0 // indirect
@@ -24,7 +24,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	go.yaml.in/yaml/v3 v3.0.5 // indirect
 --- a/go.sum
 +++ b/go.sum
-@@ -71,6 +71,10 @@ github.com/robfig/cron/v3 v3.0.1 h1:WdRx
+@@ -71,6 +71,10 @@
  github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzGIFLtro=
  github.com/rogpeppe/go-internal v1.16.0 h1:O9DK+vNMDVGLr2BeZqmpLeMjiMNkuXfcqntWbZV6S5g=
  github.com/rogpeppe/go-internal v1.16.0/go.mod h1:DrUVZyrJU+txYW5/1kwtXQSMFio52ZOxX7yM1VHvnxs=
@@ -35,35 +35,16 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
  github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
  github.com/vishvananda/netlink v1.3.1 h1:3AEMt62VKqz90r0tmNhog0r/PpWKmrEShJU0wJW6bV0=
---- a/infra/conf/xray.go
-+++ b/infra/conf/xray.go
-@@ -53,6 +53,7 @@ var (
- 		"vless":       func() interface{} { return new(VLessOutboundConfig) },
- 		"vmess":       func() interface{} { return new(VMessOutboundConfig) },
- 		"trojan":      func() interface{} { return new(TrojanClientConfig) },
-+		"anytls":      func() interface{} { return new(AnyTLSClientConfig) },
- 		"hysteria":    func() interface{} { return new(HysteriaClientConfig) },
- 		"masque":      func() interface{} { return new(MasqueClientConfig) },
- 		"dns":         func() interface{} { return new(DNSOutboundConfig) },
---- a/main/distro/all/all.go
-+++ b/main/distro/all/all.go
-@@ -35,6 +35,7 @@ import (
- 	_ "github.com/xtls/xray-core/app/observatory"
- 
- 	// Inbound and outbound proxies.
-+	_ "github.com/xtls/xray-core/proxy/anytls"
- 	_ "github.com/xtls/xray-core/proxy/blackhole"
- 	_ "github.com/xtls/xray-core/proxy/dns"
- 	_ "github.com/xtls/xray-core/proxy/dokodemo"
---- /dev/null
+--- a/infra/conf/anytls.go
 +++ b/infra/conf/anytls.go
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,63 @@
 +package conf
 +
 +import (
 +	"github.com/xtls/xray-core/common/errors"
 +	"github.com/xtls/xray-core/proxy/anytls"
 +	"google.golang.org/protobuf/proto"
++	"strings"
 +)
 +
 +// AnyTLSClientConfig follows the outbound schema proposed in Xray-core#5907.
@@ -94,7 +75,33 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +		IdleSessionTimeout:       c.IdleSessionTimeout, MinIdleSession: uint32(c.MinIdleSession),
 +	}, nil
 +}
---- /dev/null
++
++type AnyTLSUser struct {
++	Password string `json:"password"`
++	Email    string `json:"email"`
++	Level    uint32 `json:"level"`
++}
++type AnyTLSServerConfig struct {
++	Users         []AnyTLSUser `json:"users"`
++	PaddingScheme []string     `json:"paddingScheme"`
++}
++
++func (c *AnyTLSServerConfig) Build() (proto.Message, error) {
++	if len(c.Users) == 0 {
++		return nil, errors.New("anytls: users required")
++	}
++	config := &anytls.ServerConfig{PaddingScheme: []byte(strings.Join(c.PaddingScheme, "\n"))}
++	seen := map[string]bool{}
++	for _, u := range c.Users {
++		if u.Password == "" || seen[u.Password] {
++			return nil, errors.New("anytls: empty or duplicate password")
++		}
++		seen[u.Password] = true
++		config.Users = append(config.Users, &anytls.User{Password: u.Password, Email: u.Email, Level: u.Level})
++	}
++	return config, nil
++}
+--- a/infra/conf/anytls_test.go
 +++ b/infra/conf/anytls_test.go
 @@ -0,0 +1,45 @@
 +package conf_test
@@ -142,7 +149,35 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +		}
 +	}
 +}
---- /dev/null
+--- a/infra/conf/xray.go
++++ b/infra/conf/xray.go
+@@ -35,6 +35,7 @@
+ 		"vless":         func() interface{} { return new(VLessInboundConfig) },
+ 		"vmess":         func() interface{} { return new(VMessInboundConfig) },
+ 		"trojan":        func() interface{} { return new(TrojanServerConfig) },
++		"anytls":        func() interface{} { return new(AnyTLSServerConfig) },
+ 		"wireguard":     func() interface{} { return &WireGuardConfig{IsClient: false} },
+ 		"hysteria":      func() interface{} { return new(HysteriaServerConfig) },
+ 		"masque":        func() interface{} { return new(MasqueServerConfig) },
+@@ -53,6 +54,7 @@
+ 		"vless":       func() interface{} { return new(VLessOutboundConfig) },
+ 		"vmess":       func() interface{} { return new(VMessOutboundConfig) },
+ 		"trojan":      func() interface{} { return new(TrojanClientConfig) },
++		"anytls":      func() interface{} { return new(AnyTLSClientConfig) },
+ 		"hysteria":    func() interface{} { return new(HysteriaClientConfig) },
+ 		"masque":      func() interface{} { return new(MasqueClientConfig) },
+ 		"dns":         func() interface{} { return new(DNSOutboundConfig) },
+--- a/main/distro/all/all.go
++++ b/main/distro/all/all.go
+@@ -35,6 +35,7 @@
+ 	_ "github.com/xtls/xray-core/app/observatory"
+ 
+ 	// Inbound and outbound proxies.
++	_ "github.com/xtls/xray-core/proxy/anytls"
+ 	_ "github.com/xtls/xray-core/proxy/blackhole"
+ 	_ "github.com/xtls/xray-core/proxy/dns"
+ 	_ "github.com/xtls/xray-core/proxy/dokodemo"
+--- a/proxy/anytls/LICENSE.sing-anytls
 +++ b/proxy/anytls/LICENSE.sing-anytls
 @@ -0,0 +1,14 @@
 +Copyright (C) 2022 by nekohasekai <contact-sagernet@sekai.icu>
@@ -160,7 +195,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +You should have received a copy of the GNU General Public License
 +along with this program. If not, see <http://www.gnu.org/licenses/>.
 \ No newline at end of file
---- /dev/null
+--- a/proxy/anytls/client.go
 +++ b/proxy/anytls/client.go
 @@ -0,0 +1,156 @@
 +package anytls
@@ -319,7 +354,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +		return NewClient(ctx, config.(*ClientConfig))
 +	}))
 +}
---- /dev/null
+--- a/proxy/anytls/client_test.go
 +++ b/proxy/anytls/client_test.go
 @@ -0,0 +1,199 @@
 +package anytls
@@ -521,12 +556,12 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +		t.Fatal("received payload with wrong password")
 +	}
 +}
---- /dev/null
+--- a/proxy/anytls/config.pb.go
 +++ b/proxy/anytls/config.pb.go
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,301 @@
 +// Code generated by protoc-gen-go. DO NOT EDIT.
 +// versions:
-+// 	protoc-gen-go v1.36.11
++// 	protoc-gen-go v1.36.12
 +// 	protoc        v3.21.12
 +// source: proxy/anytls/config.proto
 +
@@ -640,6 +675,118 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +	return 0
 +}
 +
++type User struct {
++	state         protoimpl.MessageState `protogen:"open.v1"`
++	Password      string                 `protobuf:"bytes,1,opt,name=password,proto3" json:"password,omitempty"`
++	Email         string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
++	Level         uint32                 `protobuf:"varint,3,opt,name=level,proto3" json:"level,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *User) Reset() {
++	*x = User{}
++	mi := &file_proxy_anytls_config_proto_msgTypes[1]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *User) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*User) ProtoMessage() {}
++
++func (x *User) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_anytls_config_proto_msgTypes[1]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use User.ProtoReflect.Descriptor instead.
++func (*User) Descriptor() ([]byte, []int) {
++	return file_proxy_anytls_config_proto_rawDescGZIP(), []int{1}
++}
++
++func (x *User) GetPassword() string {
++	if x != nil {
++		return x.Password
++	}
++	return ""
++}
++
++func (x *User) GetEmail() string {
++	if x != nil {
++		return x.Email
++	}
++	return ""
++}
++
++func (x *User) GetLevel() uint32 {
++	if x != nil {
++		return x.Level
++	}
++	return 0
++}
++
++type ServerConfig struct {
++	state         protoimpl.MessageState `protogen:"open.v1"`
++	Users         []*User                `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
++	PaddingScheme []byte                 `protobuf:"bytes,2,opt,name=padding_scheme,json=paddingScheme,proto3" json:"padding_scheme,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *ServerConfig) Reset() {
++	*x = ServerConfig{}
++	mi := &file_proxy_anytls_config_proto_msgTypes[2]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *ServerConfig) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*ServerConfig) ProtoMessage() {}
++
++func (x *ServerConfig) ProtoReflect() protoreflect.Message {
++	mi := &file_proxy_anytls_config_proto_msgTypes[2]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use ServerConfig.ProtoReflect.Descriptor instead.
++func (*ServerConfig) Descriptor() ([]byte, []int) {
++	return file_proxy_anytls_config_proto_rawDescGZIP(), []int{2}
++}
++
++func (x *ServerConfig) GetUsers() []*User {
++	if x != nil {
++		return x.Users
++	}
++	return nil
++}
++
++func (x *ServerConfig) GetPaddingScheme() []byte {
++	if x != nil {
++		return x.PaddingScheme
++	}
++	return nil
++}
++
 +var File_proxy_anytls_config_proto protoreflect.FileDescriptor
 +
 +const file_proxy_anytls_config_proto_rawDesc = "" +
@@ -652,7 +799,14 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +	"\x05level\x18\x04 \x01(\rR\x05level\x12=\n" +
 +	"\x1bidle_session_check_interval\x18\x05 \x01(\rR\x18idleSessionCheckInterval\x120\n" +
 +	"\x14idle_session_timeout\x18\x06 \x01(\rR\x12idleSessionTimeout\x12(\n" +
-+	"\x10min_idle_session\x18\a \x01(\rR\x0eminIdleSessionB(Z&github.com/xtls/xray-core/proxy/anytlsb\x06proto3"
++	"\x10min_idle_session\x18\a \x01(\rR\x0eminIdleSession\"N\n" +
++	"\x04User\x12\x1a\n" +
++	"\bpassword\x18\x01 \x01(\tR\bpassword\x12\x14\n" +
++	"\x05email\x18\x02 \x01(\tR\x05email\x12\x14\n" +
++	"\x05level\x18\x03 \x01(\rR\x05level\"d\n" +
++	"\fServerConfig\x12-\n" +
++	"\x05users\x18\x01 \x03(\v2\x17.xray.proxy.anytls.UserR\x05users\x12%\n" +
++	"\x0epadding_scheme\x18\x02 \x01(\fR\rpaddingSchemeB(Z&github.com/xtls/xray-core/proxy/anytlsb\x06proto3"
 +
 +var (
 +	file_proxy_anytls_config_proto_rawDescOnce sync.Once
@@ -666,18 +820,21 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +	return file_proxy_anytls_config_proto_rawDescData
 +}
 +
-+var file_proxy_anytls_config_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
++var file_proxy_anytls_config_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 +var file_proxy_anytls_config_proto_goTypes = []any{
 +	(*ClientConfig)(nil),   // 0: xray.proxy.anytls.ClientConfig
-+	(*net.IPOrDomain)(nil), // 1: xray.common.net.IPOrDomain
++	(*User)(nil),           // 1: xray.proxy.anytls.User
++	(*ServerConfig)(nil),   // 2: xray.proxy.anytls.ServerConfig
++	(*net.IPOrDomain)(nil), // 3: xray.common.net.IPOrDomain
 +}
 +var file_proxy_anytls_config_proto_depIdxs = []int32{
-+	1, // 0: xray.proxy.anytls.ClientConfig.address:type_name -> xray.common.net.IPOrDomain
-+	1, // [1:1] is the sub-list for method output_type
-+	1, // [1:1] is the sub-list for method input_type
-+	1, // [1:1] is the sub-list for extension type_name
-+	1, // [1:1] is the sub-list for extension extendee
-+	0, // [0:1] is the sub-list for field type_name
++	3, // 0: xray.proxy.anytls.ClientConfig.address:type_name -> xray.common.net.IPOrDomain
++	1, // 1: xray.proxy.anytls.ServerConfig.users:type_name -> xray.proxy.anytls.User
++	2, // [2:2] is the sub-list for method output_type
++	2, // [2:2] is the sub-list for method input_type
++	2, // [2:2] is the sub-list for extension type_name
++	2, // [2:2] is the sub-list for extension extendee
++	0, // [0:2] is the sub-list for field type_name
 +}
 +
 +func init() { file_proxy_anytls_config_proto_init() }
@@ -691,7 +848,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 +			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proxy_anytls_config_proto_rawDesc), len(file_proxy_anytls_config_proto_rawDesc)),
 +			NumEnums:      0,
-+			NumMessages:   1,
++			NumMessages:   3,
 +			NumExtensions: 0,
 +			NumServices:   0,
 +		},
@@ -703,9 +860,9 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +	file_proxy_anytls_config_proto_goTypes = nil
 +	file_proxy_anytls_config_proto_depIdxs = nil
 +}
---- /dev/null
+--- a/proxy/anytls/config.proto
 +++ b/proxy/anytls/config.proto
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,24 @@
 +syntax = "proto3";
 +package xray.proxy.anytls;
 +option go_package = "github.com/xtls/xray-core/proxy/anytls";
@@ -720,7 +877,17 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +  uint32 idle_session_timeout = 6;
 +  uint32 min_idle_session = 7;
 +}
---- /dev/null
++
++message User {
++  string password = 1;
++  string email = 2;
++  uint32 level = 3;
++}
++message ServerConfig {
++  repeated User users = 1;
++  bytes padding_scheme = 2;
++}
+--- a/proxy/anytls/packet.go
 +++ b/proxy/anytls/packet.go
 @@ -0,0 +1,44 @@
 +package anytls
@@ -767,3 +934,270 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +	}
 +	return nil
 +}
+--- a/proxy/anytls/relay.go
++++ b/proxy/anytls/relay.go
+@@ -0,0 +1,60 @@
++package anytls
++
++import (
++	"context"
++	"github.com/xtls/xray-core/common"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/signal"
++	"github.com/xtls/xray-core/features/policy"
++)
++
++// Stop blocked reads and join both copy loops before releasing stream state.
++func relay(ctx context.Context, upR buf.Reader, upW buf.Writer, downR buf.Reader, downW buf.Writer, stopIO func(), p policy.Session) error {
++	ctx, cancel := context.WithCancel(ctx)
++	defer cancel()
++	timer := signal.CancelAfterInactivity(ctx, cancel, p.Timeouts.ConnectionIdle)
++	defer timer.SetTimeout(0)
++	results := make(chan error, 2)
++	go func() {
++		e := buf.Copy(upR, upW, buf.UpdateActivity(timer))
++		if e == nil {
++			common.Close(upW)
++		}
++		timer.SetTimeout(p.Timeouts.DownlinkOnly)
++		results <- e
++	}()
++	go func() {
++		e := buf.Copy(downR, downW, buf.UpdateActivity(timer))
++		if e == nil {
++			common.Close(downW)
++		}
++		timer.SetTimeout(p.Timeouts.UplinkOnly)
++		results <- e
++	}()
++	var first error
++	count := 0
++	for count < 2 {
++		select {
++		case e := <-results:
++			count++
++			if e != nil {
++				first = e
++			}
++		case <-ctx.Done():
++			first = ctx.Err()
++		}
++		if first != nil || count == 2 {
++			break
++		}
++	}
++	stopIO()
++	common.Interrupt(upR)
++	common.Interrupt(upW)
++	common.Interrupt(downR)
++	common.Interrupt(downW)
++	for count < 2 {
++		<-results
++		count++
++	}
++	return first
++}
+--- a/proxy/anytls/server.go
++++ b/proxy/anytls/server.go
+@@ -0,0 +1,189 @@
++package anytls
++
++import (
++	"bytes"
++	"context"
++	"encoding/binary"
++	"io"
++	"time"
++
++	A "github.com/sagernet/sing-anytls"
++	"github.com/sagernet/sing/common/auth"
++	M "github.com/sagernet/sing/common/metadata"
++	N "github.com/sagernet/sing/common/network"
++	"github.com/sagernet/sing/common/uot"
++	"github.com/xtls/xray-core/common"
++	"github.com/xtls/xray-core/common/buf"
++	"github.com/xtls/xray-core/common/errors"
++	"github.com/xtls/xray-core/common/net"
++	"github.com/xtls/xray-core/common/protocol"
++	"github.com/xtls/xray-core/common/session"
++	"github.com/xtls/xray-core/core"
++	"github.com/xtls/xray-core/features/policy"
++	"github.com/xtls/xray-core/features/routing"
++	"github.com/xtls/xray-core/transport/internet"
++	"github.com/xtls/xray-core/transport/internet/stat"
++	"github.com/xtls/xray-core/transport/internet/tls"
++)
++
++type Server struct {
++	service *A.MultiService[*User]
++	policy  policy.Manager
++}
++type dispatcherKey struct{}
++
++func NewServer(ctx context.Context, c *ServerConfig) (*Server, error) {
++	m, _ := session.StreamSettingsFromContext(ctx).(*internet.MemoryStreamConfig)
++	if m == nil {
++		return nil, errors.New("anytls inbound requires TLS")
++	}
++	if _, ok := m.SecuritySettings.(*tls.Config); !ok {
++		return nil, errors.New("anytls inbound requires TLS")
++	}
++	if len(c.Users) == 0 {
++		return nil, errors.New("anytls: users required")
++	}
++	s := &Server{policy: core.MustFromContext(ctx).GetFeature(policy.ManagerType()).(policy.Manager)}
++	service, e := A.NewMultiService[*User](A.ServiceOptions{PaddingScheme: c.PaddingScheme, Handler: s})
++	if e != nil {
++		return nil, e
++	}
++	passwords := make([]string, len(c.Users))
++	seen := map[string]bool{}
++	for i, u := range c.Users {
++		if u == nil || u.Password == "" || seen[u.Password] {
++			return nil, errors.New("anytls: empty or duplicate password")
++		}
++		seen[u.Password] = true
++		passwords[i] = u.Password
++	}
++	if e = service.UpdateUsers(c.Users, passwords); e != nil {
++		return nil, e
++	}
++	s.service = service
++	return s, nil
++}
++func (*Server) Network() []net.Network { return []net.Network{net.Network_TCP} }
++
++type prefaceConn struct {
++	net.Conn
++	reader io.Reader
++}
++
++func (c *prefaceConn) Read(b []byte) (int, error) { return c.reader.Read(b) }
++func (s *Server) Process(ctx context.Context, _ net.Network, conn stat.Connection, d routing.Dispatcher) error {
++	defer conn.Close()
++	ctx, cancel := context.WithCancel(ctx)
++	defer cancel()
++	done := make(chan struct{})
++	stop := context.AfterFunc(ctx, func() { conn.Close(); close(done) })
++	defer func() {
++		if !stop() {
++			<-done
++		}
++	}()
++	conn.SetReadDeadline(time.Now().Add(s.policy.ForLevel(0).Timeouts.Handshake))
++	// sing-anytls inspects the password in its first Read. Preserve fragmented
++	// TLS/application writes by collecting the bounded prologue before handing it off.
++	var header [34]byte
++	if _, e := io.ReadFull(conn, header[:]); e != nil {
++		return e
++	}
++	preface := make([]byte, 34+int(binary.BigEndian.Uint16(header[32:])))
++	copy(preface, header[:])
++	if _, e := io.ReadFull(conn, preface[34:]); e != nil {
++		return e
++	}
++	conn.SetReadDeadline(time.Time{})
++	wrapped := &prefaceConn{conn, io.MultiReader(bytes.NewReader(preface), conn)}
++	ctx = context.WithValue(ctx, dispatcherKey{}, d)
++	return s.service.NewConnection(ctx, wrapped, M.SocksaddrFromNet(conn.RemoteAddr()), nil)
++}
++func (s *Server) NewConnectionEx(ctx context.Context, conn net.Conn, _ M.Socksaddr, dest M.Socksaddr, onClose N.CloseHandlerFunc) {
++	e := s.handleStream(ctx, conn, dest)
++	conn.Close()
++	if onClose != nil {
++		onClose(e)
++	}
++	if e != nil {
++		errors.LogInfoInner(ctx, e, "anytls stream ends")
++	}
++}
++
++type initialReader struct {
++	first  buf.MultiBuffer
++	reader buf.Reader
++}
++
++func (r *initialReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
++	if r.first != nil {
++		b := r.first
++		r.first = nil
++		return b, nil
++	}
++	return r.reader.ReadMultiBuffer()
++}
++func (s *Server) handleStream(ctx context.Context, conn net.Conn, dest M.Socksaddr) error {
++	u, ok := auth.UserFromContext[*User](ctx)
++	if !ok {
++		return errors.New("anytls: missing user")
++	}
++	p := s.policy.ForLevel(u.Level)
++	if in := session.InboundFromContext(ctx); in != nil {
++		cp := *in
++		cp.Name = "anytls"
++		cp.CanSpliceCopy = 3
++		cp.User = &protocol.MemoryUser{Email: u.Email, Level: u.Level}
++		ctx = session.ContextWithInbound(ctx, &cp)
++	}
++	ctx, cancel := context.WithCancel(ctx)
++	defer cancel()
++	stop := context.AfterFunc(ctx, func() { conn.Close() })
++	defer stop()
++	target := net.TCPDestination(net.ParseAddress(dest.AddrString()), net.Port(dest.Port))
++	var reader buf.Reader = buf.NewReader(conn)
++	var writer buf.Writer = buf.NewWriter(conn)
++	var first buf.MultiBuffer
++	if dest.Fqdn == uot.MagicAddress || dest.Fqdn == uot.LegacyMagicAddress {
++		conn.SetReadDeadline(time.Now().Add(p.Timeouts.Handshake))
++		request := uot.Request{}
++		if dest.Fqdn == uot.MagicAddress {
++			r, e := uot.ReadRequest(conn)
++			if e != nil {
++				return e
++			}
++			request = *r
++		}
++		pc := uot.NewConn(conn, request)
++		pr := &packetReader{pc}
++		var e error
++		first, e = pr.ReadMultiBuffer()
++		if e != nil {
++			return e
++		}
++		target = *first[0].UDP
++		reader = &initialReader{first: first, reader: pr}
++		writer = &packetWriter{pc, socksaddr(target)}
++		conn.SetReadDeadline(time.Time{})
++	}
++	if !target.IsValid() || target.Port == 0 {
++		buf.ReleaseMulti(first)
++		return errors.New("anytls: invalid destination")
++	}
++	dispatcher, ok := ctx.Value(dispatcherKey{}).(routing.Dispatcher)
++	if !ok {
++		buf.ReleaseMulti(first)
++		return errors.New("anytls: missing dispatcher")
++	}
++	link, e := dispatcher.Dispatch(ctx, target)
++	if e != nil {
++		buf.ReleaseMulti(first)
++		return e
++	}
++	return relay(ctx, reader, link.Writer, link.Reader, writer, func() { conn.Close() }, p)
++}
++func init() {
++	common.Must(common.RegisterConfig((*ServerConfig)(nil), func(ctx context.Context, c interface{}) (interface{}, error) {
++		return NewServer(ctx, c.(*ServerConfig))
++	}))
++}
+--- a/proxy/freedom/freedom.go
++++ b/proxy/freedom/freedom.go
+@@ -161,6 +161,9 @@
+ 	if inbound == nil {
+ 		return nil
+ 	}
++	if inbound.Name == "anytls" {
++		return defaultBlockPrivateRule
++	}
+ 	switch inbound.Name {
+ 	case "vless-reverse":
+ 		return defaultBlockAllRule
