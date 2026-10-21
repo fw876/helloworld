@@ -77,6 +77,7 @@ if nixio.fs.access("/usr/bin/xray") or nixio.fs.access("/usr/libexec/xray") then
 	o:value("tuic", "TUIC (Xray)")
 	o:value("snell", "Snell (Xray)")
 	o:value("anytls", "AnyTLS (Xray)")
+	o:value("ssr-xray", "ShadowsocksR (Xray)")
 end
 o.default = "socks5"
 
@@ -108,6 +109,7 @@ o:depends("type", "ss")
 o:depends("type", "ssr")
 o:depends("type", "trojan")
 o:depends("type", "shadowsocks")
+o:depends("type", "ssr-xray")
 
 -- ========== SS/SSR 协议特有 ==========
 o = s:option(ListValue, "encrypt_method", translate("Encrypt Method"))
@@ -450,5 +452,29 @@ o = s:option(TextValue, "anytls_padding", "AnyTLS Padding Scheme")
 o.rows = 5
 o.rmempty = true
 o:depends("type", "anytls")
+
+-- Xray SSR has its own validated registry; keep legacy libev choices intact.
+o = s:option(ListValue, "ssr_method", translate("Encrypt Method"))
+for _, v in ipairs({"aes-128-cfb", "aes-192-cfb", "aes-256-cfb", "aes-128-ctr", "aes-192-ctr", "aes-256-ctr", "rc4-md5", "chacha20", "chacha20-ietf", "xchacha20", "none"}) do o:value(v) end
+o.default = "aes-128-cfb"
+o.rmempty = false
+o:depends("type", "ssr-xray")
+o = s:option(ListValue, "ssr_protocol", translate("Protocol"))
+for _, v in ipairs({"origin", "auth_sha1_v4", "auth_aes128_md5", "auth_aes128_sha1", "auth_chain_a", "auth_chain_b"}) do o:value(v) end
+o.default = "auth_aes128_sha1"
+o.rmempty = false
+o:depends("type", "ssr-xray")
+o = s:option(Value, "ssr_protocol_param", "SSR Protocol Param")
+o.description = "1001:password1,1002:password2"
+o:depends("type", "ssr-xray")
+o = s:option(ListValue, "ssr_obfs", translate("Obfs"))
+for _, v in ipairs({"plain", "http_simple", "http_post", "random_head", "tls1.2_ticket_auth", "tls1.2_ticket_fastauth"}) do o:value(v) end
+o.default = "plain"
+o.rmempty = false
+o:depends("type", "ssr-xray")
+o = s:option(Value, "ssr_obfs_param", translate("Obfs param (optional)"))
+o.description = "HTTP Host: example.com,example.org"
+o:depends({type = "ssr-xray", ssr_obfs = "http_simple"})
+o:depends({type = "ssr-xray", ssr_obfs = "http_post"})
 
 return m
