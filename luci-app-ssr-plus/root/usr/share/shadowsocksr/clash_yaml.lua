@@ -928,7 +928,9 @@ local function build_v2ray_mihomo_proxy(sid)
 	elseif protocol == "snell" then
 		proxy.type = "snell"
 		proxy.psk = get_server_field(sid, "snell_psk", "")
-		proxy.version = number_or_nil(get_server_field(sid, "snell_version", ""))
+		proxy.version = tonumber(get_server_field(sid, "snell_version", "4")) or 4
+		proxy.reuse = get_server_field(sid, "snell_reuse", "0") == "1"
+		proxy.udp = proxy.version >= 3
 		local obfs_mode = string_or_nil(get_server_field(sid, "snell_obfs", ""))
 		local obfs_host = string_or_nil(get_server_field(sid, "snell_obfs_host", ""))
 		if obfs_mode or obfs_host then

@@ -479,7 +479,7 @@ end
 if is_finded("xray") then
 	o:value("hysteria2", translate("Hysteria2"))
 end
-if is_finded("mihomo") then
+if is_finded("xray") or is_finded("mihomo") then
 	o:value("snell", translate("Snell"))
 end
 o:value("socks", translate("Socks"))
@@ -1106,6 +1106,12 @@ o = s:option(Value, "snell_obfs_host", translate("Snell Obfs Host"))
 o.rmempty = true
 o:depends({type = "v2ray", v2ray_protocol = "snell"})
 
+o = s:option(Flag, "snell_reuse", translate("Connection reuse"))
+o.default = "0"
+for _, version in ipairs({"4", "5"}) do
+	o:depends({type = "v2ray", v2ray_protocol = "snell", snell_version = version})
+end
+
 -- 传输协议
 o = s:option(ListValue, "transport", translate("Transport"))
 o:value("raw", "RAW (TCP)")
@@ -1456,7 +1462,7 @@ if protocols and type(protocols) == "table" and #protocols > 0 then
 		if not proto:find("^_") then
 			if proto == "hysteria2" then
 				o:depends({type = "v2ray", v2ray_protocol = "hysteria2", hysteria2_realms = false})
-			elseif proto ~= "socks" and proto ~= "http" and proto ~= "shadowsocksr" and proto ~= "tuic" then
+			elseif proto ~= "socks" and proto ~= "http" and proto ~= "shadowsocksr" and proto ~= "tuic" and proto ~= "snell" then
 				o:depends({type = "v2ray", v2ray_protocol = proto})
 			end
 		end

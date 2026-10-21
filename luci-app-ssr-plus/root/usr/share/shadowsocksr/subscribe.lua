@@ -824,7 +824,9 @@ local function to_mihomo_proxy(node)
 	elseif node.type == "v2ray" and node.v2ray_protocol == "snell" then
 		proxy.type = "snell"
 		proxy.psk = node.snell_psk
-		proxy.version = tonumber(node.snell_version) or nil
+		proxy.version = tonumber(node.snell_version) or 4
+		proxy.udp = proxy.version >= 3
+		proxy.reuse = node.snell_reuse == "1"
 		local obfs_mode = string_from_value(node.snell_obfs)
 		local obfs_host = string_from_value(node.snell_obfs_host)
 		if obfs_mode or obfs_host then
@@ -1021,8 +1023,8 @@ local function processData(szType, content, cfgid)
 			result.fast_open = params.tfo
 		end
 	elseif szType == "snell" then
-		if not has_mihomo then
-			log("跳过 Snell 节点：本地未安装 mihomo。")
+		if not has_xray and not has_mihomo then
+			log("跳过 Snell 节点：本地未安装 Xray 或 Mihomo。")
 			return nil
 		end
 
@@ -1041,6 +1043,7 @@ local function processData(szType, content, cfgid)
 		result.snell_version = first_nonempty(params, {"version", "v"}) or "4"
 		result.snell_obfs = first_nonempty(params, {"obfs", "obfs-mode", "obfs_mode"})
 		result.snell_obfs_host = first_nonempty(params, {"obfs-host", "obfs_host", "host"})
+		result.snell_reuse = (params.reuse == "1" or params.reuse == "true") and "1" or "0"
 		if not result.snell_psk or result.snell_psk == "" then
 			result.server = nil
 		end

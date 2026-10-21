@@ -75,6 +75,7 @@ end
 if nixio.fs.access("/usr/bin/xray") or nixio.fs.access("/usr/libexec/xray") then
 	o:value("naive", "NaiveProxy (Xray)")
 	o:value("tuic", "TUIC (Xray)")
+	o:value("snell", "Snell (Xray)")
 end
 o.default = "socks5"
 
@@ -419,6 +420,24 @@ for _, field in ipairs({{"tuic_uuid", "TUIC UUID"}, {"tuic_password", "TUIC Pass
 	o = s:option(Value, field[1], field[2])
 	o.password = field[1] ~= "tuic_uuid"
 	o:depends("type", "tuic")
+end
+
+o = s:option(Value, "snell_psk", translate("Snell PSK"))
+o.password = true
+o:depends("type", "snell")
+o = s:option(ListValue, "snell_version", translate("Snell Version"))
+for _, version in ipairs({"1", "2", "3", "4", "5"}) do o:value(version, "v" .. version) end
+o.default = "4"
+o:depends("type", "snell")
+o = s:option(ListValue, "snell_obfs", translate("Snell Obfs"))
+o:value("", translate("Disable"))
+o:value("http", "HTTP")
+o:value("tls", "TLS")
+o:depends("type", "snell")
+o = s:option(Flag, "snell_udp", translate("UDP Relay"))
+o.default = "1"
+for _, version in ipairs({"3", "4", "5"}) do
+	o:depends({type = "snell", snell_version = version})
 end
 
 return m

@@ -363,6 +363,14 @@ function outbound:handleIndex(index)
 		trojan = function()
 			trojan_shadowsocks()
 		end,
+		snell = function()
+            outbound_settings = {
+                address = server.server, port = tonumber(server.server_port),
+                psk = server.snell_psk, version = tonumber(server.snell_version) or 4,
+                obfs = server.snell_obfs or "", obfsHost = server.snell_obfs_host,
+                reuse = server.snell_reuse == "1"
+            }
+        end,
 		tuic = function()
             local version = tonumber(server.xray_tuic_version) or 5
             local alpn = {}
@@ -919,9 +927,9 @@ Xray.outbounds = {
 	}
 }
 
--- Naive and TUIC own TLS/multiplexing; SSR owns obfuscation and native UDP.
+-- These protocols own their framing, obfuscation and multiplexing.
 -- Preserve Xray socket marks and dialer chains.
-if server.v2ray_protocol == "naive" or server.v2ray_protocol == "shadowsocksr" or server.v2ray_protocol == "tuic" then
+if server.v2ray_protocol == "naive" or server.v2ray_protocol == "shadowsocksr" or server.v2ray_protocol == "tuic" or server.v2ray_protocol == "snell" then
     local ob = Xray.outbounds[1]
     ob.streamSettings = { network = "raw", sockopt = ob.streamSettings.sockopt }
     ob.mux = nil
@@ -1342,6 +1350,14 @@ function config:handleIndex(index)
 				chain_switch[ChainType]()
 			end
 		end,
+		snell = function()
+            outbound_settings = {
+                address = server.server, port = tonumber(server.server_port),
+                psk = server.snell_psk, version = tonumber(server.snell_version) or 4,
+                obfs = server.snell_obfs or "", obfsHost = server.snell_obfs_host,
+                reuse = server.snell_reuse == "1"
+            }
+        end,
 		tuic = function()
 			print(json.stringify(tuic, 1))
 		end

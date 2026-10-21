@@ -1962,9 +1962,6 @@ start_local() {
 		[ -n "$probe_instance_key" ] && instance_key="$probe_instance_key"
 		if [ "$enable_mihomo" = "1" ] && start_v2ray_with_mihomo "$LOCAL_SERVER" "$local_port" "$local_port" "$instance_key" "socks" "v2ray-local" "Global_Socks5"; then
 			:
-		elif [ "$(uci_get_by_name "$LOCAL_SERVER" v2ray_protocol)" = "snell" ]; then
-			echolog "Global_Socks5:Snell 需要 Mihomo 内核，且当前 Mihomo 启动失败。"
-			return 1
 		elif [ "$_local" = "2" ]; then
 			# 尝试 Xray
 			xray_bin="$(first_type xray)"
@@ -2251,6 +2248,9 @@ get_udp_relay_mode() {
 	v2ray)
 		proto=$(uci_get_by_name "$node" v2ray_protocol)
 		case "$proto" in
+		snell)
+			case "$(uci_get_by_name "$node" snell_version 4)" in 1|2) echo "disabled" ;; *) echo "native" ;; esac
+			;;
 		naive)
 			[ "$(uci_get_by_name "$node" naive_udp_over_tcp 0)" = "1" ] && echo "native" || echo "disabled"
 			;;
@@ -2386,11 +2386,8 @@ Start_Run() {
 		enable_mihomo=$(uci_get_by_type server_subscribe enable_mihomo "")
 		if [ "$enable_mihomo" = "1" ] && start_v2ray_with_mihomo "$GLOBAL_SERVER" "$tcp_port" "$socks_port" "$GLOBAL_SERVER" "redir" "ssr-retcp" "Main node"; then
 			:
-		elif [ "$(uci_get_by_name "$GLOBAL_SERVER" v2ray_protocol)" = "snell" ]; then
-			echolog "Main node:Snell 需要 Mihomo 内核，且当前 Mihomo 启动失败。"
-			return 1
 		else
-			# enable_mihomo=0 或 Mihomo 启动失败（非 Snell）→ 优先使用 Xray
+			# enable_mihomo=0 或 Mihomo 启动失败 → 优先使用 Xray
 			xray_bin="$(first_type xray)"
 			if [ -n "$xray_bin" ]; then
 				gen_config_file "$GLOBAL_SERVER" "$type" 1 "$tcp_port" "$socks_port"
@@ -2750,6 +2747,16 @@ start_server() {
 			"$xray_bin" run -test -c "$config_file" >> /var/ssrplus.log 2>&1 || return 1
 			ln_start_bin "$xray_bin" xray-server-$server_count run -c "$config_file"
 			echolog "Server: Xray NaiveProxy Server$server_count Started!"
+			;;
+
+		snell)
+			xray_bin="$(first_type xray)"
+			[ -x "$xray_bin" ] || return 1
+			config_file="$TMP_PATH/xray-server-$server_count.json"
+			lua /usr/share/shadowsocksr/gen_snell_server.lua "$1" > "$config_file" || return 1
+			"$xray_bin" run -test -c "$config_file" >> /var/ssrplus.log 2>&1 || return 1
+			ln_start_bin "$xray_bin" xray-server-$server_count run -c "$config_file"
+			echolog "Server: Xray Snell Server$server_count Started!"
 			;;
 
 		tuic)
