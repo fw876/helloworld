@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=xray-core
 PKG_VERSION:=26.10.17
-PKG_RELEASE:=9
+PKG_RELEASE:=10
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/XTLS/Xray-core/tar.gz/v$(PKG_VERSION)?
@@ -40,7 +40,9 @@ ifeq ($(CONFIG_XRAY_CORE_NAIVE),y)
   ifeq ($(CONFIG_USE_MUSL),y)
     GO_PKG_TAGS+=with_musl
   endif
-  GO_PKG_BUILD_VARS+=CGO_LDFLAGS="$(TARGET_LDFLAGS) -B$(CRONET_CLANG_DIR)/bin -fuse-ld=lld $(if $(filter arm i386 mipsel loongarch64,$(ARCH)),-Wl$(comma)-no-pie) $(if $(filter loongarch64,$(ARCH)),-Wl$(comma)--no-relax)"
+  # golang-package.mk also appends TARGET_LDFLAGS through -extldflags, after
+  # CGO_LDFLAGS. Select LLD here so the SDK cannot override it with ld.bfd.
+  TARGET_LDFLAGS:=$(filter-out -fuse-ld=%,$(TARGET_LDFLAGS)) -B$(CRONET_CLANG_DIR)/bin -fuse-ld=lld $(if $(filter arm i386 mipsel loongarch64,$(ARCH)),-Wl$(comma)-no-pie) $(if $(filter loongarch64,$(ARCH)),-Wl$(comma)--no-relax)
 
   define Download/cronet-clang
     URL:=https://commondatastorage.googleapis.com/chromium-browser-clang/Linux_x64

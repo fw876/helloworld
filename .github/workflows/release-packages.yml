@@ -9,6 +9,10 @@ name: Release Packages
 env:
   TZ: Asia/Shanghai
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   prepare:
     name: Prepare Release
@@ -122,6 +126,12 @@ jobs:
           rm -rf feeds/packages/lang/golang
           git -C feeds/packages restore --source=FETCH_HEAD --staged --worktree -- lang/golang
           rm -rf feeds/packages/net/xray-core
+          # These release SDKs use musl. The 25.12 metadata generator expands
+          # curl -> LDAP -> SASL -> glibc-only libcrypt into a Kconfig cycle.
+          # Drop the inapplicable dependency before regenerating feed metadata.
+          if [[ "${SDK_NAME}" == *_musl.* ]]; then
+            sed -i 's/+USE_GLIBC:libcrypt-compat//g' feeds/packages/libs/cyrus-sasl/Makefile
+          fi
           ./scripts/feeds update -i packages
           echo "src-link helloworld $(pwd)/../source" >> feeds.conf
           ./scripts/feeds update helloworld
@@ -156,10 +166,20 @@ jobs:
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Libev_Client=n
           CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Libev_Server=n
           CONFIG_PACKAGE_xray-core=m
+          CONFIG_XRAY_CORE_NAIVE=y
           CONFIG_PACKAGE_mihomo=m
           CONFIG_PACKAGE_naiveproxy=n
           EOF
-          make defconfig
+          mkdir -p logs
+          make defconfig 2>&1 | tee logs/defconfig.log
+          if grep -Eq 'recursive dependency detected|error:' logs/defconfig.log; then
+            exit 1
+          fi
+          for option in PACKAGE_luci-app-ssr-plus PACKAGE_luci-i18n-ssr-plus-zh-cn PACKAGE_xray-core PACKAGE_mihomo; do
+            grep -qx "CONFIG_${option}=m" .config
+          done
+          grep -qx 'CONFIG_XRAY_CORE_NAIVE=y' .config
+          ! grep -Eq '^CONFIG_PACKAGE_naiveproxy=[ym]$' .config
 
       - name: Compile packages
         id: compile
@@ -170,8 +190,8 @@ jobs:
           packages=(luci-app-ssr-plus xray-core mihomo)
           for package in "${packages[@]}"; do
             make "package/feeds/helloworld/${package}/clean" -j1 V=s
-            if ! make "package/feeds/helloworld/${package}/compile" -j"$(nproc)"; then
-              make "package/feeds/helloworld/${package}/compile" -j1 V=s
+            if ! make "package/feeds/helloworld/${package}/compile" -j"$(nproc)" BUILD_LOG=1 2>&1 | tee "logs/${package}.log"; then
+              make "package/feeds/helloworld/${package}/compile" -j1 V=s BUILD_LOG=1 2>&1 | tee "logs/${package}-retry.log"
             fi
           done
 
@@ -232,7 +252,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-logs-${{ matrix.build_arch }}
-          path: sdk/logs/
+          include-hidden-files: true
+          path: |
+            sdk/logs/
+            sdk/.config
+            sdk/tmp/.config-package.in
           retention-days: 7
 
   release:
