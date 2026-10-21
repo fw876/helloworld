@@ -51,9 +51,9 @@ ifeq ($(CONFIG_XRAY_CORE_NAIVE),y)
   $(eval $(call Download,cronet-clang))
 
   define Build/Prepare
-    $(call Build/Prepare/Default)
-    $(INSTALL_DIR) $(CRONET_CLANG_DIR)
-    $(TAR) -xJf $(DL_DIR)/$(CRONET_CLANG_FILE) -C $(CRONET_CLANG_DIR)
+	$(call Build/Prepare/Default)
+	$(INSTALL_DIR) $(CRONET_CLANG_DIR)
+	$(TAR) -xJf $(DL_DIR)/$(CRONET_CLANG_FILE) -C $(CRONET_CLANG_DIR)
   endef
 endif
 

@@ -62,7 +62,6 @@ jobs:
     name: Build ${{ matrix.build_arch }}
     needs: prepare
     runs-on: ubuntu-latest
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -124,10 +123,11 @@ jobs:
           git -C feeds/packages restore --source=FETCH_HEAD --staged --worktree -- lang/golang
           rm -rf feeds/packages/net/xray-core
           ./scripts/feeds update -i packages
-          ./scripts/feeds install -a
           echo "src-link helloworld $(pwd)/../source" >> feeds.conf
           ./scripts/feeds update helloworld
-          ./scripts/feeds install -a -p helloworld
+          # Install only release packages and their dependencies. Installing all
+          # feeds also imports unrelated, conflicting Kconfig options into SDKs.
+          ./scripts/feeds install -p helloworld luci-app-ssr-plus xray-core mihomo
           test -e package/feeds/helloworld/xray-core
           cat <<'EOF' > .config
           CONFIG_ALL_NONSHARED=n
@@ -160,20 +160,16 @@ jobs:
           CONFIG_PACKAGE_naiveproxy=n
           EOF
           make defconfig
-          make clean
-          make download -j"$(nproc)" || true
 
       - name: Compile packages
         id: compile
         run: |
           cd sdk
-          ./scripts/feeds update helloworld
-          ./scripts/feeds install -a -p helloworld
           test -e package/feeds/helloworld/xray-core
 
           packages=(luci-app-ssr-plus xray-core mihomo)
           for package in "${packages[@]}"; do
-            make "package/feeds/helloworld/${package}/clean"
+            make "package/feeds/helloworld/${package}/clean" -j1 V=s
             if ! make "package/feeds/helloworld/${package}/compile" -j"$(nproc)"; then
               make "package/feeds/helloworld/${package}/compile" -j1 V=s
             fi
@@ -229,13 +225,22 @@ jobs:
           name: helloworld-${{ matrix.build_arch }}
           path: dist/${{ matrix.build_arch }}
           retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ matrix.build_arch }}
+          path: sdk/logs/
+          retention-days: 7
 
   release:
     name: Publish Release
     needs:
       - prepare
       - build
-    if: ${{ always() && github.event_name == 'push' }}
+    if: ${{ success() && github.event_name == 'push' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -257,8 +262,20 @@ jobs:
           mkdir -p releases
           shopt -s nullglob
 
-          for dir in artifacts/*; do
-            [ -d "$dir" ] || continue
+          for arch in x64_ipk x64_apk arm64_generic_ipk arm64_generic_apk arm64_a53_ipk arm64_a53_apk; do
+            dir="artifacts/helloworld-${arch}"
+            ext="${arch##*_}"
+            for name in luci-app-ssr-plus luci-i18n-ssr-plus-zh-cn xray-core mihomo; do
+              if [ "$ext" = apk ]; then
+                matches=("$dir/$name"-*.apk)
+              else
+                matches=("$dir/$name"_*.ipk)
+              fi
+              if [ ${#matches[@]} -eq 0 ]; then
+                echo "Missing release package: ${arch}/${name}" >&2
+                exit 1
+              fi
+            done
 
             for package in "$dir"/*.ipk "$dir"/*.apk; do
               [ -f "$package" ] || continue
@@ -275,3 +292,4 @@ jobs:
           body_path: release-note/release_note.md
           prerelease: ${{ contains(needs.prepare.outputs.tag_name, '-beta') || contains(needs.prepare.outputs.tag_name, '-rc') }}
           files: releases/*
+          fail_on_unmatched_files: true
