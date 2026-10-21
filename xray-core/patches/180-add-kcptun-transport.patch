@@ -30,7 +30,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	github.com/google/go-cmp v0.7.0
  	github.com/google/uuid v1.6.0
  	github.com/gorilla/websocket v1.5.3
- 	github.com/klauspost/cpuid/v2 v2.4.0
+ 	github.com/klauspost/cpuid/v2 v2.4.1
  	github.com/libp2p/go-nat v1.0.1-0.20250821073202-01afc089f138
  	github.com/metacubex/chacha v0.1.5
 +	github.com/metacubex/kcp-go v0.0.0-20260105040817-550693377604
@@ -69,8 +69,8 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
 @@ -44,6 +46,8 @@
  github.com/klauspost/compress v1.20.0/go.mod h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI=
- github.com/klauspost/cpuid/v2 v2.4.0 h1:S6Hrbc7+ywsr0r+RLapfGBHfyefhCTwEh3A0tV913Dw=
- github.com/klauspost/cpuid/v2 v2.4.0/go.mod h1:19jmZ9mjzoF//ddRSUsv0zfBTJWh3QJh9FNxZTMrGxU=
+ github.com/klauspost/cpuid/v2 v2.4.1 h1:I9KxadAkvo+QjtcEE2f2tyfEvmIla/T0m+14PrZNl0U=
+ github.com/klauspost/cpuid/v2 v2.4.1/go.mod h1:19jmZ9mjzoF//ddRSUsv0zfBTJWh3QJh9FNxZTMrGxU=
 +github.com/klauspost/reedsolomon v1.12.3 h1:tzUznbfc3OFwJaTebv/QdhnFf2Xvb7gZ24XaHLBPmdc=
 +github.com/klauspost/reedsolomon v1.12.3/go.mod h1:3K5rXwABAvzGeR01r6pWZieUALXO/Tq7bFKGIb4m4WI=
  github.com/koron/go-ssdp v0.0.4 h1:1IDwrghSKYM7yLf7XCzbByg2sJ/JcNOZRXS2jczTwz0=
@@ -136,10 +136,10 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +	if config.ProtocolName == "kcptun" && c.Security != "" && c.Security != "none" {
 +		return nil, errors.New("Kcptun does not support additional stream security")
 +	}
+ 	var xdriveH3 bool
  	switch strings.ToLower(c.Security) {
  	case "", "none":
- 	case "tls":
-@@ -177,6 +183,17 @@
+@@ -179,6 +185,17 @@
  			Settings:     serial.ToTypedMessage(hs),
  		})
  	}

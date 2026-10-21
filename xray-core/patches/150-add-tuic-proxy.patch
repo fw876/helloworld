@@ -22,7 +22,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	github.com/google/go-cmp v0.7.0
  	github.com/google/uuid v1.6.0
 @@ -12,6 +13,9 @@
- 	github.com/klauspost/cpuid/v2 v2.4.0
+ 	github.com/klauspost/cpuid/v2 v2.4.1
  	github.com/libp2p/go-nat v1.0.1-0.20250821073202-01afc089f138
  	github.com/metacubex/chacha v0.1.5
 +	github.com/metacubex/mihomo v1.19.32
@@ -38,7 +38,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 -	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 +	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb
  	golang.org/x/crypto v0.58.0
- 	golang.org/x/crypto/x509roots/fallback v0.0.0-20261005185213-c3db4df58582
+ 	golang.org/x/crypto/x509roots/fallback v0.0.0-20261020153306-9f2b28d4331a
 -	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842
 +	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e
  	golang.org/x/net v0.61.0
@@ -190,8 +190,8 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=
  golang.org/x/crypto v0.58.0 h1:COkYLr4k7nDI4r6QtMML2AfzeIswWHAJthLS6K/M/54=
  golang.org/x/crypto v0.58.0/go.mod h1:Xh+kl5A+M0gMiWDytH2Hhr5Z7WbNCpv/eB/EFgfSk+w=
- golang.org/x/crypto/x509roots/fallback v0.0.0-20261005185213-c3db4df58582 h1:wjDBrGbfLuifgrVLFEWUBJYAfh5Q1wkMc5t0FY0tCbs=
- golang.org/x/crypto/x509roots/fallback v0.0.0-20261005185213-c3db4df58582/go.mod h1:HPze8vhfG6fO06AM+VSvxRm4E3+5Yk375mgrJ5M2z1E=
+ golang.org/x/crypto/x509roots/fallback v0.0.0-20261020153306-9f2b28d4331a h1:V5oicZXS0oqZx30gY/apgSVD7YvNBfrIOdcMnlelJY4=
+ golang.org/x/crypto/x509roots/fallback v0.0.0-20261020153306-9f2b28d4331a/go.mod h1:HPze8vhfG6fO06AM+VSvxRm4E3+5Yk375mgrJ5M2z1E=
 -golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 h1:vr/HnozRka3pE4EsMEg1lgkXJkTFJCVUX+S/ZT6wYzM=
 -golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842/go.mod h1:XtvwrStGgqGPLc4cjQfWqZHG1YFdYs6swckp8vpsjnc=
 +golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e h1:I88y4caeGeuDQxgdoFPUq097j7kNfw6uvuiNxUBfcBk=
@@ -376,7 +376,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  		"naive":         func() interface{} { return new(NaiveServerConfig) },
  		"dokodemo-door": func() interface{} { return new(DokodemoConfig) },
  		"http":          func() interface{} { return new(HTTPServerConfig) },
-@@ -55,6 +56,7 @@
+@@ -57,6 +58,7 @@
  		"vmess":        func() interface{} { return new(VMessOutboundConfig) },
  		"trojan":       func() interface{} { return new(TrojanClientConfig) },
  		"naive":        func() interface{} { return new(NaiveClientConfig) },
@@ -396,7 +396,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	_ "github.com/xtls/xray-core/proxy/vmess/inbound"
 --- a/proxy/freedom/freedom.go
 +++ b/proxy/freedom/freedom.go
-@@ -164,7 +164,7 @@
+@@ -167,7 +167,7 @@
  	switch inbound.Name {
  	case "vless-reverse":
  		return defaultBlockAllRule

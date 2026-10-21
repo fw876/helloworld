@@ -1,12 +1,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=xray-core
-PKG_VERSION:=26.10.17
-PKG_RELEASE:=10
+PKG_VERSION:=26.10.21
+PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/XTLS/Xray-core/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=62fb186017bc29c3d10950d7a1a61fd40aff0cb92ba2b77363e9004455f6bf89
+PKG_HASH:=44ef4874529a03848c90f1fdcfb763350fbc5f1de741ec90e0024d651df25650
 
 PKG_MAINTAINER:=Tianling Shen <cnsztl@immortalwrt.org>
 PKG_LICENSE:=MPL-2.0 GPL-3.0-or-later MIT
@@ -56,6 +56,14 @@ ifeq ($(CONFIG_XRAY_CORE_NAIVE),y)
 	$(call Build/Prepare/Default)
 	$(INSTALL_DIR) $(CRONET_CLANG_DIR)
 	$(TAR) -xJf $(DL_DIR)/$(CRONET_CLANG_FILE) -C $(CRONET_CLANG_DIR)
+  endef
+endif
+
+# Apply only to this package; runtime DT detection restricts use to AN7581.
+ifeq ($(GO_ARCH),arm64)
+  define Build/Compile
+	python3 $(PKG_BUILD_DIR)/tools/eip93/overlay.py --go $(STAGING_DIR_HOSTPKG)/bin/go --out $(PKG_BUILD_DIR)/.eip93-overlay
+	$(call GoPackage/Build/Compile,-overlay=$(PKG_BUILD_DIR)/.eip93-overlay/overlay.json)
   endef
 endif
 

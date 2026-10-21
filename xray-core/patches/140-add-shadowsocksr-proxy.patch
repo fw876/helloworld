@@ -17,7 +17,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +++ b/go.mod
 @@ -11,6 +11,7 @@
  	github.com/gorilla/websocket v1.5.3
- 	github.com/klauspost/cpuid/v2 v2.4.0
+ 	github.com/klauspost/cpuid/v2 v2.4.1
  	github.com/libp2p/go-nat v1.0.1-0.20250821073202-01afc089f138
 +	github.com/metacubex/chacha v0.1.5
  	github.com/miekg/dns v1.1.73

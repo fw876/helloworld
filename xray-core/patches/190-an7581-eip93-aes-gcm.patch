@@ -1,0 +1,466 @@
+From: coolsnowwolf <coolsnowwolf@gmail.com>
+Subject: [PATCH] build: add AN7581-only EIP93 hybrid AES-GCM overlay
+
+Keep the shared Go toolchain unchanged. Select the AF_ALG backend only on
+AN7581 without ARM AES instructions, with per-key verification and software
+fallback. AN7583 remains on the normal path pending separate measurements.
+
+Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
+
+--- a/tools/eip93/eip93_linux_arm64.go
++++ b/tools/eip93/eip93_linux_arm64.go
+@@ -0,0 +1,273 @@
++// Copyright 2026 coolsnowwolf <coolsnowwolf@gmail.com>
++// SPDX-License-Identifier: BSD-3-Clause
++//go:build linux && arm64 && !purego
++
++package gcm
++
++import (
++	"bytes"
++	"crypto/internal/fips140"
++	"crypto/internal/fips140/aes"
++	"crypto/internal/fips140deps/cpu"
++	"encoding/binary"
++	"os"
++	"runtime"
++	"sync"
++	"sync/atomic"
++	"syscall"
++	"unsafe"
++)
++
++const eip93SOL = 279
++const eip93Min = 4096
++const eip93Max = 32768
++const eip93MaxSockets = 128
++
++var eip93Detected sync.Once
++var eip93Allowed bool
++var eip93Sockets atomic.Int32
++var eip93Notice sync.Once
++
++func eip93Compatible(data []byte) bool {
++	if len(data) == 0 || data[len(data)-1] != 0 {
++		return false
++	}
++	found := false
++	for _, s := range bytes.Split(data, []byte{0}) {
++		switch string(s) {
++		case "airoha,an7583", "airoha,en7583":
++			return false
++		case "airoha,an7581", "airoha,en7581":
++			found = true
++		}
++	}
++	return found
++}
++
++func eip93Enabled() bool {
++	eip93Detected.Do(func() {
++		if fips140.Enabled || cpu.ARM64HasAES || os.Getenv("XRAY_EIP93") == "off" {
++			return
++		}
++		for _, path := range []string{"/sys/firmware/devicetree/base/compatible", "/proc/device-tree/compatible"} {
++			b, err := os.ReadFile(path)
++			if err == nil {
++				eip93Allowed = eip93Compatible(b)
++				return
++			}
++		}
++	})
++	return eip93Allowed
++}
++
++type eip93State struct {
++	mu            sync.Mutex
++	key           [32]byte
++	keyLen        int
++	fd            int
++	disabled      bool
++	input, output []byte
++}
++
++func newEIP93State(g *GCM) *eip93State {
++	if g.nonceSize != 12 || g.tagSize != 16 || !eip93Enabled() {
++		return nil
++	}
++	// Only the generic ARM64 schedule is used: its first Nk big-endian words
++	// are the original AES key. Never interpret an instruction-specific schedule.
++	schedule := aes.EncryptionKeySchedule(&g.cipher)
++	keyLen := (len(schedule)/4 - 7) * 4
++	if keyLen != 16 && keyLen != 24 && keyLen != 32 {
++		return nil
++	}
++	s := &eip93State{keyLen: keyLen, fd: -1}
++	for i := 0; i < keyLen/4; i++ {
++		binary.BigEndian.PutUint32(s.key[i*4:], schedule[i])
++	}
++	runtime.SetFinalizer(s, func(s *eip93State) { s.close(); clear(s.key[:]) })
++	return s
++}
++
++func (s *eip93State) close() {
++	if s.fd >= 0 {
++		syscall.Close(s.fd)
++		s.fd = -1
++		eip93Sockets.Add(-1)
++	}
++	clear(s.input)
++	clear(s.output)
++}
++
++func eip93Cmsg(kind int32, data []byte) []byte {
++	b := make([]byte, syscall.CmsgSpace(len(data)))
++	h := (*syscall.Cmsghdr)(unsafe.Pointer(&b[0]))
++	h.Level = eip93SOL
++	h.Type = kind
++	h.SetLen(syscall.CmsgLen(len(data)))
++	copy(b[syscall.CmsgLen(0):], data)
++	return b
++}
++func eip93U32(v uint32) []byte { b := make([]byte, 4); binary.LittleEndian.PutUint32(b, v); return b }
++
++func (s *eip93State) connect() error {
++	if eip93Sockets.Add(1) > eip93MaxSockets {
++		eip93Sockets.Add(-1)
++		return syscall.EMFILE
++	}
++	success := false
++	defer func() {
++		if !success {
++			eip93Sockets.Add(-1)
++		}
++	}()
++	fd, err := syscall.Socket(38, syscall.SOCK_SEQPACKET|syscall.SOCK_CLOEXEC, 0)
++	if err != nil {
++		return err
++	}
++	defer syscall.Close(fd)
++	var sa [88]byte
++	binary.LittleEndian.PutUint16(sa[:], 38)
++	copy(sa[2:16], "aead")
++	copy(sa[24:], "gcm_base(ctr(aes-eip93),ghash-generic)")
++	_, _, errno := syscall.Syscall(syscall.SYS_BIND, uintptr(fd), uintptr(unsafe.Pointer(&sa[0])), uintptr(len(sa)))
++	if errno != 0 {
++		return errno
++	}
++	_, _, errno = syscall.Syscall6(syscall.SYS_SETSOCKOPT, uintptr(fd), eip93SOL, 1, uintptr(unsafe.Pointer(&s.key[0])), uintptr(s.keyLen), 0)
++	runtime.KeepAlive(s)
++	if errno != 0 {
++		return errno
++	}
++	_, _, errno = syscall.Syscall6(syscall.SYS_SETSOCKOPT, uintptr(fd), eip93SOL, 5, 0, 16, 0)
++	if errno != 0 {
++		return errno
++	}
++	op, _, errno := syscall.Syscall6(syscall.SYS_ACCEPT4, uintptr(fd), 0, 0, syscall.SOCK_CLOEXEC, 0, 0)
++	if errno != 0 {
++		return errno
++	}
++	for _, option := range []int{syscall.SO_RCVTIMEO, syscall.SO_SNDTIMEO} {
++		if err = syscall.SetsockoptTimeval(int(op), syscall.SOL_SOCKET, option, &syscall.Timeval{Sec: 1}); err != nil {
++			syscall.Close(int(op))
++			return err
++		}
++	}
++	s.fd = int(op)
++	success = true
++	clear(s.key[:])
++	return nil
++}
++
++// exchange never exposes plaintext until the kernel has authenticated it.
++// It also never modifies the caller's buffers before a complete operation,
++// so a syscall failure can safely fall back to the original implementation.
++func (s *eip93State) exchange(nonce, src, aad []byte, decrypt bool) ([]byte, error) {
++	inLen := len(aad) + len(src)
++	outLen := inLen + 16
++	if decrypt {
++		outLen = inLen - 16
++	}
++	if cap(s.input) < inLen {
++		s.input = make([]byte, inLen)
++	} else {
++		s.input = s.input[:inLen]
++	}
++	if cap(s.output) < outLen {
++		s.output = make([]byte, outLen)
++	} else {
++		s.output = s.output[:outLen]
++	}
++	copy(s.input, aad)
++	copy(s.input[len(aad):], src)
++	op := uint32(1)
++	if decrypt {
++		op = 0
++	}
++	ctl := eip93Cmsg(3, eip93U32(op))
++	iv := append(eip93U32(12), nonce...)
++	ctl = append(ctl, eip93Cmsg(2, iv)...)
++	ctl = append(ctl, eip93Cmsg(4, eip93U32(uint32(len(aad))))...)
++	n, err := syscall.SendmsgN(s.fd, s.input, ctl, nil, 0)
++	if err != nil {
++		return nil, err
++	}
++	if n != inLen {
++		return nil, syscall.EIO
++	}
++	n, err = syscall.Read(s.fd, s.output)
++	if err != nil {
++		return nil, err
++	}
++	if n != outLen {
++		return nil, syscall.EIO
++	}
++	return s.output[len(aad):], nil
++}
++
++func (s *eip93State) selftest(g *GCM) bool {
++	var nonce [12]byte
++	n, _, errno := syscall.Syscall(syscall.SYS_GETRANDOM, uintptr(unsafe.Pointer(&nonce[0])), uintptr(len(nonce)), 0)
++	if errno != 0 || n != uintptr(len(nonce)) {
++		return false
++	}
++	aad := []byte("EIP93 selftest")
++	plain := make([]byte, 257)
++	for i := range plain {
++		plain[i] = byte(i * 7)
++	}
++	expected := make([]byte, len(plain)+16)
++	sealGeneric(expected, g, nonce[:], plain, aad)
++	got, err := s.exchange(nonce[:], plain, aad, false)
++	if err != nil || !bytes.Equal(got, expected) {
++		return false
++	}
++	got, err = s.exchange(nonce[:], expected, aad, true)
++	if err != nil || !bytes.Equal(got, plain) {
++		return false
++	}
++	expected[len(expected)-1] ^= 1
++	_, err = s.exchange(nonce[:], expected, aad, true)
++	return err == syscall.EBADMSG
++}
++
++// Return handled=false for unsupported sizes and operational failures.
++// Authentication failures are handled=true, valid=false, never successes.
++func (s *eip93State) crypt(g *GCM, out, nonce, src, aad []byte, decrypt bool) (handled, valid bool) {
++	n := len(src)
++	if decrypt {
++		n -= 16
++	}
++	if n < eip93Min || n > eip93Max || len(aad) > 256 || len(nonce) != 12 {
++		return false, false
++	}
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	defer runtime.KeepAlive(s)
++	if s.disabled {
++		return false, false
++	}
++	if s.fd < 0 {
++		if s.connect() != nil || !s.selftest(g) {
++			s.close()
++			clear(s.key[:])
++			s.disabled = true
++			return false, false
++		}
++		eip93Notice.Do(func() { println("Xray EIP93: AN7581 AES-GCM hybrid backend enabled (AF_ALG CTR + CPU GHASH)") })
++	}
++	result, err := s.exchange(nonce, src, aad, decrypt)
++	if decrypt && err == syscall.EBADMSG {
++		clear(s.input)
++		clear(s.output)
++		return true, false
++	}
++	if err != nil {
++		s.close()
++		s.disabled = true
++		return false, false
++	}
++	copy(out, result)
++	clear(s.input)
++	clear(s.output)
++	return true, true
++}
+--- a/tools/eip93/eip93_linux_arm64_test.go
++++ b/tools/eip93/eip93_linux_arm64_test.go
+@@ -0,0 +1,125 @@
++// Copyright 2026 coolsnowwolf <coolsnowwolf@gmail.com>
++// SPDX-License-Identifier: BSD-3-Clause
++//go:build linux && arm64 && !purego
++
++package gcm
++
++import (
++	"bytes"
++	"crypto/internal/fips140/aes"
++	"sync"
++	"syscall"
++	"testing"
++)
++
++func TestEIP93DTGate(t *testing.T) {
++	for _, tc := range []struct {
++		dt   string
++		want bool
++	}{
++		{"nokia,xg-040g-md-ubi\x00airoha,an7581\x00", true},
++		{"airoha,en7581\x00", true}, {"airoha,an7583\x00", false},
++		{"airoha,an7581\x00airoha,en7583\x00", false},
++		{"airoha,an7581", false}, {"", false}, {"vendor,an7581\x00", false}, {"airoha,an75810\x00", false},
++	} {
++		if eip93Compatible([]byte(tc.dt)) != tc.want {
++			t.Fatalf("gate %q", tc.dt)
++		}
++	}
++}
++
++func TestEIP93Hardware(t *testing.T) {
++	if !eip93Enabled() {
++		t.Skip("requires AN7581 with EIP93 backend enabled")
++	}
++	for _, keyLen := range []int{16, 24, 32} {
++		key := make([]byte, keyLen)
++		for i := range key {
++			key[i] = byte(i + 1)
++		}
++		block, err := aes.New(key)
++		if err != nil {
++			t.Fatal(err)
++		}
++		g, err := New(block, 12, 16)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if g.eip93 == nil {
++			t.Fatal("backend not selected")
++		}
++		for _, n := range []int{0, 1, 15, 16, 17, 4095, 4096, 4097, 16384, 16385, 32768, 32769} {
++			plain := make([]byte, n)
++			for i := range plain {
++				plain[i] = byte(i * 7)
++			}
++			nonce := make([]byte, 12)
++			nonce[0] = byte(n)
++			nonce[1] = byte(n >> 8)
++			aad := []byte("authentication data")
++			want := make([]byte, n+16)
++			sealGeneric(want, g, nonce, plain, aad)
++			got := g.Seal(nil, nonce, plain, aad)
++			if !bytes.Equal(got, want) {
++				t.Fatalf("seal key=%d n=%d", keyLen, n)
++			}
++			buf := append([]byte(nil), got...)
++			out, err := g.Open(buf[:0], nonce, buf, aad)
++			if err != nil || !bytes.Equal(out, plain) {
++				t.Fatalf("inplace open key=%d n=%d err=%v", keyLen, n, err)
++			}
++			buf = make([]byte, n, n+16)
++			copy(buf, plain)
++			got = g.Seal(buf[:0], nonce, buf, aad)
++			if !bytes.Equal(got, want) {
++				t.Fatalf("inplace seal key=%d n=%d", keyLen, n)
++			}
++			got[len(got)-1] ^= 1
++			out, err = g.Open(nil, nonce, got, aad)
++			if err == nil || out != nil {
++				t.Fatal("corrupt tag accepted")
++			}
++		}
++		if g.eip93.fd < 0 || g.eip93.disabled {
++			t.Fatal("hardware failed or fell back")
++		}
++		var wg sync.WaitGroup
++		for worker := 0; worker < 8; worker++ {
++			wg.Add(1)
++			go func(id int) {
++				defer wg.Done()
++				for i := 0; i < 20; i++ {
++					nonce := make([]byte, 12)
++					nonce[0] = byte(id + 64)
++					nonce[1] = byte(i)
++					plain := bytes.Repeat([]byte{byte(id)}, 8192)
++					got := g.Seal(nil, nonce, plain, nil)
++					out, err := g.Open(nil, nonce, got, nil)
++					if err != nil || !bytes.Equal(out, plain) {
++						t.Error("concurrent roundtrip")
++					}
++				}
++			}(worker)
++		}
++		wg.Wait()
++		// A closed operation fd must cause a safe software fallback, without
++		// returning partial plaintext or leaking the global socket reservation.
++		syscall.Close(g.eip93.fd)
++		plain := make([]byte, 8192)
++		nonce := make([]byte, 12)
++		want := make([]byte, len(plain)+16)
++		sealGeneric(want, g, nonce, plain, nil)
++		if got := g.Seal(nil, nonce, plain, nil); !bytes.Equal(got, want) || !g.eip93.disabled {
++			t.Fatal("closed-fd fallback")
++		}
++		for _, nt := range [][2]int{{8, 16}, {12, 12}} {
++			other, err := New(block, nt[0], nt[1])
++			if err != nil || other.eip93 != nil {
++				t.Fatal("nonstandard GCM must use software")
++			}
++		}
++	}
++	if n := eip93Sockets.Load(); n != 0 {
++		t.Fatalf("socket reservations leaked: %d", n)
++	}
++}
+--- a/tools/eip93/eip93_stub.go
++++ b/tools/eip93/eip93_stub.go
+@@ -0,0 +1,12 @@
++// Copyright 2026 coolsnowwolf <coolsnowwolf@gmail.com>
++// SPDX-License-Identifier: BSD-3-Clause
++//go:build !linux || !arm64 || purego
++
++package gcm
++
++type eip93State struct{}
++
++func newEIP93State(g *GCM) *eip93State { return nil }
++func (*eip93State) crypt(g *GCM, out, nonce, src, aad []byte, decrypt bool) (bool, bool) {
++	return false, false
++}
+--- a/tools/eip93/overlay.py
++++ b/tools/eip93/overlay.py
+@@ -0,0 +1,35 @@
++#!/usr/bin/env python3
++"""Generate an Xray-only Go overlay; never modify the shared Go toolchain."""
++import argparse
++import json
++from pathlib import Path
++import subprocess
++
++parser=argparse.ArgumentParser()
++parser.add_argument('--go',required=True)
++parser.add_argument('--out',required=True)
++args=parser.parse_args()
++root=Path(subprocess.check_output([args.go,'env','GOROOT'],text=True).strip()).resolve()
++source=root/'src/crypto/internal/fips140/aes/gcm'
++out=Path(args.out).resolve();out.mkdir(parents=True,exist_ok=True)
++replacements={}
++def change(name,edits):
++    text=(source/name).read_text()
++    for old,new in edits:
++        if text.count(old)!=1:
++            raise SystemExit('EIP93 overlay: unsupported Go source in '+name+'; review before enabling acceleration')
++        text=text.replace(old,new,1)
++    dst=out/name;dst.write_text(text)
++    replacements[str(source/name)]=str(dst)
++change('gcm.go',[('\tgcmPlatformData\n','\tgcmPlatformData\n\teip93 *eip93State\n')])
++change('gcm_asm.go',[
++ ('func initGCM(g *GCM) {\n\tif !supportsAESGCM {\n\t\treturn',
++  'func initGCM(g *GCM) {\n\tif !supportsAESGCM {\n\t\tg.eip93 = newEIP93State(g)\n\t\treturn'),
++ ('\t\tsealGeneric(out, g, nonce, plaintext, data)',
++  '\t\tif g.eip93 != nil {\n\t\t\tif handled, _ := g.eip93.crypt(g, out, nonce, plaintext, data, false); handled { return }\n\t\t}\n\t\tsealGeneric(out, g, nonce, plaintext, data)'),
++ ('\t\treturn openGeneric(out, g, nonce, ciphertext, data)',
++  '\t\tif g.eip93 != nil {\n\t\t\tif handled, valid := g.eip93.crypt(g, out, nonce, ciphertext, data, true); handled {\n\t\t\t\tif !valid { return errOpen }; return nil\n\t\t\t}\n\t\t}\n\t\treturn openGeneric(out, g, nonce, ciphertext, data)')])
++for name in ['eip93_linux_arm64.go','eip93_stub.go','eip93_linux_arm64_test.go']:
++    dst=out/name;dst.write_text((Path(__file__).parent/name).read_text())
++    replacements[str(source/name)]=str(dst)
++(out/'overlay.json').write_text(json.dumps({'Replace':replacements},indent=2)+'\n')
