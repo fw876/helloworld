@@ -29,7 +29,7 @@ The first successful activation prints:
 `Xray EIP93: AN7581 AES-GCM hybrid backend enabled (AF_ALG CTR + CPU GHASH)`.
 This message alone is not performance evidence; use engine interrupt counters.
 
-Firmware needs `kmod-crypto-hw-eip93`, `kmod-crypto-gcm`, `kmod-crypto-user` and
+Firmware needs `kmod-crypto-hw-airoha-eip93`, `kmod-crypto-gcm`, `kmod-crypto-user` and
 GHASH/DES dependencies. The QWRT EIP93 package selects these dependencies.
 BSP 5.4 needs the supplied driver and DT node. Linux 6.18 uses its native driver
 with matching DMA cache-line and immutable-SA fixes. Native hardware authenc
