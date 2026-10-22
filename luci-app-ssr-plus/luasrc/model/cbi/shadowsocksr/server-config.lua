@@ -242,7 +242,6 @@ o.rmempty = true
 o:depends("tls", "1")
 o:depends("type", "tuic")
 o:depends("type", "anytls")
-
 o:depends("type", "naive")
 
 o = s:option(Value, "tls_keyFile", translate("Private Key File Path"))
@@ -251,9 +250,9 @@ o.rmempty = true
 o:depends("tls", "1")
 o:depends("type", "tuic")
 o:depends("type", "anytls")
+o:depends("type", "naive")
 
 -- ========== 传输层设置 (Transport) ==========
-o:depends("type", "naive")
 
 o = s:option(ListValue, "transport", translate("Transport Protocol"))
 o:value("tcp", "TCP")
@@ -430,15 +429,18 @@ end
 o = s:option(Value, "snell_psk", translate("Snell PSK"))
 o.password = true
 o:depends("type", "snell")
+
 o = s:option(ListValue, "snell_version", translate("Snell Version"))
 for _, version in ipairs({"1", "2", "3", "4", "5"}) do o:value(version, "v" .. version) end
 o.default = "4"
 o:depends("type", "snell")
+
 o = s:option(ListValue, "snell_obfs", translate("Snell Obfs"))
 o:value("", translate("Disable"))
 o:value("http", "HTTP")
 o:value("tls", "TLS")
 o:depends("type", "snell")
+
 o = s:option(Flag, "snell_udp", translate("UDP Relay"))
 o.default = "1"
 for _, version in ipairs({"3", "4", "5"}) do
@@ -448,6 +450,7 @@ end
 o = s:option(Value, "anytls_password", translate("Password"))
 o.password = true
 o:depends("type", "anytls")
+
 o = s:option(TextValue, "anytls_padding", "AnyTLS Padding Scheme")
 o.rows = 5
 o.rmempty = true
@@ -459,19 +462,23 @@ for _, v in ipairs({"aes-128-cfb", "aes-192-cfb", "aes-256-cfb", "aes-128-ctr", 
 o.default = "aes-128-cfb"
 o.rmempty = false
 o:depends("type", "ssr-xray")
+
 o = s:option(ListValue, "ssr_protocol", translate("Protocol"))
 for _, v in ipairs({"origin", "auth_sha1_v4", "auth_aes128_md5", "auth_aes128_sha1", "auth_chain_a", "auth_chain_b"}) do o:value(v) end
 o.default = "auth_aes128_sha1"
 o.rmempty = false
 o:depends("type", "ssr-xray")
+
 o = s:option(Value, "ssr_protocol_param", "SSR Protocol Param")
 o.description = "1001:password1,1002:password2"
 o:depends("type", "ssr-xray")
+
 o = s:option(ListValue, "ssr_obfs", translate("Obfs"))
 for _, v in ipairs({"plain", "http_simple", "http_post", "random_head", "tls1.2_ticket_auth", "tls1.2_ticket_fastauth"}) do o:value(v) end
 o.default = "plain"
 o.rmempty = false
 o:depends("type", "ssr-xray")
+
 o = s:option(Value, "ssr_obfs_param", translate("Obfs param (optional)"))
 o.description = "HTTP Host: example.com,example.org"
 o:depends({type = "ssr-xray", ssr_obfs = "http_simple"})

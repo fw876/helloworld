@@ -1571,15 +1571,15 @@ generate_xray_config() {
 		{
 			"log": {
 				"loglevel": "warning"
-		},
-		"inbounds": [$inbound_json],
-		"outbounds": [
-			{
-				"protocol": "freedom",
-				"settings": {}
-			}
-		]
-	}
+			},
+			"inbounds": [$inbound_json],
+			"outbounds": [
+				{
+					"protocol": "freedom",
+					"settings": {}
+				}
+			]
+		}
 	EOF
 	return 0
 }
@@ -2260,7 +2260,6 @@ get_udp_relay_mode() {
 		naive)
 			[ "$(uci_get_by_name "$node" naive_udp_over_tcp 0)" = "1" ] && echo "native" || echo "disabled"
 			;;
-
 		http)
 			echo "disabled"
 			;;
@@ -2754,7 +2753,6 @@ start_server() {
 			ln_start_bin "$xray_bin" xray-server-$server_count run -c "$config_file"
 			echolog "Server: Xray NaiveProxy Server$server_count Started!"
 			;;
-
 		ssr-xray)
 			xray_bin="$(first_type xray)"
 			[ -x "$xray_bin" ] || return 1
@@ -2764,7 +2762,6 @@ start_server() {
 			ln_start_bin "$xray_bin" xray-server-$server_count run -c "$config_file"
 			echolog "Server: Xray ShadowsocksR Server$server_count Started!"
 			;;
-
 		anytls)
 			xray_bin="$(first_type xray)"
 			[ -x "$xray_bin" ] || return 1
@@ -2774,7 +2771,6 @@ start_server() {
 			ln_start_bin "$xray_bin" xray-server-$server_count run -c "$config_file"
 			echolog "Server: Xray AnyTLS Server$server_count Started!"
 			;;
-
 		snell)
 			xray_bin="$(first_type xray)"
 			[ -x "$xray_bin" ] || return 1
@@ -2784,7 +2780,6 @@ start_server() {
 			ln_start_bin "$xray_bin" xray-server-$server_count run -c "$config_file"
 			echolog "Server: Xray Snell Server$server_count Started!"
 			;;
-
 		tuic)
 			xray_bin="$(first_type xray)"
 			[ -x "$xray_bin" ] || return 1
@@ -2794,7 +2789,6 @@ start_server() {
 			ln_start_bin "$xray_bin" xray-server-$server_count run -c "$config_file"
 			echolog "Server: Xray TUIC Server$server_count Started!"
 			;;
-
 		vmess|vless|trojan|shadowsocks)
 			# Xray 服务端支持
 			port=$(uci_get_by_name "$1" server_port)
@@ -3060,26 +3054,26 @@ start_rules() {
 		fi
 	elif [ "$USE_TABLES" = "iptables" ]; then
 		ARG_A=""
-		fi
-		/usr/share/shadowsocksr/gfw2ipset.sh
-		/usr/bin/ssr-rules \
-			-s "$server" \
-			-l "$local_port" \
-			-S "$udp_server" \
-			-L "$udp_local_port" \
-			-a "$ac_ips" \
-			-i "/etc/ssrplus/china_ssr.txt" \
-			-b "$(uci_get_by_type access_control wan_bp_ips)" \
-			-w "$(uci_get_by_type access_control wan_fw_ips)" \
-			-B "$(uci_get_by_type access_control lan_bp_ips)" \
-			-p "$(uci_get_by_type access_control lan_fp_ips)" \
-			-G "$(uci_get_by_type access_control lan_gm_ips)" \
-			-m "$(uci_get_by_type access_control Interface)" \
-			-D "$proxyport" \
-			$(get_arg_out) $(gfwmode) $ARG_UDP $ARG_UDP_RULES $ARG_A
+	fi
+	/usr/share/shadowsocksr/gfw2ipset.sh
+	/usr/bin/ssr-rules \
+		-s "$server" \
+		-l "$local_port" \
+		-S "$udp_server" \
+		-L "$udp_local_port" \
+		-a "$ac_ips" \
+		-i "/etc/ssrplus/china_ssr.txt" \
+		-b "$(uci_get_by_type access_control wan_bp_ips)" \
+		-w "$(uci_get_by_type access_control wan_fw_ips)" \
+		-B "$(uci_get_by_type access_control lan_bp_ips)" \
+		-p "$(uci_get_by_type access_control lan_fp_ips)" \
+		-G "$(uci_get_by_type access_control lan_gm_ips)" \
+		-m "$(uci_get_by_type access_control Interface)" \
+		-D "$proxyport" \
+		$(get_arg_out) $(gfwmode) $ARG_UDP $ARG_UDP_RULES $ARG_A
 
-		return $?
-	}
+	return $?
+}
 
 start() {
 	local run_mode

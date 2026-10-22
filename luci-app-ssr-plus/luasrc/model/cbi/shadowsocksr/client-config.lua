@@ -932,9 +932,11 @@ o:value("5", "v5 (UUID / Password)")
 o:value("4", "v4 (Token)")
 o.default = "5"
 o:depends({type = "v2ray", v2ray_protocol = "tuic"})
+
 o = s:option(Value, "xray_tuic_token", "TUIC Token")
 o.password = true
 o:depends({type = "v2ray", v2ray_protocol = "tuic", xray_tuic_version = "4"})
+
 o = s:option(Value, "xray_tuic_ca", translate("Certificate File Path"))
 o:depends({type = "v2ray", v2ray_protocol = "tuic"})
 
@@ -1136,26 +1138,32 @@ o = s:option(Value, "xray_kcptun_key", "Kcptun Key")
 o:depends("transport", "kcptun")
 o.password = true
 o.rmempty = false
+
 o = s:option(ListValue, "xray_kcptun_crypt", "Kcptun Encryption")
 o:depends("transport", "kcptun")
 for _, crypt in ipairs({"aes", "aes-128", "aes-192", "aes-128-gcm", "salsa20", "tea", "xor", "none", "null", "blowfish", "twofish", "cast5", "3des", "xtea"}) do o:value(crypt, crypt) end
 o.default = "aes"
+
 o = s:option(ListValue, "xray_kcptun_mode", "Kcptun Mode")
 o:depends("transport", "kcptun")
 for _, mode in ipairs({"normal", "fast", "fast2", "fast3", "manual"}) do o:value(mode, mode) end
 o.default = "fast"
+
 o = s:option(ListValue, "xray_kcptun_smuxver", "Kcptun smux Version")
 o:depends("transport", "kcptun")
 o:value("1", "v1")
 o:value("2", "v2")
 o.default = "1"
+
 o = s:option(Flag, "xray_kcptun_nocomp", translate("Disable Compression"))
 o:depends("transport", "kcptun")
 o.default = "0"
+
 o = s:option(Value, "xray_kcptun_conn", translate("Connections"))
 o:depends("transport", "kcptun")
 o.datatype = "range(1,256)"
 o.default = "1"
+
 o = s:option(TextValue, "xray_kcptun_options", "Kcptun Advanced Options (JSON)")
 o:depends("transport", "kcptun")
 o.rows = 4
@@ -1538,28 +1546,34 @@ for _, proto in ipairs({"vmess", "vless", "trojan", "shadowsocks"}) do
     o:depends({type = "v2ray", v2ray_protocol = proto, transport = "raw", tls = false, reality = false})
 end
 o.description = translate("ShadowTLS protects TCP connections. The inner proxy protocol must provide encryption.")
+
 o = s:option(ListValue, "xray_shadowtls_version", "ShadowTLS Version")
 o:depends("xray_shadowtls", "1")
 o:value("3", "v3")
 o:value("2", "v2")
 o:value("1", "v1")
 o.default = "3"
+
 o = s:option(Value, "xray_shadowtls_password", "ShadowTLS Password")
 o:depends({xray_shadowtls = "1", xray_shadowtls_version = "2"})
 o:depends({xray_shadowtls = "1", xray_shadowtls_version = "3"})
 o.password = true
 o.rmempty = false
+
 o = s:option(Value, "xray_shadowtls_sni", "ShadowTLS SNI")
 o:depends("xray_shadowtls", "1")
 o.datatype = "hostname"
 o.rmempty = false
+
 o = s:option(ListValue, "xray_shadowtls_fingerprint", translate("TLS Client Fingerprint"))
 o:depends("xray_shadowtls", "1")
 for _, fp in ipairs({"chrome", "firefox", "safari", "ios", "android", "edge", "none"}) do o:value(fp, fp) end
 o.default = "chrome"
+
 o = s:option(Flag, "xray_shadowtls_strict", translate("TLS 1.3 Strict mode"))
 o:depends({xray_shadowtls = "1", xray_shadowtls_version = "3"})
 o.default = "1"
+
 o = s:option(Flag, "xray_shadowtls_insecure", translate("Allow Insecure"))
 o:depends("xray_shadowtls", "1")
 o.default = "0"
@@ -1699,7 +1713,6 @@ o:depends("xtls", true)
 o:depends("reality", true)
 o.rmempty = true
 o:depends({type = "v2ray", v2ray_protocol = "tuic"})
-
 o:depends({type = "v2ray", v2ray_protocol = "naive"})
 
 -- TLS ALPN
@@ -1983,6 +1996,7 @@ for _, field in ipairs({
     o.default = "0"
     o:depends({type = "v2ray", v2ray_protocol = "naive"})
 end
+
 for _, field in ipairs({
     {"naive_certificate_file", "Naive trusted CA certificate file"},
     {"naive_ech_config", "Naive ECH config list (base64)"}
