@@ -253,13 +253,19 @@ force_dns2tcp_fallback() {
 
 is_builtin_dns_active() {
 	local global_server_type
+	local enable_mihomo
 	global_server_type="$(uci_get_by_name "$GLOBAL_SERVER" type)"
 	case "$global_server_type" in
 	clash|tuic|ss)
 		ps_list | grep -v "grep" | grep -q "ssr-retcp"
 		;;
 	v2ray)
-		ps_list | grep -v "grep" | grep -Eq "$TMP_PATH/.*ssr-retcp\\.(json|yaml)"
+		enable_mihomo="$(uci_get_by_type server_subscribe enable_mihomo "")"
+		if [ "$enable_mihomo" = "1" ]; then
+			ps_list | grep -v "grep" | grep -q "ssr-retcp.*v2ray-*"
+		else
+			ps_list | grep -v "grep" | grep -Eq "$TMP_PATH/.*ssr-retcp\\.(json|yaml)"
+		fi
 		;;
 	*)
 		return 1
