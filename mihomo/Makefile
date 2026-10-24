@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=mihomo
 PKG_VERSION:=1.19.32
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/MetaCubeX/mihomo.git
@@ -39,6 +39,14 @@ ifeq ($(GO_ARCH),arm64)
   endef
 endif
 
+# Compress once per build, not once per package/rootfs installation.
+# Keep Go's output intact and let the .built stamp guard the packed copy.
+define Build/Install
+	$(INSTALL_DIR) $(PKG_BUILD_DIR)/.upx
+	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/mihomo $(PKG_BUILD_DIR)/.upx/mihomo
+	$(STAGING_DIR_HOST)/bin/upx --lzma --best $(PKG_BUILD_DIR)/.upx/mihomo
+endef
+
 # Go's -s -w flags strip the binary before UPX; do not strip it again.
 RSTRIP:=:
 
@@ -57,8 +65,8 @@ define Package/mihomo/description
 endef
 
 define Package/mihomo/install
-	$(call GoPackage/Package/Install/Bin,$(1))
-	$(STAGING_DIR_HOST)/bin/upx --lzma --best $(1)/usr/libexec/mihomo
+	$(INSTALL_DIR) $(1)/usr/libexec
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/.upx/mihomo $(1)/usr/libexec/mihomo
 endef
 
 define Build/Prepare
