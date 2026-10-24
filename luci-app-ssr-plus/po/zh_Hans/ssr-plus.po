@@ -3900,3 +3900,9 @@ msgstr "Naive ECH 配置列表（Base64）"
 
 msgid "Naive transport"
 msgstr "Naive 传输协议"
+
+msgid "Enable UPnP/NAT-PMP"
+msgstr "启用 UPnP/NAT-PMP"
+
+msgid "Enable UPnP/NAT-PMP port mapping on your gateway to improve hole punching success."
+msgstr "在网关上启用 UPnP/NAT-PMP 端口映射以提升打洞成功率。"

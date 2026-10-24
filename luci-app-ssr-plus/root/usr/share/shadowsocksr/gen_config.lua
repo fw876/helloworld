@@ -722,21 +722,39 @@ Xray.outbounds = {
 				local PT = server.v2ray_protocol
 				local TP = server.transport
 				if TP == "kcp" then
-					local map = {none = "none", srtp = "header-srtp", utp = "header-utp", ["wechat-video"] = "header-wechat",
-						dtls = "header-dtls", wireguard = "header-wireguard", dns = "header-dns"}
 					local udp = {}
-					if server.kcp_guise and server.kcp_guise ~= "none" then
-						local g = { type = map[server.kcp_guise] }
-						if server.kcp_guise == "dns" and server.kcp_domain and server.kcp_domain ~= "" then
-							g.settings = { domain = server.kcp_domain }
+					if xray_version_val < 260601 then
+						local map = {none = "none", srtp = "header-srtp", utp = "header-utp", ["wechat-video"] = "header-wechat",
+							dtls = "header-dtls", wireguard = "header-wireguard", dns = "header-dns"}
+						if server.kcp_guise and server.kcp_guise ~= "none" then
+							local g = { type = map[server.kcp_guise] }
+							if server.kcp_guise == "dns" and server.kcp_domain and server.kcp_domain ~= "" then
+								g.settings = { domain = server.kcp_domain }
+							end
+							udp[#udp+1] = g
 						end
-						udp[#udp+1] = g
+						local c = { type = (server.seed and server.seed ~= "") and "mkcp-aes128gcm" or "mkcp-original" }
+						if server.seed and server.seed ~= "" then
+							c.settings = { password = server.seed }
+						end
+						udp[#udp+1] = c
+					else
+						local map = {none = "none", srtp = "srtp", utp = "utp", ["wechat-video"] = "wechat",
+							dtls = "dtls", wireguard = "wireguard", dns = "dns"}
+						if server.kcp_guise and server.kcp_guise ~= "none" then
+							local g = { type = "mkcp-legacy" }
+							g.settings = { header = map[server.kcp_guise] }
+							if server.kcp_guise == "dns" and server.kcp_domain and server.kcp_domain ~= "" then
+								g.settings.value = server.kcp_domain
+							end
+							udp[#udp+1] = g
+						end
+						local s = { type = "mkcp-legacy" }
+						if server.seed and server.seed ~= "" then
+							s.settings = { value = server.seed }
+						end
+						udp[#udp+1] = s
 					end
-					local c = { type = (server.seed and server.seed ~= "") and "mkcp-aes128gcm" or "mkcp-original" }
-					if server.seed and server.seed ~= "" then
-						c.settings = { password = server.seed }
-					end
-					udp[#udp+1] = c
 					finalmask.udp = udp
 				elseif PT == "hysteria2" then
 					local udp = {}
@@ -769,7 +787,8 @@ Xray.outbounds = {
 							type = "realm",
 							settings = {
 								url = url,
-								stunServers = stun
+								stunServers = stun,
+								portMapping = (node.hysteria2_realm_upnp == "1") and { enabled = true } or nil
 							}
 						}
 						udp[#udp+1] = r
@@ -782,7 +801,7 @@ Xray.outbounds = {
 						brutalUp = up > 0 and (up .. "mbps") or nil,
 						brutalDown = down > 0 and (down .. "mbps") or nil,
 						udpHop = (server.flag_port_hopping == "1") and {
-							ports = string.gsub(server.port_range, ":", "-"),
+							ports = server.port_range and string.gsub(server.port_range, ":", "-"),
 							interval = (function(v)
 								if not v then return 30 end
 								if v:find("-", 1, true) then
