@@ -26,6 +26,8 @@ GO_PKG_LDFLAGS_X:= \
 	$(GO_PKG)/core.build=OpenWrt \
 	$(GO_PKG)/core.version=$(PKG_VERSION)
 
+UPX_BIN:=$(firstword $(wildcard $(STAGING_DIR_HOSTPKG)/bin/upx $(STAGING_DIR_HOST)/bin/upx))
+
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
@@ -73,7 +75,7 @@ endif
 define Build/Install
 	$(INSTALL_DIR) $(PKG_BUILD_DIR)/.upx
 	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/main $(PKG_BUILD_DIR)/.upx/xray
-	$(STAGING_DIR_HOST)/bin/upx --lzma --best $(PKG_BUILD_DIR)/.upx/xray
+	${UPX_BIN} --lzma --best $(PKG_BUILD_DIR)/.upx/xray
 endef
 
 # Go's -s -w flags strip the binary before UPX; do not strip it again.

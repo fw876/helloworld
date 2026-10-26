@@ -27,6 +27,8 @@ GO_PKG_LDFLAGS_X:=$(GO_PKG)/constant.Version=$(PKG_BUILD_VERSION) $(GO_PKG)/cons
 GO_PKG_TAGS:=with_gvisor
 GO_PKG_INSTALL_BIN_PATH:=/usr/libexec
 
+UPX_BIN:=$(firstword $(wildcard $(STAGING_DIR_HOSTPKG)/bin/upx $(STAGING_DIR_HOST)/bin/upx))
+
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
@@ -44,7 +46,7 @@ endif
 define Build/Install
 	$(INSTALL_DIR) $(PKG_BUILD_DIR)/.upx
 	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/mihomo $(PKG_BUILD_DIR)/.upx/mihomo
-	$(STAGING_DIR_HOST)/bin/upx --lzma --best $(PKG_BUILD_DIR)/.upx/mihomo
+	$(UPX_BIN) --lzma --best $(PKG_BUILD_DIR)/.upx/mihomo
 endef
 
 # Go's -s -w flags strip the binary before UPX; do not strip it again.
