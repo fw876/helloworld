@@ -741,6 +741,11 @@ Xray.outbounds = {
 					else
 						local map = {none = "none", srtp = "srtp", utp = "utp", ["wechat-video"] = "wechat",
 							dtls = "dtls", wireguard = "wireguard", dns = "dns"}
+						local s = { type = "mkcp-legacy" }
+						if server.seed and server.seed ~= "" then
+							s.settings = { value = server.seed }
+						end
+						udp[#udp+1] = s
 						if server.kcp_guise and server.kcp_guise ~= "none" then
 							local g = { type = "mkcp-legacy" }
 							g.settings = { header = map[server.kcp_guise] }
@@ -749,11 +754,6 @@ Xray.outbounds = {
 							end
 							udp[#udp+1] = g
 						end
-						local s = { type = "mkcp-legacy" }
-						if server.seed and server.seed ~= "" then
-							s.settings = { value = server.seed }
-						end
-						udp[#udp+1] = s
 					end
 					finalmask.udp = udp
 				elseif PT == "hysteria2" then
