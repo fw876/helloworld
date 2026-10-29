@@ -9,7 +9,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 
 --- a/tools/eip93/eip93_linux_arm64.go
 +++ b/tools/eip93/eip93_linux_arm64.go
-@@ -0,0 +1,273 @@
+@@ -0,0 +1,288 @@
 +// Copyright 2026 coolsnowwolf <coolsnowwolf@gmail.com>
 +// SPDX-License-Identifier: BSD-3-Clause
 +//go:build linux && arm64 && !purego
@@ -140,8 +140,23 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +	var sa [88]byte
 +	binary.LittleEndian.PutUint16(sa[:], 38)
 +	copy(sa[2:16], "aead")
-+	copy(sa[24:], "gcm_base(ctr(aes-eip93),ghash-generic)")
-+	_, _, errno := syscall.Syscall(syscall.SYS_BIND, uintptr(fd), uintptr(unsafe.Pointer(&sa[0])), uintptr(len(sa)))
++	// Older kernels expose GHASH as a CryptoAPI algorithm; newer kernels
++	// use the GHASH library. Keep CTR pinned to EIP93 in both cases.
++	var errno syscall.Errno
++	for _, name := range []string{
++		"gcm_base(ctr(aes-eip93),ghash-generic)",
++		"gcm_base(ctr(aes-eip93),ghash-lib)",
++	} {
++		clear(sa[24:])
++		copy(sa[24:], name)
++		_, _, errno = syscall.Syscall(syscall.SYS_BIND, uintptr(fd), uintptr(unsafe.Pointer(&sa[0])), uintptr(len(sa)))
++		if errno == 0 {
++			break
++		}
++		if errno != syscall.ENOENT && errno != syscall.EINVAL {
++			return errno
++		}
++	}
 +	if errno != 0 {
 +		return errno
 +	}

@@ -16,7 +16,9 @@ in their original implementations.
 - Enable only `airoha,an7581` / `airoha,en7581`, with no ARM AES instructions.
 - Explicitly exclude AN7583/EN7583, other platforms, missing/malformed DT and FIPS.
 - Use only standard 12-byte nonces, 16-byte tags and 4–32 KiB payloads.
-- Bind the exact `gcm_base(ctr(aes-eip93),ghash-generic)` implementation.
+- Bind `gcm_base(ctr(aes-eip93),ghash-generic)` on older kernels, retrying
+  `gcm_base(ctr(aes-eip93),ghash-lib)` on kernels such as 7.3 when the old
+  name is unavailable. Both names require the exact EIP93 CTR driver.
 - Verify each newly opened key against Go encryption/decryption and bad-tag
   rejection before using it. Bound sockets, serialize each key's operations,
   set socket timeouts and clear private buffers. The kernel must also be healthy;
@@ -32,7 +34,10 @@ This message alone is not performance evidence; use engine interrupt counters.
 Firmware needs `kmod-crypto-hw-airoha-eip93`, `kmod-crypto-gcm`, `kmod-crypto-user` and
 GHASH/DES dependencies. The QWRT EIP93 package selects these dependencies.
 BSP 5.4 needs the supplied driver and DT node. Linux 6.18 uses its native driver
-with matching DMA cache-line and immutable-SA fixes. Native hardware authenc
+with matching DMA cache-line and immutable-SA fixes. Linux 7.3 carries the
+same protections plus the CTR next-IV carry fix, and additionally
+needs the supplied AF_ALG exception for the exact EIP93 hybrid GCM driver;
+leave `crypto.af_alg_restrict` at its default value. Native hardware authenc
 is withheld because its bad-tag tests fail; hybrid GCM authenticates through
 the kernel GCM implementation and passes its own bad-tag tests. AN7583 remains on the normal
 Xray path until separate hardware measurements justify an alternative.
@@ -105,3 +110,16 @@ The final image passes `sysupgrade -T` on the Nokia test board
 (`Signature check OK`). This validates the image without flashing it.
 The board governor is restored to `schedutil` and test proxy processes stop
 after each run. The final driver remains loaded temporarily for inspection.
+
+## Linux 7.3 regression validation (2026-10-29)
+
+On H3C HM2004-DU, five repeated hardware test runs passed AES-128/192/256-GCM,
+boundary lengths, in-place operations, concurrent use, bad-tag rejection and
+closed-socket fallback. CBC encrypt/decrypt/encrypt and CTR exact-rollover IV
+tests failed with the original 7.3 driver and passed after the driver fixes.
+The packaged Xray completed a 4 MiB AES-256-GCM Shadowsocks transfer with
+matching SHA-256 and EIP93 activation at both ends. The disabled backend
+completed the same transfer without increasing EIP93 interrupts.
+`crypto.af_alg_restrict` remained at 1. These are correctness checks, not
+throughput measurements. The legacy 5.4 name is retained; 5.4 hardware was
+not rerun in this validation.
