@@ -19,8 +19,8 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 
 --- a/go.mod
 +++ b/go.mod
-@@ -17,6 +17,23 @@
- 	github.com/pires/go-proxyproto v0.15.0
+@@ -18,6 +18,23 @@
+ 	github.com/pires/go-proxyproto v0.16.0
  	github.com/refraction-networking/utls v1.8.3-0.20260301010127-aa6edf4b11af
  	github.com/robfig/cron/v3 v3.0.1
 +	github.com/sagernet/cronet-go v0.0.0-20260929213745-4d18a60dc3a8
@@ -43,7 +43,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	github.com/stretchr/testify v1.12.1
  	github.com/vishvananda/netlink v1.3.1
  	github.com/xtls/reality v0.0.0-20261014101318-83f621788ca8
-@@ -41,6 +58,7 @@
+@@ -42,6 +59,7 @@
  
  require (
  	github.com/andybalholm/brotli v1.2.3 // indirect
@@ -51,7 +51,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	github.com/google/gopacket v1.1.19 // indirect
  	github.com/huin/goupnp v1.2.0 // indirect
  	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
-@@ -52,8 +70,6 @@
+@@ -53,8 +71,6 @@
  	github.com/pion/logging v0.2.4 // indirect
  	github.com/pion/transport/v4 v4.1.0 // indirect
  	github.com/quic-go/qpack v0.6.0 // indirect
@@ -62,7 +62,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	go.yaml.in/yaml/v3 v3.0.5 // indirect
 --- a/go.sum
 +++ b/go.sum
-@@ -5,6 +5,8 @@
+@@ -7,6 +7,8 @@
  github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
  github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
  github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMnBNeIyt5eFwwo7qiLfzFZmjNmxjkiQlU=
@@ -71,7 +71,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  github.com/ghodss/yaml v1.0.1-0.20220118164431-d8423dcdf344 h1:Arcl6UOIS/kgO2nW3A65HN+7CMjSDP/gofXL4CZt1V4=
  github.com/ghodss/yaml v1.0.1-0.20220118164431-d8423dcdf344/go.mod h1:GIjDIg/heH5DOkXY3YJ/wNhfHsQHoXGjl8G8amsYQ1I=
  github.com/go-quicktest/qt v1.102.0 h1:HSQxCeh5YZH3EL3W39ixjtyaEhcWSXQHtHnMBzSs474=
-@@ -71,6 +73,36 @@
+@@ -73,6 +75,36 @@
  github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzGIFLtro=
  github.com/rogpeppe/go-internal v1.16.0 h1:O9DK+vNMDVGLr2BeZqmpLeMjiMNkuXfcqntWbZV6S5g=
  github.com/rogpeppe/go-internal v1.16.0/go.mod h1:DrUVZyrJU+txYW5/1kwtXQSMFio52ZOxX7yM1VHvnxs=
@@ -219,7 +219,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  		"dokodemo-door": func() interface{} { return new(DokodemoConfig) },
  		"http":          func() interface{} { return new(HTTPServerConfig) },
  		"shadowsocks":   func() interface{} { return new(ShadowsocksServerConfig) },
-@@ -53,6 +54,7 @@
+@@ -54,6 +55,7 @@
  		"vless":       func() interface{} { return new(VLessOutboundConfig) },
  		"vmess":       func() interface{} { return new(VMessOutboundConfig) },
  		"trojan":      func() interface{} { return new(TrojanClientConfig) },
@@ -239,7 +239,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	_ "github.com/xtls/xray-core/proxy/trojan"
 --- a/proxy/freedom/freedom.go
 +++ b/proxy/freedom/freedom.go
-@@ -164,7 +164,7 @@
+@@ -167,7 +167,7 @@
  	switch inbound.Name {
  	case "vless-reverse":
  		return defaultBlockAllRule

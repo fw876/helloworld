@@ -13,7 +13,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 
 --- a/go.mod
 +++ b/go.mod
-@@ -52,6 +52,8 @@
+@@ -53,6 +53,8 @@
  	github.com/pion/logging v0.2.4 // indirect
  	github.com/pion/transport/v4 v4.1.0 // indirect
  	github.com/quic-go/qpack v0.6.0 // indirect
@@ -24,7 +24,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	go.yaml.in/yaml/v3 v3.0.5 // indirect
 --- a/go.sum
 +++ b/go.sum
-@@ -71,6 +71,10 @@
+@@ -73,6 +73,10 @@
  github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzGIFLtro=
  github.com/rogpeppe/go-internal v1.16.0 h1:O9DK+vNMDVGLr2BeZqmpLeMjiMNkuXfcqntWbZV6S5g=
  github.com/rogpeppe/go-internal v1.16.0/go.mod h1:DrUVZyrJU+txYW5/1kwtXQSMFio52ZOxX7yM1VHvnxs=

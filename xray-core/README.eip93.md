@@ -1,6 +1,6 @@
 # AN7581 EIP93 hybrid AES-GCM
 
-Xray 26.10.21 adds an automatic AN7581-only AES-GCM path through Linux AF_ALG.
+Xray 26.10.29 includes an automatic AN7581-only AES-GCM path through Linux AF_ALG.
 EIP93 performs AES-CTR; GHASH stays on the CPU. This is not native hardware GCM.
 
 The ARM64 package build generates a private Go source overlay. It never changes
@@ -44,7 +44,7 @@ Xray path until separate hardware measurements justify an alternative.
 
 ## Validation
 
-The entire 100–190 patch stack replays on the official 26.10.21 archive with
+The entire 100–190 patch stack replays on the official 26.10.29 archive with
 `patch --fuzz=0`. The version upgrade refreshed dependency contexts and fixed
 patch 100's TLS protobuf descriptor length; `infra/conf` tests catch that issue.
 Existing protocol packages compile and their available tests pass. The ARM64
@@ -123,3 +123,26 @@ completed the same transfer without increasing EIP93 interrupts.
 `crypto.af_alg_restrict` remained at 1. These are correctness checks, not
 throughput measurements. The legacy 5.4 name is retained; 5.4 hardware was
 not rerun in this validation.
+
+## Xray 26.10.29 regression validation (2026-10-31)
+
+All ten patches were refreshed using temporary files and labeled unified diffs.
+They replay on the official v26.10.29 archive with zero fuzz and no offsets.
+The ARM64 OpenWrt package builds with Naive/Cronet enabled and passes the UPX
+integrity check. Configuration, AnyTLS and VMess tests pass; the other added
+protocol packages compile in the focused regression run.
+
+On FiberHome HG5585F CT / AN7581 / Linux 7.3, the package was installed as
+26.10.29-1 and its binary hash matched the IPK. The EIP93 hardware tests pass
+AES-128/192/256, payload boundaries, in-place operations, bad-tag rejection,
+concurrency and closed-socket fallback. A 4 MiB AES-256-GCM Shadowsocks
+loopback transfer with both peers in the packaged Xray matches SHA-256
+`2b07811057df887086f06a67edc6ebf911de8b6741156e7a2eb1416a4b8b1b2e`.
+With `XRAY_EIP93=off`, the interrupt count stays at 1818; the enabled run
+increases it to 2651, and unmodified `/sbin/usage` reports the same count.
+`crypto.af_alg_restrict` remains 1.
+
+These checks use the fixed EIP93 and AF_ALG modules loaded temporarily on the
+test machine. They establish correctness and acceleration activation, not
+throughput, a full firmware build or persistence of the kernel fixes after
+reboot. The firmware must include the matching Linux 7.3 fixes.

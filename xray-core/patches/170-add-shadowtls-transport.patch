@@ -12,7 +12,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 
 --- a/go.mod
 +++ b/go.mod
-@@ -16,6 +16,7 @@
+@@ -17,6 +17,7 @@
  	github.com/metacubex/mihomo v1.19.32
  	github.com/metacubex/quic-go v0.61.1-0.20260727080200-2548683b76f4
  	github.com/metacubex/tls v0.1.8
@@ -22,7 +22,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	github.com/pion/stun/v3 v3.1.7
 --- a/go.sum
 +++ b/go.sum
-@@ -82,6 +82,8 @@
+@@ -84,6 +84,8 @@
  github.com/metacubex/tfo-go v0.0.0-20260623020846-376a77860b8c/go.mod h1:l9oLnLoEXyGZ5RVLsh7QCC5XsouTUyKk4F2nLm2DHLw=
  github.com/metacubex/tls v0.1.8 h1:BHF2payjtxC7wdR3tnq8vl3FAgEQB6/pPjP2tJNTsP4=
  github.com/metacubex/tls v0.1.8/go.mod h1:0XeVdL0cBw+8i5Hqy3lVeP9IyD/LFTq02ExvHM6rzEM=
@@ -92,7 +92,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	Address             *Address           `json:"address"`
  	Port                uint16             `json:"port"`
  	Method              *TransportProtocol `json:"method"`
-@@ -129,6 +130,20 @@
+@@ -131,6 +132,20 @@
  		}
  		tm := serial.ToTypedMessage(ts)
  		config.SecuritySettings = append(config.SecuritySettings, tm)

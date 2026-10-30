@@ -15,7 +15,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 
 --- a/go.mod
 +++ b/go.mod
-@@ -11,6 +11,7 @@
+@@ -12,6 +12,7 @@
  	github.com/gorilla/websocket v1.5.3
  	github.com/klauspost/cpuid/v2 v2.4.1
  	github.com/libp2p/go-nat v1.0.1-0.20250821073202-01afc089f138
@@ -25,7 +25,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	github.com/pion/stun/v3 v3.1.7
 --- a/go.sum
 +++ b/go.sum
-@@ -47,6 +47,8 @@
+@@ -49,6 +49,8 @@
  github.com/libp2p/go-nat v1.0.1-0.20250821073202-01afc089f138/go.mod h1:TXQg5tfSy+bUjnhT5728j5j/MBj7keIYqqZ1+8k/ui8=
  github.com/libp2p/go-netroute v0.2.1 h1:V8kVrpD8GK0Riv15/7VN6RbUQ3URNZVosw7H2v9tksU=
  github.com/libp2p/go-netroute v0.2.1/go.mod h1:hraioZr0fhBjG0ZRXJJ6Zj2IVEVNx6tDTFQfSmcq7mQ=

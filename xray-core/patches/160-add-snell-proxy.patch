@@ -10,7 +10,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 
 --- a/go.mod
 +++ b/go.mod
-@@ -92,6 +92,7 @@
+@@ -93,6 +93,7 @@
  	github.com/sirupsen/logrus v1.9.4 // indirect
  	github.com/vishvananda/netns v0.0.5 // indirect
  	github.com/wlynxg/anet v0.0.5 // indirect
@@ -20,7 +20,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	golang.org/x/tools v0.51.0 // indirect
 --- a/go.sum
 +++ b/go.sum
-@@ -175,6 +175,8 @@
+@@ -177,6 +177,8 @@
  github.com/yuin/gopher-lua v0.0.0-20190206043414-8bfc7677f583/go.mod h1:gqRgreBUhTSL0GeU64rtZ3Uq3wtjOa/TB2YfrtkCbVQ=
  github.com/yuin/gopher-lua v1.1.2 h1:yF/FjE3hD65tBbt0VXLE13HWS9h34fdzJmrWRXwobGA=
  github.com/yuin/gopher-lua v1.1.2/go.mod h1:7aRmXIWl37SqRf0koeyylBEzJ+aPt8A+mmkQ4f1ntR8=
@@ -114,7 +114,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  		"naive":         func() interface{} { return new(NaiveServerConfig) },
  		"dokodemo-door": func() interface{} { return new(DokodemoConfig) },
  		"http":          func() interface{} { return new(HTTPServerConfig) },
-@@ -57,6 +58,7 @@
+@@ -59,6 +60,7 @@
  		"trojan":       func() interface{} { return new(TrojanClientConfig) },
  		"naive":        func() interface{} { return new(NaiveClientConfig) },
  		"tuic":         func() interface{} { return new(TUICClientConfig) },
@@ -134,7 +134,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	_ "github.com/xtls/xray-core/proxy/tuic"
 --- a/proxy/freedom/freedom.go
 +++ b/proxy/freedom/freedom.go
-@@ -164,7 +164,7 @@
+@@ -167,7 +167,7 @@
  	switch inbound.Name {
  	case "vless-reverse":
  		return defaultBlockAllRule

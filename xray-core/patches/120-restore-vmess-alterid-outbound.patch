@@ -17,7 +17,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 
 --- a/infra/conf/vmess.go
 +++ b/infra/conf/vmess.go
-@@ -17,6 +17,7 @@ import (
+@@ -17,6 +17,7 @@
  
  type VMessAccount struct {
  	ID          string `json:"id"`
@@ -25,7 +25,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	Security    string `json:"security"`
  	Experiments string `json:"experiments"`
  }
-@@ -35,7 +36,8 @@ func (a *VMessAccount) Build() *vmess.Ac
+@@ -35,7 +36,8 @@
  		st = protocol.SecurityType_AUTO
  	}
  	return &vmess.Account{
@@ -35,7 +35,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  		SecuritySettings: &protocol.SecurityConfig{
  			Type: st,
  		},
-@@ -85,6 +87,10 @@ func (c *VMessInboundConfig) Build() (pr
+@@ -85,6 +87,10 @@
  			return errors.New("invalid VMess user").Base(err)
  		}
  
@@ -46,7 +46,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  		u, err := uuid.ParseString(account.ID)
  		if err != nil {
  			return err
-@@ -114,6 +120,7 @@ type VMessOutboundConfig struct {
+@@ -114,6 +120,7 @@
  	Level       uint32                 `json:"level"`
  	Email       string                 `json:"email"`
  	ID          string                 `json:"id"`
@@ -54,7 +54,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	Security    string                 `json:"security"`
  	Experiments string                 `json:"experiments"`
  	Receivers   []*VMessOutboundTarget `json:"vnext"`
-@@ -160,6 +167,7 @@ func (c *VMessOutboundConfig) Build() (p
+@@ -160,6 +167,7 @@
  			account := new(VMessAccount)
  			if c.Address != nil {
  				account.ID = c.ID
@@ -62,7 +62,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  				account.Security = c.Security
  				account.Experiments = c.Experiments
  			} else {
---- /dev/null
+--- a/infra/conf/vmess_legacy_test.go
 +++ b/infra/conf/vmess_legacy_test.go
 @@ -0,0 +1,69 @@
 +package conf_test
@@ -136,7 +136,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +}
 --- a/proxy/vmess/account.proto
 +++ b/proxy/vmess/account.proto
-@@ -12,6 +12,8 @@ message Account {
+@@ -12,6 +12,8 @@
    // ID of the account, in the form of a UUID, e.g.,
    // "66ad4540-b58c-4ad2-9926-ea63445a9b57".
    string id = 1;
@@ -147,7 +147,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
    // Define tests enabled for this account
 --- a/proxy/vmess/account.pb.go
 +++ b/proxy/vmess/account.pb.go
-@@ -27,6 +27,8 @@ type Account struct {
+@@ -27,6 +27,8 @@
  	// ID of the account, in the form of a UUID, e.g.,
  	// "66ad4540-b58c-4ad2-9926-ea63445a9b57".
  	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -156,7 +156,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	// Security settings. Only applies to client side.
  	SecuritySettings *protocol.SecurityConfig `protobuf:"bytes,3,opt,name=security_settings,json=securitySettings,proto3" json:"security_settings,omitempty"`
  	// Define tests enabled for this account
-@@ -72,6 +74,13 @@ func (x *Account) GetId() string {
+@@ -72,6 +74,13 @@
  	return ""
  }
  
@@ -170,7 +170,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  func (x *Account) GetSecuritySettings() *protocol.SecurityConfig {
  	if x != nil {
  		return x.SecuritySettings
-@@ -90,9 +99,10 @@ var File_proxy_vmess_account_proto proto
+@@ -90,9 +99,10 @@
  
  const file_proxy_vmess_account_proto_rawDesc = "" +
  	"\n" +
@@ -198,7 +198,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	"google.golang.org/protobuf/proto"
  
  	"github.com/xtls/xray-core/common/errors"
-@@ -14,6 +18,8 @@ import (
+@@ -14,6 +18,8 @@
  type MemoryAccount struct {
  	// ID is the main ID of the account.
  	ID *protocol.ID
@@ -207,7 +207,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	// Security type of the account. Used for client connections.
  	Security protocol.SecurityType
  
-@@ -40,6 +46,7 @@ func (a *MemoryAccount) ToProto() proto.
+@@ -40,6 +46,7 @@
  	}
  	return &Account{
  		Id:               a.ID.String(),
@@ -215,7 +215,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  		TestsEnabled:     test,
  		SecuritySettings: &protocol.SecurityConfig{Type: a.Security},
  	}
-@@ -51,6 +58,9 @@ func (a *Account) AsAccount() (protocol.
+@@ -51,6 +58,9 @@
  	if err != nil {
  		return nil, errors.New("failed to parse ID").Base(err)
  	}
@@ -225,7 +225,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	protoID := protocol.NewID(id)
  	var AuthenticatedLength, NoTerminationSignal bool
  	if strings.Contains(a.TestsEnabled, "AuthenticatedLength") {
-@@ -61,8 +71,41 @@ func (a *Account) AsAccount() (protocol.
+@@ -61,8 +71,41 @@
  	}
  	return &MemoryAccount{
  		ID:                            protoID,
@@ -267,7 +267,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +	}
 +	return ids
 +}
---- /dev/null
+--- a/proxy/vmess/account_legacy_test.go
 +++ b/proxy/vmess/account_legacy_test.go
 @@ -0,0 +1,19 @@
 +package vmess
@@ -291,7 +291,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +}
 --- a/proxy/vmess/encoding/client.go
 +++ b/proxy/vmess/encoding/client.go
-@@ -3,6 +3,8 @@ package encoding
+@@ -3,6 +3,8 @@
  import (
  	"bytes"
  	"context"
@@ -300,7 +300,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	"crypto/rand"
  	"crypto/sha256"
  	"encoding/binary"
-@@ -24,6 +26,7 @@ import (
+@@ -24,6 +26,7 @@
  
  // ClientSession stores connection session info for VMess client.
  type ClientSession struct {
@@ -308,7 +308,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	requestBodyKey  [16]byte
  	requestBodyIV   [16]byte
  	responseBodyKey [16]byte
-@@ -35,8 +38,8 @@ type ClientSession struct {
+@@ -35,8 +38,8 @@
  }
  
  // NewClientSession creates a new ClientSession.
@@ -319,7 +319,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  
  	randomBytes := make([]byte, 33) // 16 + 16 + 1
  	common.Must2(rand.Read(randomBytes))
-@@ -44,10 +47,15 @@ func NewClientSession(ctx context.Contex
+@@ -44,10 +47,15 @@
  	copy(session.requestBodyIV[:], randomBytes[16:32])
  	session.responseHeader = randomBytes[32]
  
@@ -339,7 +339,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	{
  		var err error
  		session.readDrainer, err = drain.NewBehaviorSeedLimitedDrainer(behaviorSeed, 18, 3266, 64)
-@@ -62,6 +70,15 @@ func NewClientSession(ctx context.Contex
+@@ -62,6 +70,15 @@
  
  func (c *ClientSession) EncodeRequestHeader(header *protocol.RequestHeader, writer io.Writer) error {
  	account := header.User.Account.(*vmess.MemoryAccount)
@@ -355,7 +355,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  
  	buffer := buf.New()
  	defer buffer.Release()
-@@ -93,6 +110,17 @@ func (c *ClientSession) EncodeRequestHea
+@@ -93,6 +110,17 @@
  		fnv1a.Sum(hashBytes[:0])
  	}
  
@@ -373,7 +373,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	var fixedLengthCmdKey [16]byte
  	copy(fixedLengthCmdKey[:], account.ID.CmdKey())
  	vmessout := vmessaead.SealVMessAEADHeader(fixedLengthCmdKey, buffer.Bytes())
-@@ -163,46 +191,51 @@ func (c *ClientSession) EncodeRequestBod
+@@ -163,46 +191,51 @@
  }
  
  func (c *ClientSession) DecodeResponseHeader(reader io.Reader) (*protocol.ResponseHeader, error) {
@@ -467,7 +467,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	buffer := buf.StackNew()
 --- a/proxy/vmess/encoding/encoding_test.go
 +++ b/proxy/vmess/encoding/encoding_test.go
-@@ -41,7 +41,7 @@ func TestRequestSerialization(t *testing
+@@ -41,7 +41,7 @@
  	}
  
  	buffer := buf.New()
@@ -476,7 +476,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	common.Must(client.EncodeRequestHeader(expectedRequest, buffer))
  
  	buffer2 := buf.New()
-@@ -90,7 +90,7 @@ func TestInvalidRequest(t *testing.T) {
+@@ -90,7 +90,7 @@
  	}
  
  	buffer := buf.New()
@@ -485,7 +485,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	common.Must(client.EncodeRequestHeader(expectedRequest, buffer))
  
  	buffer2 := buf.New()
-@@ -130,7 +130,7 @@ func TestMuxRequest(t *testing.T) {
+@@ -130,7 +130,7 @@
  	}
  
  	buffer := buf.New()
@@ -494,7 +494,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	common.Must(client.EncodeRequestHeader(expectedRequest, buffer))
  
  	buffer2 := buf.New()
---- /dev/null
+--- a/proxy/vmess/encoding/legacy_test.go
 +++ b/proxy/vmess/encoding/legacy_test.go
 @@ -0,0 +1,159 @@
 +package encoding
@@ -658,7 +658,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +}
 --- a/proxy/vmess/outbound/outbound.go
 +++ b/proxy/vmess/outbound/outbound.go
-@@ -132,7 +132,7 @@ func (h *Handler) Process(ctx context.Co
+@@ -132,7 +132,7 @@
  		newCtx, newCancel = context.WithCancel(context.Background())
  	}
  
