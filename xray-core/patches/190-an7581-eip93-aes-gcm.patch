@@ -9,7 +9,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 
 --- a/tools/eip93/eip93_linux_arm64.go
 +++ b/tools/eip93/eip93_linux_arm64.go
-@@ -0,0 +1,288 @@
+@@ -0,0 +1,294 @@
 +// Copyright 2026 coolsnowwolf <coolsnowwolf@gmail.com>
 +// SPDX-License-Identifier: BSD-3-Clause
 +//go:build linux && arm64 && !purego
@@ -121,6 +121,21 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +}
 +func eip93U32(v uint32) []byte { b := make([]byte, 4); binary.LittleEndian.PutUint32(b, v); return b }
 +
++// Linux 5.4 uses the CryptoAPI GHASH driver; Linux 7.3 uses the library.
++func eip93Bind(bind func(string) syscall.Errno) syscall.Errno {
++	var errno syscall.Errno
++	for _, name := range []string{
++		"gcm_base(ctr(aes-eip93),ghash-generic)",
++		"gcm_base(ctr(aes-eip93),ghash-lib)",
++	} {
++		errno = bind(name)
++		if errno == 0 {
++			return 0
++		}
++	}
++	return errno
++}
++
 +func (s *eip93State) connect() error {
 +	if eip93Sockets.Add(1) > eip93MaxSockets {
 +		eip93Sockets.Add(-1)
@@ -140,23 +155,14 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +	var sa [88]byte
 +	binary.LittleEndian.PutUint16(sa[:], 38)
 +	copy(sa[2:16], "aead")
-+	// Older kernels expose GHASH as a CryptoAPI algorithm; newer kernels
-+	// use the GHASH library. Keep CTR pinned to EIP93 in both cases.
-+	var errno syscall.Errno
-+	for _, name := range []string{
-+		"gcm_base(ctr(aes-eip93),ghash-generic)",
-+		"gcm_base(ctr(aes-eip93),ghash-lib)",
-+	} {
++	// Try both exact EIP93 compositions even when a kernel policy or driver
++	// rejects the first one. Never substitute a generic software CTR driver.
++	errno := eip93Bind(func(name string) syscall.Errno {
 +		clear(sa[24:])
 +		copy(sa[24:], name)
-+		_, _, errno = syscall.Syscall(syscall.SYS_BIND, uintptr(fd), uintptr(unsafe.Pointer(&sa[0])), uintptr(len(sa)))
-+		if errno == 0 {
-+			break
-+		}
-+		if errno != syscall.ENOENT && errno != syscall.EINVAL {
-+			return errno
-+		}
-+	}
++		_, _, errno := syscall.Syscall(syscall.SYS_BIND, uintptr(fd), uintptr(unsafe.Pointer(&sa[0])), uintptr(len(sa)))
++		return errno
++	})
 +	if errno != 0 {
 +		return errno
 +	}
@@ -300,7 +306,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +}
 --- a/tools/eip93/eip93_linux_arm64_test.go
 +++ b/tools/eip93/eip93_linux_arm64_test.go
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,153 @@
 +// Copyright 2026 coolsnowwolf <coolsnowwolf@gmail.com>
 +// SPDX-License-Identifier: BSD-3-Clause
 +//go:build linux && arm64 && !purego
@@ -424,6 +430,34 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +	}
 +	if n := eip93Sockets.Load(); n != 0 {
 +		t.Fatalf("socket reservations leaked: %d", n)
++	}
++}
++
++func TestEIP93BindFallback(t *testing.T) {
++	for _, first := range []syscall.Errno{0, syscall.ENOENT, syscall.EINVAL, syscall.ENODEV, syscall.EACCES, syscall.EPERM} {
++		for _, second := range []syscall.Errno{0, syscall.ENOENT} {
++			calls := 0
++			err := eip93Bind(func(name string) syscall.Errno {
++				calls++
++				if calls == 1 {
++					if name != "gcm_base(ctr(aes-eip93),ghash-generic)" {
++						t.Fatal(name)
++					}
++					return first
++				}
++				if name != "gcm_base(ctr(aes-eip93),ghash-lib)" {
++					t.Fatal(name)
++				}
++				return second
++			})
++			want, count := second, 2
++			if first == 0 {
++				want, count = 0, 1
++			}
++			if err != want || calls != count {
++				t.Fatalf("first=%v second=%v: err=%v calls=%d", first, second, err, calls)
++			}
++		}
 +	}
 +}
 --- a/tools/eip93/eip93_stub.go

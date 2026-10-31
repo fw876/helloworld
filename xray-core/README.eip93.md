@@ -1,6 +1,6 @@
 # AN7581 EIP93 hybrid AES-GCM
 
-Xray 26.10.29 includes an automatic AN7581-only AES-GCM path through Linux AF_ALG.
+Xray 26.10.31 includes an automatic AN7581-only AES-GCM path through Linux AF_ALG.
 EIP93 performs AES-CTR; GHASH stays on the CPU. This is not native hardware GCM.
 
 The ARM64 package build generates a private Go source overlay. It never changes
@@ -18,7 +18,8 @@ in their original implementations.
 - Use only standard 12-byte nonces, 16-byte tags and 4–32 KiB payloads.
 - Bind `gcm_base(ctr(aes-eip93),ghash-generic)` on older kernels, retrying
   `gcm_base(ctr(aes-eip93),ghash-lib)` on kernels such as 7.3 when the old
-  name is unavailable. Both names require the exact EIP93 CTR driver.
+  name fails to bind, including driver or policy errors. Both names require
+  the exact EIP93 CTR driver; failure of both keeps the original Go path.
 - Verify each newly opened key against Go encryption/decryption and bad-tag
   rejection before using it. Bound sockets, serialize each key's operations,
   set socket timeouts and clear private buffers. The kernel must also be healthy;
@@ -44,7 +45,7 @@ Xray path until separate hardware measurements justify an alternative.
 
 ## Validation
 
-The entire 100–190 patch stack replays on the official 26.10.29 archive with
+The entire 100–190 patch stack replays on the official 26.10.31 archive with
 `patch --fuzz=0`. The version upgrade refreshed dependency contexts and fixed
 patch 100's TLS protobuf descriptor length; `infra/conf` tests catch that issue.
 Existing protocol packages compile and their available tests pass. The ARM64
@@ -146,3 +147,27 @@ These checks use the fixed EIP93 and AF_ALG modules loaded temporarily on the
 test machine. They establish correctness and acceleration activation, not
 throughput, a full firmware build or persistence of the kernel fixes after
 reboot. The firmware must include the matching Linux 7.3 fixes.
+
+## Xray 26.10.31 build validation (2026-11-01)
+
+The source archive SHA-256 is
+`be44f95d497ad4ba6e9d1dcfbbd71e8e51f812aff077d4c15c9947eff5e3046a`.
+All ten patches replay with zero fuzz and zero offsets. Temporary files and
+labeled unified diffs refresh the changed dependency contexts in patches 150
+and 180, including upstream's protoc-gen-go-grpc update to 1.6.2.
+
+EIP93 backend selection now tries the exact `ghash-lib` composition after any
+legacy-name bind error, matching the Mihomo compatibility behavior. An ARM64
+QEMU regression checks success, missing algorithms, invalid arguments, absent
+drivers and permission errors, including failure of both names. DT gating and
+the Go GCM tests pass; the hardware-only test is skipped without AN7581.
+
+The ARM64 OpenWrt package builds with Naive/Cronet, musl and the private EIP93
+Go overlay enabled. Configuration, AnyTLS and VMess tests pass, and the other
+added protocol packages compile. The resulting ARM64 program starts under QEMU
+and reports 26.10.31; the UPX integrity check passes.
+
+This run does not repeat the historical board tests or validate Linux 7.3
+hardware throughput. The matching kernel EIP93/AF_ALG fixes described above
+remain required; native Cronet TLS does not use the Go acceleration overlay.
+Local build and regression logs: `/tmp/xray-26.10.31-validation/`.
