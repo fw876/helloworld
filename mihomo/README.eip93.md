@@ -1,9 +1,10 @@
 # AN7581 EIP93 hybrid AES-GCM
 
-Mihomo 1.19.32 package release 3 ports Xray's package-private Go AES-GCM
-overlay. Eligible Go AES-GCM records use Linux AF_ALG with the exact
-`gcm_base(ctr(aes-eip93),ghash-generic)` driver: hardware AES-CTR plus CPU
-GHASH. Neither wire protocols nor the shared Go toolchain are changed.
+Mihomo 1.19.33 ports Xray's package-private Go AES-GCM overlay. Eligible
+Go AES-GCM records use Linux AF_ALG with hardware AES-CTR plus CPU GHASH.
+Binding tries `gcm_base(ctr(aes-eip93),ghash-generic)` for Linux 5.4 and
+`gcm_base(ctr(aes-eip93),ghash-lib)` for newer kernels including Linux 7.3.
+Neither wire protocols nor the shared Go toolchain are changed.
 
 ## Selection and fallback
 
@@ -36,8 +37,8 @@ recover a hung kernel DMA engine.
 Firmware needs a working EIP93 driver/DT and GCM, GHASH and AF_ALG. On
 QWRT, `kmod-crypto-hw-airoha-eip93` pulls in the crypto dependencies.
 A missing driver safely leaves Mihomo on software. Hardware acceptance
-below covers BSP Linux 5.4.302 on Nokia XG-040G-MD UBI, not AN7583 or every
-kernel combination.
+covers Linux 7.3.1 on FiberHome HG5585F CT and historical BSP Linux 5.4.302
+on Nokia XG-040G-MD UBI, not AN7583 or every kernel combination.
 
 TLS/uTLS and protocols using Go AES-GCM can reach this path, but cipher
 negotiation is unchanged: ChaCha20 connections are not AES-GCM acceleration
@@ -46,7 +47,8 @@ tests. Records outside the supported range also remain on software.
 ## Build and regression checks
 
 The generator checks the Go source layout and fails on unknown layouts.
-It was tested with Go 1.27.1. Files under `tools/eip93` use `.go.in`
+It was tested with Go 1.27.3 (1.19.33) and Go 1.27.1 (1.19.32).
+Files under `tools/eip93` use `.go.in`
 templates so recursive Go package discovery does not compile them as an
 application package importing Go internals. The generated overlay maps
 these templates into the private standard-library build.
@@ -54,7 +56,7 @@ these templates into the private standard-library build.
 The patch replays with `patch --fuzz=0` on the source archive with SHA256:
 
 ```
-0194b7039e6ff1143c7b80dd70d3a06976f60ff9f40802111d15a93da06c8a95
+2e37b49d2c9c25baa850e08f008cfdb133a16df7f6b0b078178086a10e3233a7
 ```
 
 After preparing the patched source, use the same Go executable as the build:
@@ -74,7 +76,29 @@ buffers, invalid tags, concurrency, closed-socket fallback, DT exclusions
 and nonstandard nonce/tag fallback. Host AMD64 cipher tests also passed
 with the overlay present and the hardware path excluded.
 
-## Pristine/patched cross-validation
+## 1.19.33 / Linux 7.3 validation
+
+On 2026-10-31, both package copies built independently with Go 1.27.3.
+The resulting OpenWrt package was installed on FiberHome HG5585F CT
+(AN7581, Linux 7.3.1). Hardware tests passed for AES-128/192/256,
+boundary lengths, in-place buffers, invalid tags, concurrency and safe
+closed-socket fallback.
+
+Cross-validation used the official Mihomo 1.19.33 ARM64 release as an
+independent ordinary peer (Go 1.26.10). SS AES-256-GCM and Shadowsocks 2022
+AES-256-GCM each passed six endpoint combinations: ordinary/ordinary,
+ordinary/patched, patched/ordinary, patched/patched and both one-sided
+`MIHOMO_EIP93=off` controls. Each case transferred 4 MiB in both directions
+with matching SHA256. With the variable unset, patched endpoints activated
+automatically: SS runs added 523-909 EIP93 interrupts, SS2022 runs 257-458.
+All ordinary and disabled controls added zero. `/sbin/usage` reported the
+same cumulative hardware interrupt counter.
+
+These loopback client/server tests prove activation and interoperability,
+not throughput gains. Private harnesses, hashes and per-case evidence are
+retained under `/tmp/qwrt-mihomo-1.19.33/` on the build host.
+
+## Historical 1.19.32 / Linux 5.4 cross-validation
 
 The ordinary ARM64 and AMD64 peers were built from the pristine archive,
 not patched source with acceleration switched off. Ordinary and patched
