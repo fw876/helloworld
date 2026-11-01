@@ -641,22 +641,35 @@ end
 local function build_dns_upstreams()
 	local fastest_list = get_fastest_dns()
 	local nameserver_list = {}
-
-	local proxy_server_list = {
-		"https://cn.ali-oss.cn:44443/dns-query/6dafe708-d9d6-48cc-a768-e6ed3018a9ec",
-		"https://hk.ali-oss.cn:44443/dns-query/6dafe708-d9d6-48cc-a768-e6ed3018a9ec"
-	}
+	local proxy_server_list = {}
 
 	for _, dns_ip in ipairs(fastest_list) do
 		local formatted = format_dns_server(dns_ip)
 		table.insert(nameserver_list, formatted)
+		table.insert(proxy_server_list, formatted)
 	end
+
+	table.insert(proxy_server_list, "https://cn.ali-oss.cn:44443/dns-query/6dafe708-d9d6-48cc-a768-e6ed3018a9ec")
+	table.insert(proxy_server_list, "https://hk.ali-oss.cn:44443/dns-query/6dafe708-d9d6-48cc-a768-e6ed3018a9ec")
 
 	return {
 		["respect-rules"] = true,
 		["nameserver"] = nameserver_list,
 		["proxy-server-nameserver"] = proxy_server_list
 	}
+end
+
+local function ipv6_enabled()
+	return uci:get_first("shadowsocksr", "global", "ipv6_support", "0") == "1"
+end
+
+local function get_filter_aaaa()
+	if ipv6_enabled() then return "0" end
+	local value = uci:get_first("shadowsocksr", "global", "filter_aaaa", "1")
+	if value == nil or value == "" then
+		value = uci:get_first("shadowsocksr", "global", "mosdns_ipv6", "1")
+	end
+	return value
 end
 
 local function build_dns_section(dns_mode, user_dns)
@@ -1057,19 +1070,6 @@ local function fetch_ech_config(domain, dns_server)
 
 	ech_cache[cache_key] = false
 	return nil
-end
-
-local function ipv6_enabled()
-	return uci:get_first("shadowsocksr", "global", "ipv6_support", "0") == "1"
-end
-
-local function get_filter_aaaa()
-	if ipv6_enabled() then return "0" end
-	local value = uci:get_first("shadowsocksr", "global", "filter_aaaa", "1")
-	if value == nil or value == "" then
-		value = uci:get_first("shadowsocksr", "global", "mosdns_ipv6", "1")
-	end
-	return value
 end
 
 -- ==================== TUIC 节点 ====================
