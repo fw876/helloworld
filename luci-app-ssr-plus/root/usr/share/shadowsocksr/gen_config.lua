@@ -584,10 +584,20 @@ Xray.outbounds = {
 					return server.insecure == "1"
 				end)(),
 				serverName = server.tls_host,
-				certificates = server.certificate and {
-					usage = "verify",
-					certificateFile = server.certpath
-				} or nil,
+				certificates = (function()
+					if server.masque_certificate == "1" and server.masque_certificate_pem and server.masque_certificate_pem ~= "" then
+						return {
+							certificate = split(server.masque_certificate_pem:gsub("\\n", "\n"), "\n"),
+							usage = "verify"
+						}
+					elseif server.certificate == "1" and server.certpath and server.certpath ~= "" then
+						return {
+							usage = "verify",
+							certificateFile = server.certpath
+						}
+					end
+					return nil
+				end)(),
 				pinnedPeerCertSha256 = (function()
 					if xray_version_val < 260131 then return nil end
 					if not server.tls_CertSha then return "" end
@@ -711,6 +721,28 @@ Xray.outbounds = {
 				permit_without_stream = (server.permit_without_stream == "1") and true or nil,
 				initial_windows_size = server.initial_windows_size and tonumber(server.initial_windows_size) or nil,
 				user_agent = server.user_agent
+			} or nil,
+			masqueSettings = (server.v2ray_protocol == "masque") and {
+				path = (server.masque_path and server.masque_path ~= "") and server.masque_path or nil,
+				warp = (server.masque_warp == "1") and {
+					privateKey = (server.masque_warp_private_key or ""):gsub("\\n", "\n"),
+					publicKey = (server.masque_warp_public_key or ""):gsub("\\n", "\n"),
+					address = server.masque_warp_address
+				} or nil,
+				headers = (function()
+					local headers = {}
+					if server.auth_enable == "1" and server.masque_warp ~= "1" and ((server.username and server.username ~= "") or (server.password and server.password ~= "")) then
+						headers["authorization"] = "Basic " .. base64Encode((server.username or "") .. ":" .. (server.password or ""))
+					end
+					if server.user_agent and server.user_agent ~= "" then
+						headers["user-agent"] = server.user_agent
+					end
+					for line in (server.masque_headers or ""):gsub("\\n", "\n"):gmatch("[^\r\n]+") do
+						local key, value = line:match("^%s*([^:]+):%s*(.-)%s*$")
+						if key then headers[trim(key):lower()] = value end
+					end
+					return next(headers) and headers or nil
+				end)()
 			} or nil,
 			hysteriaSettings = (server.v2ray_protocol == "hysteria2") and {
 				-- hysteria2
@@ -922,7 +954,7 @@ Xray.outbounds = {
 				tcpFastOpen = (function()
 					if server.transport == "xhttp" then
 						return (server.fast_open == "1") and true or false
-					elseif server.v2ray_protocol == "hysteria2" then
+					elseif server.v2ray_protocol == "hysteria2" or server.v2ray_protocol == "masque" then
 						return (server.fast_open == "1") and true or nil
 					else
 						return nil
@@ -936,7 +968,7 @@ Xray.outbounds = {
 				              ((remarks and remarks ~= "") and (node_id .. "." .. remarks) or ("direct" .. "." .. node_id)) or nil
 			}
 		} or nil,
-		mux = (server.v2ray_protocol ~= "hysteria2" and server.v2ray_protocol ~= "wireguard" and server.v2ray_protocol ~= "anytls") and {
+		mux = (server.v2ray_protocol ~= "hysteria2" and server.v2ray_protocol ~= "wireguard" and server.v2ray_protocol ~= "anytls" and server.v2ray_protocol ~= "masque") and {
 			-- mux
 			enabled = (server.mux == "1"), -- Mux
 			concurrency = (server.mux == "1" and (tonumber(server.concurrency) or -1)) or nil, -- TCP 最大并发连接数
@@ -1027,7 +1059,7 @@ if xray_fragment.fragment ~= "0" or (xray_fragment.noise ~= "0" and xray_noise.e
 			tcpFastOpen = (function()
 				if server.transport == "xhttp" then
 					return (server.fast_open == "1") and true or false
-				elseif server.v2ray_protocol == "hysteria2" then
+				elseif server.v2ray_protocol == "hysteria2" or server.v2ray_protocol == "masque" then
 					return (server.fast_open == "1") and true or nil
 				else
 					return nil

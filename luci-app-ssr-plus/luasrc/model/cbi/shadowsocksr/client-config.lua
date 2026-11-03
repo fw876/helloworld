@@ -479,6 +479,9 @@ end
 if is_finded("xray") then
 	o:value("hysteria2", translate("Hysteria2"))
 end
+if is_finded("xray") then
+	o:value("masque", translate("MASQUE"))
+end
 if is_finded("xray") or is_finded("mihomo") then
 	o:value("snell", translate("Snell"))
 end
@@ -495,6 +498,7 @@ o:depends("type", "ss-rust")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
 o:depends("type", "hysteria2")
+o:depends("type", "masque")
 o:depends("type", "tuic")
 o:depends("type", "shadowtls")
 o:depends("type", "socks5")
@@ -520,6 +524,7 @@ o:depends("type", "ss-rust")
 o:depends("type", "trojan")
 o:depends("type", "naiveproxy")
 o:depends("type", "hysteria2")
+o:depends("type", "masque")
 o:depends("type", "tuic")
 o:depends("type", "shadowtls")
 o:depends("type", "socks5")
@@ -542,6 +547,7 @@ o.default = "0"
 o:depends("type", "socks5")
 o:depends({type = "v2ray", v2ray_protocol = "http"})
 o:depends({type = "v2ray", v2ray_protocol = "socks"})
+o:depends({type = "v2ray", v2ray_protocol = "masque"})
 
 o = s:option(Value, "username", translate("Username"))
 o.rmempty = true
@@ -550,6 +556,7 @@ o:depends({type = "v2ray", v2ray_protocol = "naive"})
 o:depends({type = "socks5", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "socks", auth_enable = true})
+o:depends({type = "v2ray", v2ray_protocol = "masque", auth_enable = true})
 
 o = s:option(Value, "password", translate("Password"))
 o.password = true
@@ -563,6 +570,7 @@ o:depends("type", "shadowtls")
 o:depends({type = "socks5", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "http", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "socks", socks_ver = "5", auth_enable = true})
+o:depends({type = "v2ray", v2ray_protocol = "masque", auth_enable = true})
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o:depends({type = "v2ray", v2ray_protocol = "trojan"})
 o:depends({type = "v2ray", v2ray_protocol = "anytls"})
@@ -579,6 +587,56 @@ for _, field in ipairs({
 	o.datatype = "uinteger"
 	o.rmempty = true
 	o:depends({type = "v2ray", v2ray_protocol = "anytls"})
+end
+
+-- [[ MASQUE ]] --
+o = s:option(Flag, "masque_warp", "WARP")
+o.default = "0"
+o:depends({type = "v2ray", v2ray_protocol = "masque"})
+
+for _, field in ipairs({
+	{ "masque_warp_private_key", translate("WARP Device Private Key") },
+	{ "masque_warp_public_key", translate("WARP Endpoint Public Key") }
+}) do
+	o = s:option(TextValue, field[1], field[2])
+	o.rows = 3
+	o.wrap = "off"
+	o:depends({type = "v2ray", v2ray_protocol = "masque", masque_warp = "1"})
+	o.cfgvalue = function(self, section)
+		return (m:get(section, self.option) or ""):gsub("\\n", "\n")
+	end
+	o.validate = function(self, value)
+		return trim(value):gsub("\r\n?", "\n"):gsub("\n", "\\n")
+	end
+end
+
+o = s:option(DynamicList, "masque_warp_address", "WARP " .. translate("Local Address"))
+o:depends({type = "v2ray", v2ray_protocol = "masque", masque_warp = "1"})
+
+o = s:option(Value, "masque_path", translate("MASQUE Path"))
+o:depends({type = "v2ray", v2ray_protocol = "masque"})
+
+o = s:option(TextValue, "masque_headers", translate("Custom HTTP Headers"))
+o.rows = 5
+o.wrap = "off"
+o:depends({type = "v2ray", v2ray_protocol = "masque"})
+o.cfgvalue = function(self, section)
+	return (m:get(section, "masque_headers") or ""):gsub("\\n", "\n")
+end
+o.validate = function(self, value)
+	value = trim(value):gsub("\r\n", "\n"):gsub("\r", "\n")
+	local headers = {}
+	for line in value:gmatch("[^\n]+") do
+		if trim(line) ~= "" then
+			local key = line:match("^%s*([^:]+):")
+			key = key and trim(key):lower()
+			if not key or not key:match("^[!#$%%&'*+%.%^_`|~%w%-]+$") or headers[key] or key == "host" or key == "capsule-protocol" then
+				return nil, translate("Not true format, please re-enter!") .. " (" .. line .. ")"
+			end
+			headers[key] = true
+		end
+	end
+	return value:gsub("\n", "\\n")
 end
 
 o = s:option(Value, "snell_psk", translate("Snell PSK"))
@@ -1501,6 +1559,7 @@ o:depends("transport", "ws")
 o:depends("transport", "httpupgrade")
 o:depends("transport", "xhttp")
 o:depends("transport", "grpc")
+o:depends("v2ray_protocol", "masque")
 
 --[[ FinalMask部分 ]]--
 o = s:option(Flag, "enable_finalmask", translate("FinalMask"))
@@ -1591,6 +1650,7 @@ o:depends({type = "v2ray", v2ray_protocol = "vmess", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "trojan", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "hysteria2", reality = false})
+o:depends({type = "v2ray", v2ray_protocol = "masque", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "anytls", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "socks", socks_ver = "5", reality = false})
 o:depends({type = "v2ray", v2ray_protocol = "http", reality = false})
@@ -1649,8 +1709,17 @@ if is_finded("xray") then
 	o:value("randomized", translate("randomized"))
 	o:value("unsafe", translate("unsafe"))
 	o:value("", translate("disable"))
-	o:depends({type = "v2ray", tls = true})
-	o:depends({type = "v2ray", reality = true})
+	local protocols = s.fields["v2ray_protocol"].keylist
+	if protocols and type(protocols) == "table" and #protocols > 0 then
+		for _, proto in ipairs(protocols) do
+			if not proto:find("^_") then
+				if proto ~= "masque" then
+					o:depends({type = "v2ray", v2ray_protocol = proto, tls = true})
+					o:depends({type = "v2ray", v2ray_protocol = proto, reality = true})
+				end
+			end
+		end
+	end
 
 	o = s:option(Flag, "enable_ech", translate("Enable ECH(optional)"))
 	o.rmempty = true
@@ -1730,6 +1799,8 @@ o:value("h3,h2")
 o:value("http/1.1")
 o:value("h2,http/1.1")
 o:value("h3,h2,http/1.1")
+o:depends("type", "trojan")
+o:depends("type", "hysteria2")
 o:depends("tls", true)
 
 -- TUIC ALPN
@@ -1780,6 +1851,23 @@ if xray_version_val >= 260131 then
 	o:depends({type = "v2ray", tls = true})
 	o.description = translate("TLS is used to verify the leaf certificate name.") ..
 			string.format("<a href='javascript:void(0)' onclick='javascript:fetchCertByName(this)'>%s</a>", "→ " .. translate("Fetch Manually"))
+end
+
+o = s:option(Flag, "masque_certificate", translate("TLS Certificate (PEM)"))
+o.default = "0"
+o:depends({type = "v2ray", v2ray_protocol = "masque", tls = true})
+
+o = s:option(TextValue, "masque_certificate_pem", " ", translate("Full certificate (chain), PEM format."))
+o.default = ""
+o.rows = 5
+o.wrap = "off"
+o:depends("masque_certificate", 1)
+o.cfgvalue = function(self, section)
+	return (m:get(section, "masque_certificate_pem") or ""):gsub("\\n", "\n")
+end
+o.validate = function(self, value)
+	value = trim(value):gsub("\r\n", "\n"):gsub("\r", "\n"):gsub("[ \t]*\n[ \t]*", "\n"):gsub("\n+", "\n")
+	return value:gsub("\n", "\\n")
 end
 
 -- [[ Hysteria2 TLS pinSHA256 ]] --
@@ -1861,6 +1949,7 @@ o:depends({type = "v2ray", v2ray_protocol = "trojan"})
 o:depends({type = "v2ray", v2ray_protocol = "shadowsocks"})
 o:depends({type = "v2ray", v2ray_protocol = "socks"})
 o:depends({type = "v2ray", v2ray_protocol = "http"})
+o:depends({type = "v2ray", v2ray_protocol = "masque"})
 
 -- [[ TESTPRE ]]--
 o = s:option(Value, "preconns", translate("Pre-connections"), translate("Number of early established connections to reduce latency."))
@@ -1956,6 +2045,7 @@ o:depends("type", "ss-rust")
 o:depends("type", "trojan")
 o:depends("type", "hysteria2")
 o:depends({type = "v2ray", v2ray_protocol = "vless", transport = "xhttp"})
+o:depends({type = "v2ray", v2ray_protocol = "masque"})
 o:depends({type = "v2ray", v2ray_protocol = "hysteria2"})
 
 o = s:option(Flag, "switch_enable", translate("Enable Auto Switch"))
