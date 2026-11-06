@@ -218,6 +218,7 @@ local function strip_runtime_conflicts(doc)
 	doc.port = nil
 	doc["external-controller"] = nil
 	doc.secret = nil
+	doc.authentication = nil
 	doc["allow-lan"] = nil
 	if type(doc.dns) == "table" then
 		doc.dns["fake-ip-range"] = nil
@@ -740,6 +741,115 @@ local function apply_trojan_tls_options(proxy, sid)
 	end
 end
 
+-- Xray camel → mihomo kebab（反向字段表）
+local XHTTP_FIELD_MAP = {
+	headers               = "headers",
+	xPaddingBytes         = "x-padding-bytes",
+	noGRPCHeader          = "no-grpc-header",
+	xPaddingObfsMode      = "x-padding-obfs-mode",
+	xPaddingKey           = "x-padding-key",
+	xPaddingHeader        = "x-padding-header",
+	xPaddingPlacement     = "x-padding-placement",
+	xPaddingMethod        = "x-padding-method",
+	uplinkHTTPMethod      = "uplink-http-method",
+	sessionIDPlacement    = "session-placement",
+	sessionIDKey          = "session-key",
+	sessionIDTable        = "session-table",
+	sessionIDLength       = "session-length",
+	seqPlacement          = "seq-placement",
+	seqKey                = "seq-key",
+	uplinkDataPlacement   = "uplink-data-placement",
+	uplinkDataKey         = "uplink-data-key",
+	uplinkChunkSize       = "uplink-chunk-size",
+	scMaxEachPostBytes    = "sc-max-each-post-bytes",
+	scMinPostsIntervalMs  = "sc-min-posts-interval-ms",
+}
+
+-- xmux 内部 camel → kebab
+local XMUX_FIELD_MAP = {
+	maxConcurrency     = "max-concurrency",
+	maxConnections     = "max-connections",
+	cMaxReuseTimes     = "c-max-reuse-times",
+	hMaxRequestTimes   = "h-max-request-times",
+	hMaxReusableSecs   = "h-max-reusable-secs",
+	hKeepAlivePeriod   = "h-keep-alive-period",
+}
+
+local function convert_xhttp_pair(key, value)
+	-- xmux → reuse-settings
+	if key == "xmux" and type(value) == "table" then
+		local out = {}
+		for k, v in pairs(value) do
+			local mapped = XMUX_FIELD_MAP[k]
+			if mapped then
+				out[mapped] = v
+			end
+		end
+		if next(out) == nil then return nil, nil end
+		return "reuse-settings", out
+	end
+
+	-- downloadSettings → download-settings（只保留 xhttp 部分）
+	if key == "downloadSettings" and type(value) == "table" then
+		local out = {}
+		for k, v in pairs(value) do
+			if k == "xmux" then
+				local nk, nv = convert_xhttp_pair(k, v)
+				if nk then out[nk] = nv end
+			elseif k == "path" or k == "host" then
+				out[k] = v
+			elseif XHTTP_FIELD_MAP[k] then
+				if not (k == "headers" and type(v) == "table" and next(v) == nil) then
+					out[XHTTP_FIELD_MAP[k]] = v
+				end
+			end
+		end
+		if next(out) == nil then return nil, nil end
+		return "download-settings", out
+	end
+
+	if key == "headers" and type(value) == "table" then
+		if next(value) == nil then
+			return nil, nil
+		end
+		return "headers", value
+	end
+
+	local mapped = XHTTP_FIELD_MAP[key]
+	if mapped then
+		return mapped, value
+	end
+
+	return nil, nil
+end
+
+local function apply_xhttp_extra(opts, sid)
+	if get_server_field(sid, "enable_xhttp_extra", "0") ~= "1" then
+		return
+	end
+	local raw = get_server_field(sid, "xhttp_extra", "")
+	if raw == "" or not ok_jsonc or not jsonc then
+		return
+	end
+
+	local decoded = nixio.bin.b64decode(raw)
+	if not decoded then
+		return
+	end
+
+	local extra = jsonc.parse(decoded)
+	if type(extra) ~= "table" then
+		return
+	end
+
+	for k, v in pairs(extra) do
+		local new_key, new_val = convert_xhttp_pair(k, v)
+		if new_key then
+			opts[new_key] = new_val
+		end
+	end
+end
+
 local function apply_v2ray_transport_options(proxy, sid)
 	local transport = get_server_field(sid, "transport", "raw")
 	if transport == "raw" or transport == "tcp" or transport == "" then
@@ -782,6 +892,7 @@ local function apply_v2ray_transport_options(proxy, sid)
 			host = string_or_nil(get_server_field(sid, "xhttp_host", "")),
 			mode = string_or_nil(get_server_field(sid, "xhttp_mode", ""))
 		}
+		apply_xhttp_extra(proxy["xhttp-opts"], sid)
 	end
 end
 
