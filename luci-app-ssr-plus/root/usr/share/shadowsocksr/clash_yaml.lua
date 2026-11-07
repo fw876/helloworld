@@ -989,12 +989,146 @@ local function command_exists(cmd)
 	local result = handle:read("*a")
 	handle:close()
 
-	command_cache[cmd] = (result and result ~= "")
+	command_cache[cmd] = result and result:match("%S") ~= nil or false
 	return command_cache[cmd]
 end
 
+-- Strict DNS domain name validation.
+local function valid_dns_domain(domain)
+	if type(domain) ~= "string" or domain == "" or #domain > 253 then
+		return false
+	end
+
+	domain = domain:gsub("%.$", "")
+
+	if domain == "" then
+		return false
+	end
+
+	local total = 1
+
+	for label in (domain .. "."):gmatch("(.-)%.") do
+		if #label == 0 or #label > 63
+			or not label:match("^[%w%-]+$")
+			or label:match("^%-")
+			or label:match("%-$") then
+			return false
+		end
+
+		total = total + #label + 1
+	end
+
+	if total > 255 then
+		return false
+	end
+
+	return true
+end
+
+-- IPv4 dotted-quad validation. Rejects leading zeros.
+local function valid_ipv4(host)
+	if type(host) ~= "string" then
+		return false
+	end
+
+	local a, b, c, d = host:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+	if not a then
+		return false
+	end
+
+	for _, v in ipairs({ a, b, c, d }) do
+		if #v > 1 and v:sub(1, 1) == "0" then
+			return false
+		end
+
+		local n = tonumber(v)
+		if not n or n > 255 then
+			return false
+		end
+	end
+
+	return true
+end
+
+-- IPv6 literal validation (standard hex notation, '::' compression).
+-- IPv4-embedded forms (::ffff:192.0.2.1) are not accepted.
+local function valid_ipv6(addr)
+	if type(addr) ~= "string" or addr == "" or #addr > 39 then
+		return false
+	end
+
+	if not addr:match("^[%x:]+$") then
+		return false
+	end
+
+	local double_pos = addr:find("::", 1, true)
+	local has_compression = double_pos ~= nil
+
+	if has_compression then
+		local _, count = addr:gsub("::", "")
+		if count ~= 1 then
+			return false
+		end
+	elseif addr:sub(1, 1) == ":" or addr:sub(-1) == ":" then
+		return false
+	end
+
+	local groups = {}
+
+	for group in addr:gmatch("[^:]+") do
+		if #group > 4 then
+			return false
+		end
+
+		groups[#groups + 1] = group
+	end
+
+	if has_compression then
+		return #groups < 8
+	end
+
+	return #groups == 8
+end
+
+-- Parse host and port from a DNS server string.
+-- Supported: 1.1.1.1, 1.1.1.1:5353, https://host/dns-query,
+-- tls://host, [::1]:5353, https://[::1]/dns-query.
+local function parse_dns_server(dns_server)
+	if type(dns_server) ~= "string" or dns_server == "" then
+		return nil, nil
+	end
+
+	local rest = dns_server:gsub("^[a-zA-Z0-9%+%-%.]+://", "")
+	rest = rest:gsub("[/%?#].*$", "")
+
+	if rest == "" then
+		return nil, nil
+	end
+
+	local host, port
+
+	if rest:sub(1, 1) == "[" then
+		host, port = rest:match("^%[([^%]]+)%]:(%d+)$")
+		if not host then
+			host = rest:match("^%[([^%]]+)%]$")
+		end
+	else
+		host, port = rest:match("^([^:]+):(%d+)$")
+		if not host then
+			host = rest:match("^([^:]+)$")
+		end
+	end
+
+	if not host or host == "" then
+		return nil, nil
+	end
+
+	return host, port
+end
+
 local function fetch_ech_config(domain, dns_server)
-	if not domain or domain == "" or not dns_server or dns_server == "" then
+	if type(domain) ~= "string" or domain == ""
+		or type(dns_server) ~= "string" or dns_server == "" then
 		return nil
 	end
 
@@ -1003,34 +1137,64 @@ local function fetch_ech_config(domain, dns_server)
 		return ech_cache[cache_key] or nil
 	end
 
+	-- Protocol allowlist: "", https, doh, tls, dot.
+	local proto = (dns_server:match("^([a-zA-Z0-9%+%-%.]+)://") or ""):lower()
+
+	if proto ~= "" and proto ~= "https" and proto ~= "doh"
+		and proto ~= "tls" and proto ~= "dot" then
+		ech_cache[cache_key] = false
+		return nil
+	end
+
 	if not command_exists("dig") then
 		ech_cache[cache_key] = false
 		return nil
 	end
 
-	local proto = dns_server:match("^([a-zA-Z0-9%+%-%.]+)://") or ""
-	local port = dns_server:match(":(%d+)")
-	local server = dns_server
-		:gsub("^[a-zA-Z0-9%+%-%.]+://", "")
-		:gsub("/.*$", "")
-		:gsub(":%d+$", "")
-
-	if server == "" then
+	local server, port = parse_dns_server(dns_server)
+	if not server then
 		ech_cache[cache_key] = false
 		return nil
 	end
 
-	local safe_domain = domain:match("^[%w%-%._]+$")
-	local safe_server = server:match("^[%w%-%._]+$")
-	local safe_port = port and port:match("^%d+$") or nil
-
-	if not safe_domain or not safe_server then
+	if not valid_dns_domain(domain) then
 		ech_cache[cache_key] = false
 		return nil
+	end
+
+	-- Distinguish IPv6 / IPv4 / hostname. Reject anything else.
+	local safe_server
+
+	if server:find(":", 1, true) then
+		if not valid_ipv6(server) then
+			ech_cache[cache_key] = false
+			return nil
+		end
+		safe_server = server
+	elseif valid_ipv4(server) then
+		safe_server = server
+	elseif valid_dns_domain(server) then
+		safe_server = server
+	else
+		ech_cache[cache_key] = false
+		return nil
+	end
+
+	local safe_port
+	if port then
+		if not port:match("^%d+$") then
+			ech_cache[cache_key] = false
+			return nil
+		end
+		local port_num = tonumber(port)
+		if not port_num or port_num < 1 or port_num > 65535 then
+			ech_cache[cache_key] = false
+			return nil
+		end
+		safe_port = port
 	end
 
 	local dig_opts = ""
-	proto = proto:lower()
 
 	if proto == "https" or proto == "doh" then
 		dig_opts = "+https"
@@ -1044,11 +1208,14 @@ local function fetch_ech_config(domain, dns_server)
 		end
 	else
 		if safe_port and safe_port ~= "53" then
-			dig_opts = "-p " .. safe_port
+			dig_opts = dig_opts .. " -p " .. safe_port
 		end
 	end
 
-	local cmd = string.format("dig %s +short TYPE65 %s @%s 2>/dev/null", dig_opts, safe_domain, safe_server)
+	local cmd = string.format(
+		"dig %s +short +time=3 +tries=1 TYPE65 %s @%s 2>/dev/null",
+		dig_opts, domain, safe_server)
+
 	local handle = io.popen(cmd)
 	if not handle then
 		ech_cache[cache_key] = false
@@ -1056,9 +1223,9 @@ local function fetch_ech_config(domain, dns_server)
 	end
 
 	local output = handle:read("*a")
-	handle:close()
+	local ok = handle:close()
 
-	if not output or output == "" then
+	if not ok or not output or output == "" then
 		ech_cache[cache_key] = false
 		return nil
 	end
