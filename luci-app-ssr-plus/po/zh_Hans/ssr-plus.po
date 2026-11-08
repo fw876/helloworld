@@ -2701,13 +2701,6 @@ msgid ""
 msgstr ""
 "在线升级会从 fw876/helloworld 发布页下载并安装适配当前系统的 Mihomo IPK 或 APK 软件包。"
 
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:18
-msgid ""
-"The online upgrade downloads and installs the matching NaiveProxy package "
-"for this system from fw876/helloworld releases."
-msgstr ""
-"在线升级会从 fw876/helloworld 发布页下载并安装适配当前系统的 NaiveProxy 软件包。"
-
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:816
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_main_panel.htm:871
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/clash_panel.htm:89
@@ -3291,10 +3284,6 @@ msgstr "mKCP 伪装（混淆）类型"
 #: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:55
 msgid "mihomo binary not found in archive"
 msgstr "压缩包中未找到 mihomo 二进制文件"
-
-#: applications/luci-app-ssr-plus/luasrc/view/shadowsocksr/component.htm:56
-msgid "naive binary not found in archive"
-msgstr "压缩包中未找到 naive 二进制文件"
 
 #: applications/luci-app-ssr-plus/luasrc/model/cbi/shadowsocksr/client-config.lua:911
 msgid "native UDP characteristics"

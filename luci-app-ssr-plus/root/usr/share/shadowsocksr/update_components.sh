@@ -103,17 +103,6 @@ version_gt() {
 	[ "$first" = "$left" ]
 }
 
-naiveproxy_versions_equal() {
-	local left right
-
-	left="$(trim_version "${1:-}")"
-	right="$(trim_version "${2:-}")"
-	[ -n "$left" ] || return 1
-	[ -n "$right" ] || return 1
-	[ "$left" = "$right" ] && return 0
-	[ "${left%%-*}" = "${right%%-*}" ]
-}
-
 get_openwrt_arch() {
 	local arch
 
@@ -163,22 +152,6 @@ find_mihomo_binary() {
 	return 1
 }
 
-find_naiveproxy_binary() {
-	if command -v naive >/dev/null 2>&1; then
-		command -v naive
-		return 0
-	fi
-
-	for path in /usr/bin/naive /usr/libexec/naive /etc/ssrplus/bin/naive; do
-		if [ -x "$path" ]; then
-			printf '%s' "$path"
-			return 0
-		fi
-	done
-
-	return 1
-}
-
 get_xray_current_version() {
 	if [ ! -x "$XRAY_BINARY" ]; then
 		return 1
@@ -208,29 +181,6 @@ get_mihomo_current_version() {
 
 	binary="$(find_mihomo_binary)" || return 1
 	"$binary" -v 2>/dev/null | sed -n 's/.* v\([0-9][0-9.]*\).*/\1/p' | sed -n '1p'
-	return 0
-}
-
-get_naiveproxy_current_version() {
-	local pm version binary
-
-	pm="$(detect_package_manager 2>/dev/null || true)"
-	case "$pm" in
-		apk)
-			version="$(apk list -I naiveproxy 2>/dev/null | sed -n 's/^naiveproxy-\([^[:space:]]*\).*$/\1/p' | sed -n '1p')"
-			;;
-		opkg)
-			version="$(opkg status naiveproxy 2>/dev/null | sed -n 's/^Version:[[:space:]]*//p' | sed -n '1p')"
-			;;
-	esac
-
-	if [ -n "${version:-}" ]; then
-		printf '%s' "$version"
-		return 0
-	fi
-
-	binary="$(find_naiveproxy_binary)" || return 1
-	"$binary" --version 2>&1 | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?' | sed -n '1p'
 	return 0
 }
 
@@ -1130,71 +1080,6 @@ get_mihomo_latest_info() {
 	return 0
 }
 
-select_naiveproxy_asset() {
-	local asset_list="$1"
-	local pm="$2"
-	local arch="$3"
-	local candidate
-
-	case "$pm" in
-		apk)
-			candidate="$(printf '%s\n' "$asset_list" | grep -E '^naiveproxy-[^[:space:]]+\.apk$' | grep -F "_${arch}.apk" | sed -n '1p')"
-			;;
-		opkg)
-			candidate="$(printf '%s\n' "$asset_list" | grep -E '^naiveproxy_[^[:space:]]+\.ipk$' | grep -F "_${arch}.ipk" | sed -n '1p')"
-			;;
-		*)
-			return 1
-			;;
-	esac
-
-	[ -n "$candidate" ] || return 1
-	printf '%s' "$candidate"
-}
-
-naiveproxy_asset_version() {
-	local asset="$1"
-	local arch="$2"
-	local version
-
-	case "$asset" in
-		naiveproxy_*_"$arch".ipk)
-			version="${asset#naiveproxy_}"
-			version="${version%_${arch}.ipk}"
-			;;
-		naiveproxy-*_"$arch".apk)
-			version="${asset#naiveproxy-}"
-			version="${version%_${arch}.apk}"
-			;;
-		*)
-			return 1
-			;;
-	esac
-
-	[ -n "$version" ] || return 1
-	printf '%s' "$version"
-}
-
-get_naiveproxy_latest_info() {
-	local pm arch tag version asset asset_list release_html url
-
-	pm="$(detect_package_manager)" || return 2
-	arch="$(get_openwrt_arch)"
-	tag="$(get_helloworld_latest_tag)" || return 3
-	release_html="$(fetch_text "https://github.com/fw876/helloworld/releases/expanded_assets/$tag")" || return 3
-	asset_list="$(printf '%s\n' "$release_html" | sed -n 's#.*href="/fw876/helloworld/releases/download/[^/]*/\([^"]*\)".*#\1#p')"
-	asset="$(select_naiveproxy_asset "$asset_list" "$pm" "$arch")" || return 4
-	version="$(naiveproxy_asset_version "$asset" "$arch")" || return 4
-	url="$(mirror_wrap_url "https://github.com/fw876/helloworld/releases/download/$tag/$asset")"
-
-	log_kv package_manager "$pm"
-	log_kv arch "$arch"
-	log_kv asset "$asset"
-	log_kv latest_version "$version"
-	log_kv download_url "$url"
-	return 0
-}
-
 get_mainprogram_current_version() {
 	local pm="$1"
 	local version
@@ -1522,54 +1407,6 @@ mihomo_info() {
 	log_kv error ''
 }
 
-naiveproxy_info() {
-	local pm current installed latest_output latest_rc latest_version arch asset can_upgrade
-
-	installed=0
-	current=""
-	pm="$(detect_package_manager 2>/dev/null || true)"
-	arch="$(get_openwrt_arch)"
-	if current="$(get_naiveproxy_current_version)" && [ -n "$current" ]; then
-		installed=1
-	fi
-
-	latest_output="$(get_naiveproxy_latest_info 2>/dev/null)"
-	latest_rc=$?
-
-	log_kv component naiveproxy
-	log_kv installed "$installed"
-	log_kv current_version "$current"
-	log_kv package_manager "$pm"
-	log_kv arch "$arch"
-	log_kv asset ''
-
-	if [ $latest_rc -ne 0 ]; then
-		log_kv can_upgrade 0
-		case "$latest_rc" in
-			2) log_kv error 'unsupported_package_manager' ;;
-			3) log_kv error 'fetch_failed' ;;
-			4) log_kv error 'asset_not_found' ;;
-			*) log_kv error 'unknown_error' ;;
-		esac
-		return 0
-	fi
-
-	latest_version="$(printf '%s\n' "$latest_output" | sed -n 's/^latest_version=//p' | sed -n '1p')"
-	pm="$(printf '%s\n' "$latest_output" | sed -n 's/^package_manager=//p' | sed -n '1p')"
-	arch="$(printf '%s\n' "$latest_output" | sed -n 's/^arch=//p' | sed -n '1p')"
-	asset="$(printf '%s\n' "$latest_output" | sed -n 's/^asset=//p' | sed -n '1p')"
-	can_upgrade=0
-	if [ -z "$current" ]; then
-		can_upgrade=1
-	elif ! naiveproxy_versions_equal "$latest_version" "$current" && version_gt "$latest_version" "$current"; then
-		can_upgrade=1
-	fi
-
-	printf '%s\n' "$latest_output" | sed '/^download_url=/d'
-	log_kv can_upgrade "$can_upgrade"
-	log_kv error ''
-}
-
 xray_local_info() {
 	local pm current installed arch
 
@@ -1604,28 +1441,6 @@ mihomo_local_info() {
 	fi
 
 	log_kv component mihomo
-	log_kv installed "$installed"
-	log_kv current_version "$current"
-	log_kv latest_version ''
-	log_kv package_manager "$pm"
-	log_kv arch "$arch"
-	log_kv asset ''
-	log_kv can_upgrade 0
-	log_kv error ''
-}
-
-naiveproxy_local_info() {
-	local pm current installed arch
-
-	installed=0
-	current=""
-	pm="$(detect_package_manager 2>/dev/null || true)"
-	arch="$(get_openwrt_arch)"
-	if current="$(get_naiveproxy_current_version)" && [ -n "$current" ]; then
-		installed=1
-	fi
-
-	log_kv component naiveproxy
 	log_kv installed "$installed"
 	log_kv current_version "$current"
 	log_kv latest_version ''
@@ -1784,80 +1599,6 @@ mihomo_upgrade() {
 	return 0
 }
 
-naiveproxy_upgrade() {
-	local latest_output latest_rc latest_version download_url package_manager asset tmp_dir package_file current_before current_after
-
-	latest_output="$(get_naiveproxy_latest_info 2>/dev/null)"
-	latest_rc=$?
-	if [ $latest_rc -ne 0 ]; then
-		log_kv success 0
-		case "$latest_rc" in
-			2) log_kv message 'Unsupported package manager' ;;
-			3) log_kv message 'Failed to fetch release metadata' ;;
-			4) log_kv message 'Matching release asset not found' ;;
-			*) log_kv message 'Unknown error' ;;
-		esac
-		return 0
-	fi
-
-	latest_version="$(printf '%s\n' "$latest_output" | sed -n 's/^latest_version=//p' | sed -n '1p')"
-	download_url="$(printf '%s\n' "$latest_output" | sed -n 's/^download_url=//p' | sed -n '1p')"
-	package_manager="$(printf '%s\n' "$latest_output" | sed -n 's/^package_manager=//p' | sed -n '1p')"
-	asset="$(printf '%s\n' "$latest_output" | sed -n 's/^asset=//p' | sed -n '1p')"
-	current_before="$(get_naiveproxy_current_version 2>/dev/null || true)"
-	if [ -n "$current_before" ] && ! version_gt "$latest_version" "$current_before"; then
-		log_kv success 1
-		log_kv previous_version "$current_before"
-		log_kv current_version "$current_before"
-		log_kv latest_version "$latest_version"
-		log_kv message 'Already up to date'
-		return 0
-	fi
-
-	tmp_dir="$(mktemp -d /tmp/ssrplus-naiveproxy.XXXXXX)"
-	if [ -z "$tmp_dir" ] || [ ! -d "$tmp_dir" ]; then
-		log_kv success 0
-		log_kv message 'Failed to create temp directory'
-		return 0
-	fi
-
-	package_file="$tmp_dir/$asset"
-	trap "rm -rf '$tmp_dir'" EXIT INT TERM
-
-	if ! download_file "$download_url" "$package_file"; then
-		log_kv success 0
-		log_kv message 'Download failed'
-		return 0
-	fi
-
-	if [ ! -s "$package_file" ] || ! mainprogram_install_package "$package_manager" "$package_file"; then
-		log_kv success 0
-		log_kv message 'Install failed'
-		return 0
-	fi
-
-	current_after="$(get_naiveproxy_current_version 2>/dev/null || true)"
-	if [ -z "$current_after" ]; then
-		log_kv success 0
-		log_kv message 'Installed package check failed'
-		return 0
-	fi
-
-	if [ -x /etc/init.d/shadowsocksr ]; then
-		/etc/init.d/shadowsocksr restart >/dev/null 2>&1 || true
-	fi
-
-	log_kv success 1
-	log_kv previous_version "$current_before"
-	log_kv current_version "$current_after"
-	log_kv latest_version "$latest_version"
-	log_kv package_manager "$package_manager"
-	log_kv arch "$(get_openwrt_arch)"
-	log_kv asset "$asset"
-	log_kv message 'Upgrade completed'
-	return 0
-}
-
 # ==================== 主程序入口 ====================
 case "${1:-}" in
 	# 主程序相关
@@ -1889,16 +1630,6 @@ case "${1:-}" in
 		;;
 	mihomo_upgrade)
 		mihomo_upgrade
-		;;
-	# Naiveproxy 相关
-	naiveproxy_info)
-		naiveproxy_info
-		;;
-	naiveproxy_local_info)
-		naiveproxy_local_info
-		;;
-	naiveproxy_upgrade)
-		naiveproxy_upgrade
 		;;
 	# Country MMDB 相关
 	country_mmdb_info)
@@ -1942,7 +1673,7 @@ case "${1:-}" in
 		;;
 	*)
 		log_kv success 0
-		log_kv message 'Usage: update_components.sh mainprogram_info|mainprogram_local_info|mainprogram_upgrade|xray_info|xray_local_info|xray_upgrade|mihomo_info|mihomo_local_info|mihomo_upgrade|naiveproxy_info|naiveproxy_local_info|naiveproxy_upgrade|country_mmdb_info|country_mmdb_local_info|country_mmdb_upgrade|geosite_info|geosite_local_info|geosite_upgrade|v2ray_geoip_info|v2ray_geoip_local_info|v2ray_geoip_upgrade|v2ray_geosite_info|v2ray_geosite_local_info|v2ray_geosite_upgrade'
+		log_kv message 'Usage: update_components.sh mainprogram_info|mainprogram_local_info|mainprogram_upgrade|xray_info|xray_local_info|xray_upgrade|mihomo_info|mihomo_local_info|mihomo_upgrade|country_mmdb_info|country_mmdb_local_info|country_mmdb_upgrade|geosite_info|geosite_local_info|geosite_upgrade|v2ray_geoip_info|v2ray_geoip_local_info|v2ray_geoip_upgrade|v2ray_geosite_info|v2ray_geosite_local_info|v2ray_geosite_upgrade'
 		return 1 2>/dev/null || exit 1
 		;;
 esac

@@ -20,8 +20,7 @@ local CLASH_RULES_DIR = "/etc/ssrplus/clash"
 local SUPPORTED_COMPONENTS = {
 	mainprogram = true,
 	xray = true,
-	mihomo = true,
-	naiveproxy = true
+	mihomo = true
 }
 local SUPPORTED_GEO_COMPONENTS = {
 	{ name = "country_mmdb", require = nil },
