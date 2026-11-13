@@ -10,7 +10,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 
 --- a/go.mod
 +++ b/go.mod
-@@ -93,6 +93,7 @@
+@@ -94,6 +94,7 @@
  	github.com/sirupsen/logrus v1.9.4 // indirect
  	github.com/vishvananda/netns v0.0.5 // indirect
  	github.com/wlynxg/anet v0.0.5 // indirect
@@ -134,12 +134,12 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	_ "github.com/xtls/xray-core/proxy/tuic"
 --- a/proxy/freedom/freedom.go
 +++ b/proxy/freedom/freedom.go
-@@ -167,7 +167,7 @@
+@@ -172,7 +172,7 @@
  	switch inbound.Name {
  	case "vless-reverse":
  		return defaultBlockAllRule
--	case "vless", "vmess", "trojan", "hysteria", "wireguard", "naive", "tuic":
-+	case "vless", "vmess", "trojan", "hysteria", "wireguard", "naive", "tuic", "snell":
+-	case "vless", "vmess", "trojan", "hysteria", "wireguard", "masque", "naive", "tuic":
++	case "vless", "vmess", "trojan", "hysteria", "wireguard", "masque", "naive", "tuic", "snell":
  		return defaultBlockPrivateRule
  	default:
  		if strings.HasPrefix(inbound.Name, "shadowsocks") {

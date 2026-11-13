@@ -194,7 +194,6 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +
 +You should have received a copy of the GNU General Public License
 +along with this program. If not, see <http://www.gnu.org/licenses/>.
-\ No newline at end of file
 --- a/proxy/anytls/client.go
 +++ b/proxy/anytls/client.go
 @@ -0,0 +1,156 @@
@@ -1191,7 +1190,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +}
 --- a/proxy/freedom/freedom.go
 +++ b/proxy/freedom/freedom.go
-@@ -161,6 +161,9 @@
+@@ -166,6 +166,9 @@
  	if inbound == nil {
  		return nil
  	}

@@ -17,7 +17,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +++ b/go.mod
 @@ -12,6 +12,7 @@
  	github.com/gorilla/websocket v1.5.3
- 	github.com/klauspost/cpuid/v2 v2.4.1
+ 	github.com/klauspost/cpuid/v2 v2.4.2
  	github.com/libp2p/go-nat v1.0.1-0.20250821073202-01afc089f138
 +	github.com/metacubex/chacha v0.1.5
  	github.com/miekg/dns v1.1.73
@@ -25,7 +25,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	github.com/pion/stun/v3 v3.1.7
 --- a/go.sum
 +++ b/go.sum
-@@ -49,6 +49,8 @@
+@@ -47,6 +47,8 @@
  github.com/libp2p/go-nat v1.0.1-0.20250821073202-01afc089f138/go.mod h1:TXQg5tfSy+bUjnhT5728j5j/MBj7keIYqqZ1+8k/ui8=
  github.com/libp2p/go-netroute v0.2.1 h1:V8kVrpD8GK0Riv15/7VN6RbUQ3URNZVosw7H2v9tksU=
  github.com/libp2p/go-netroute v0.2.1/go.mod h1:hraioZr0fhBjG0ZRXJJ6Zj2IVEVNx6tDTFQfSmcq7mQ=
@@ -33,7 +33,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +github.com/metacubex/chacha v0.1.5/go.mod h1:Djn9bPZxLTXbJFSeyo0/qzEzQI+gUSSzttuzZM75GH8=
  github.com/miekg/dns v1.1.73 h1:uhT8nJxmTrPJYClxVxTCX+CVn6qnzSiybRk72Z6DgrE=
  github.com/miekg/dns v1.1.73/go.mod h1:RW2Obtfd5NZHvOFe3zYG0W8koWOQtAzyHaLo8vASBuQ=
- github.com/pelletier/go-toml v1.9.5 h1:4yBQzkHv+7BHq2PQUZF3Mx0IYxG7LsP222s7Agd3ve8=
+ github.com/molecule-man/go-brrr v1.2.0 h1:dOJU45BC3Gc2WXoxAW0rgCAgVuu2gruAOGncfieA0Jw=
 --- a/infra/conf/shadowsocksr.go
 +++ b/infra/conf/shadowsocksr.go
 @@ -0,0 +1,64 @@
@@ -165,7 +165,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	_ "github.com/xtls/xray-core/proxy/vless/inbound"
 --- a/proxy/freedom/freedom.go
 +++ b/proxy/freedom/freedom.go
-@@ -161,7 +161,7 @@
+@@ -166,7 +166,7 @@
  	if inbound == nil {
  		return nil
  	}

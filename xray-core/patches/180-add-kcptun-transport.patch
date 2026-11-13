@@ -22,7 +22,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	return nil
 --- a/go.mod
 +++ b/go.mod
-@@ -8,14 +8,17 @@
+@@ -9,14 +9,17 @@
  	github.com/ghodss/yaml v1.0.1-0.20220118164431-d8423dcdf344
  	github.com/gofrs/uuid/v5 v5.4.0
  	github.com/golang/mock v1.7.0-rc.1
@@ -30,7 +30,7 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  	github.com/google/go-cmp v0.7.0
  	github.com/google/uuid v1.6.0
  	github.com/gorilla/websocket v1.5.3
- 	github.com/klauspost/cpuid/v2 v2.4.1
+ 	github.com/klauspost/cpuid/v2 v2.4.2
  	github.com/libp2p/go-nat v1.0.1-0.20250821073202-01afc089f138
  	github.com/metacubex/chacha v0.1.5
 +	github.com/metacubex/kcp-go v0.0.0-20260105040817-550693377604
@@ -43,18 +43,18 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 @@ -72,6 +75,7 @@
  	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
  	github.com/juju/ratelimit v1.0.2 // indirect
- 	github.com/klauspost/compress v1.20.0 // indirect
+ 	github.com/klauspost/compress v1.20.1 // indirect
 +	github.com/klauspost/reedsolomon v1.12.3 // indirect
  	github.com/koron/go-ssdp v0.0.4 // indirect
  	github.com/libp2p/go-netroute v0.2.1 // indirect
- 	github.com/metacubex/bart v0.29.0 // indirect
-@@ -97,6 +101,7 @@
+ 	github.com/molecule-man/go-brrr v1.2.0 // indirect
+@@ -98,6 +102,7 @@
  	gitlab.com/go-extension/aes-ccm v0.0.0-20230221065045-e58665ef23c7 // indirect
  	go.yaml.in/yaml/v3 v3.0.5 // indirect
  	golang.org/x/text v0.43.0 // indirect
 +	golang.org/x/time v0.14.0 // indirect
  	golang.org/x/tools v0.51.0 // indirect
- 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
+ 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260817212433-ac3dfec99bb1 // indirect
  	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.6.2 // indirect
 --- a/go.sum
 +++ b/go.sum
@@ -68,9 +68,9 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
  github.com/google/btree v1.1.3/go.mod h1:qOPhT0dTNdNzV6Z/lhRX0YXUafgPLFUh+gZMl761Gm4=
  github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
 @@ -46,6 +48,8 @@
- github.com/klauspost/compress v1.20.0/go.mod h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI=
- github.com/klauspost/cpuid/v2 v2.4.1 h1:I9KxadAkvo+QjtcEE2f2tyfEvmIla/T0m+14PrZNl0U=
- github.com/klauspost/cpuid/v2 v2.4.1/go.mod h1:19jmZ9mjzoF//ddRSUsv0zfBTJWh3QJh9FNxZTMrGxU=
+ github.com/klauspost/compress v1.20.1/go.mod h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI=
+ github.com/klauspost/cpuid/v2 v2.4.2 h1:xRw7IZEsAgVCp6trS/DgWbTAqpixhmywgVgBjYGg1bQ=
+ github.com/klauspost/cpuid/v2 v2.4.2/go.mod h1:19jmZ9mjzoF//ddRSUsv0zfBTJWh3QJh9FNxZTMrGxU=
 +github.com/klauspost/reedsolomon v1.12.3 h1:tzUznbfc3OFwJaTebv/QdhnFf2Xvb7gZ24XaHLBPmdc=
 +github.com/klauspost/reedsolomon v1.12.3/go.mod h1:3K5rXwABAvzGeR01r6pWZieUALXO/Tq7bFKGIb4m4WI=
  github.com/koron/go-ssdp v0.0.4 h1:1IDwrghSKYM7yLf7XCzbByg2sJ/JcNOZRXS2jczTwz0=
@@ -179,7 +179,6 @@ Signed-off-by: coolsnowwolf <coolsnowwolf@gmail.com>
 +The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 +
 +THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-\ No newline at end of file
 --- a/transport/internet/kcptun/LICENSE.mihomo
 +++ b/transport/internet/kcptun/LICENSE.mihomo
 @@ -0,0 +1,674 @@
