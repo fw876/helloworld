@@ -33,7 +33,7 @@ LUCI_PKGARCH:=all
 LUCI_DEPENDS:= \
 	+libuci-lua +lua +luci-compat +dns2tcp +dnsmasq-full \
 	+ip-full +lua-neturl +libuci-lua +microsocks +ipt2socks +lyaml \
-	+resolveip +curl +nping +coreutils-timeout \
+	+resolveip +curl +nping +coreutils +coreutils-timeout \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG:chinadns-ng \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_MosDNS:mosdns \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Shadow_TLS:shadow-tls \
