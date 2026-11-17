@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=xray-core
 PKG_VERSION:=26.11.9
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/XTLS/Xray-core/tar.gz/v$(PKG_VERSION)?
@@ -37,6 +37,8 @@ CRONET_CLANG_DIR:=$(PKG_BUILD_DIR)/.cronet-clang
 
 ifeq ($(CONFIG_XRAY_CORE_NAIVE),y)
   GO_PKG_TAGS+=with_naive_outbound
+  # Cronet selects its static archive by filename, which cgo rejects by default.
+  GO_PKG_VARS+=CGO_LDFLAGS_ALLOW='-l:libcronet[.]a'
   ifeq ($(CONFIG_USE_MUSL),y)
     GO_PKG_TAGS+=with_musl
   endif
