@@ -58,24 +58,24 @@ choice
 config PACKAGE_$(PKG_NAME)_Iptables_Transparent_Proxy
 	bool "Iptables Transparent Proxy"
 	depends on !PACKAGE_firewall4
-	select PACKAGE_dnsmasq_full_ipset
-	select PACKAGE_ipset
-	select PACKAGE_iptables
-	select PACKAGE_iptables-zz-legacy
-	select PACKAGE_iptables-mod-conntrack-extra
-	select PACKAGE_iptables-mod-iprange
-	select PACKAGE_iptables-mod-socket
-	select PACKAGE_iptables-mod-tproxy
-	select PACKAGE_kmod-ipt-nat
+	select PACKAGE_dnsmasq_full_ipset if PACKAGE_$(PKG_NAME)
+	select PACKAGE_ipset if PACKAGE_$(PKG_NAME)
+	select PACKAGE_iptables if PACKAGE_$(PKG_NAME)
+	select PACKAGE_iptables-zz-legacy if PACKAGE_$(PKG_NAME)
+	select PACKAGE_iptables-mod-conntrack-extra if PACKAGE_$(PKG_NAME)
+	select PACKAGE_iptables-mod-iprange if PACKAGE_$(PKG_NAME)
+	select PACKAGE_iptables-mod-socket if PACKAGE_$(PKG_NAME)
+	select PACKAGE_iptables-mod-tproxy if PACKAGE_$(PKG_NAME)
+	select PACKAGE_kmod-ipt-nat if PACKAGE_$(PKG_NAME)
 
 config PACKAGE_$(PKG_NAME)_Nftables_Transparent_Proxy
 	bool "Nftables Transparent Proxy"
 	depends on PACKAGE_firewall4
-	select PACKAGE_dnsmasq_full_nftset
-	select PACKAGE_nftables
-	select PACKAGE_kmod-nft-socket
-	select PACKAGE_kmod-nft-tproxy
-	select PACKAGE_kmod-nft-nat
+	select PACKAGE_dnsmasq_full_nftset if PACKAGE_$(PKG_NAME)
+	select PACKAGE_nftables if PACKAGE_$(PKG_NAME)
+	select PACKAGE_kmod-nft-socket if PACKAGE_$(PKG_NAME)
+	select PACKAGE_kmod-nft-tproxy if PACKAGE_$(PKG_NAME)
+	select PACKAGE_kmod-nft-nat if PACKAGE_$(PKG_NAME)
 endchoice
 
 choice
@@ -109,7 +109,7 @@ choice
 
 	config PACKAGE_$(PKG_NAME)_INCLUDE_Xray
 	bool "Xray-core"
-	select PACKAGE_xray-core
+	select PACKAGE_xray-core if PACKAGE_$(PKG_NAME)
 endchoice
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG
@@ -122,19 +122,19 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_MosDNS
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Http_Proxy
 	bool "Include HTTP(S) Proxy Server"
-	select PACKAGE_3proxy
+	select PACKAGE_3proxy if PACKAGE_$(PKG_NAME)
 	default y if (aarch64||arm||i386||loongarch64||riscv64||x86_64)
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Mihomo
 	bool "Include Mihomo (Clash Support)"
-	select PACKAGE_mihomo
-	select PACKAGE_v2ray-geoip
+	select PACKAGE_mihomo if PACKAGE_$(PKG_NAME)
+	select PACKAGE_v2ray-geoip if PACKAGE_$(PKG_NAME)
 	default y if i386||loongarch64||riscv64||x86_64
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_GeoData
 	bool "Include GeoData (GeoIP and GeoSite)"
-	select PACKAGE_v2ray-geoip
-	select PACKAGE_v2ray-geosite
+	select PACKAGE_v2ray-geoip if PACKAGE_$(PKG_NAME)
+	select PACKAGE_v2ray-geosite if PACKAGE_$(PKG_NAME)
 	default y if i386||x86_64
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Shadow_TLS
