@@ -32,6 +32,7 @@ LUCI_DEPENDS:= \
 	+libuci-lua +lua +luci-compat +dns2tcp +dnsmasq-full \
 	+ip-full +lua-neturl +microsocks +ipt2socks +lyaml \
 	+resolveip +curl +nping +coreutils +coreutils-timeout \
+	+idn2 \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG:chinadns-ng \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_MosDNS:mosdns \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Http_Proxy:3proxy \
