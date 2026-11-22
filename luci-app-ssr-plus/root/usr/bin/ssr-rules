@@ -1386,9 +1386,7 @@ start_auto_update_daemon() {
 			sleep "$AUTO_UPDATE_INTERVAL"
 			if [ -x "/usr/bin/ssr-rules" ]; then
 				# -C returns 0 if rules are OK, non-zero if need update
-				if /usr/bin/ssr-rules -C >/dev/null 2>&1; then
-					logger -t ssr-rules[daemon] "Rules status OK, no update needed"
-				else
+				if ! /usr/bin/ssr-rules -C >/dev/null 2>&1; then
 					logger -t ssr-rules[daemon] "Rules changed or missing, updating persistence"
 					if /usr/bin/ssr-rules -P >/dev/null 2>&1; then
 						logger -t ssr-rules[daemon] "Persistence rules updated successfully"
