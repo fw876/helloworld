@@ -12,8 +12,9 @@ s = m:section(SimpleSection)
 
 o = m:field(ListValue, "component_mirror", translate("Mirror URL"))
 o:value("direct", translate("GitHub Direct"))
-o:value("ghproxy", "mirror.ghproxy.com")
-o:value("ghproxy_cc", "ghproxy.cc")
+o:value("gh-proxy", "gh-proxy.com")
+o:value("gh-proxy_org", "gh-proxy.org")
+o:value("ghproxy_link", "ghproxy.link")
 o:value("ghfast", "ghfast.top")
 o:value("jsdelivr", "cdn.jsdelivr.net")
 o.rmempty = false

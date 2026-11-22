@@ -55,11 +55,14 @@ mirror_wrap_url() {
 		direct|"")
 			printf '%s' "$raw_url"
 			;;
-		ghproxy)
-			printf 'https://mirror.ghproxy.com/%s' "$raw_url"
+		gh-proxy)
+			printf 'https://gh-proxy.com/%s' "$raw_url"
 			;;
-		ghproxy_cc)
-			printf 'https://ghproxy.cc/%s' "$raw_url"
+		gh-proxy_org)
+			printf 'https://gh-proxy.org/%s' "$raw_url"
+			;;
+		ghproxy_link)
+			printf 'https://ghproxy.link/%s' "$raw_url"
 			;;
 		ghfast)
 			printf 'https://ghfast.top/%s' "$raw_url"
