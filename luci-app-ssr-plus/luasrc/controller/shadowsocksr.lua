@@ -649,7 +649,7 @@ function index()
 	entry({"admin", "services", "shadowsocksr", "control"}, cbi("shadowsocksr/control"), _("Access Control"), 30).leaf = true
 	entry({"admin", "services", "shadowsocksr", "advanced"}, cbi("shadowsocksr/advanced"), _("Advanced Settings"), 50).leaf = true
 	entry({"admin", "services", "shadowsocksr", "server"}, arcombine(cbi("shadowsocksr/server"), cbi("shadowsocksr/server-config")), _("SSR Server"), 60).leaf = true
-	entry({"admin", "services", "shadowsocksr", "component"}, cbi("shadowsocksr/component"), _("Component Update"), 65).leaf = true
+	entry({"admin", "services", "shadowsocksr", "component"}, form("shadowsocksr/component"), _("Component Update"), 65).leaf = true
 	entry({"admin", "services", "shadowsocksr", "status"}, form("shadowsocksr/status"), _("Status"), 70).leaf = true
 	entry({"admin", "services", "shadowsocksr", "check"}, call("check_status"))
 	entry({"admin", "services", "shadowsocksr", "refresh"}, call("refresh_data"))
