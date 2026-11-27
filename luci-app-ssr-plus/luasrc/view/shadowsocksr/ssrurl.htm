@@ -323,23 +323,83 @@ function import_ssr_url(btn, urlname, sid) {
 					var plugin = "";
 					var pluginOpts = "";
 
-					if (params.plugin) {
+					// 优先级：params["shadow-tls"] 存在时优先走 JSON 解码分支；
+					// 否则若 params.plugin 存在，走 plugin 透传分支。
+					if (params.plugin && !params["shadow-tls"]) {
 						var pluginInfo = decodeURIComponentSafe(params.plugin);
 						var pluginParts = pluginInfo.split(";");
 						plugin = pluginParts.shift() || "";
 						pluginOpts = pluginParts.join(";");
+						// 部分机场下发的插件名为 simple-obfs，这里映射为 obfs-local
 						if (plugin === "simple-obfs") {
 							plugin = "obfs-local";
 						}
+						// 规范化 shadow-tls 参数：
+						//   password / pwd / pass → passwd
+						//   version=N → vN=1（仅接受正整数；缺失或非法则丢弃）
+						if (plugin === "shadow-tls") {
+							var opts = [];
+							var seen = {};
+							var parts = pluginOpts.split(";");
+							for (var i = 0; i < parts.length; i++) {
+								var part = parts[i];
+								if (!part) continue;
+								var match = part.match(/^\s*([^=]+)=?(.*)\s*$/);
+								if (!match) continue;
+								var k = match[1].trim();
+								var v = (match[2] || "").trim();
+								if (!k) continue;
+
+								var kLower = k.toLowerCase();
+								if (kLower === "password" || kLower === "pwd" || kLower === "pass") {
+									k = "passwd";
+								} else if (kLower === "version") {
+									// 去除可选的 v/V 前缀，仅接受正整数
+									var version = v.replace(/^[vV]/, "");
+									if (/^[1-9]\d*$/.test(version)) {
+										k = "v" + version;
+										v = "1";
+									} else {
+										// 缺失或非法版本不生成 vN 参数
+										k = null;
+									}
+								}
+
+								if (k && !seen[k]) {
+									seen[k] = true;
+									opts.push(k + "=" + v);
+								}
+							}
+							pluginOpts = opts.join(";");
+						}
 					} else if (params["shadow-tls"]) {
 						try {
-							var decodedTls = JSON.parse(b64decsafe(decodeURIComponentSafe((params["shadow-tls"] || "").replace(/ /g, "+"))));
+							var rawTls = (params["shadow-tls"] || "").replace(/ /g, "+");
+							var decodedTls = JSON.parse(b64decsafe(decodeURIComponentSafe(rawTls)));
 							plugin = "shadow-tls";
-							var versionFlag = "";
-							if (decodedTls.version && !isNaN(decodedTls.version)) {
-								versionFlag = "v" + decodedTls.version + "=1;";
+
+							// 按优先级读取密码，优先 SIP003 标准 passwd
+							var stPasswd = decodedTls.passwd;
+							if (stPasswd === undefined || stPasswd === null) stPasswd = decodedTls.password;
+							if (stPasswd === undefined || stPasswd === null) stPasswd = decodedTls.pwd;
+							if (stPasswd === undefined || stPasswd === null) stPasswd = decodedTls.pass;
+							if (stPasswd === undefined || stPasswd === null) stPasswd = "";
+							stPasswd = String(stPasswd);
+
+							// 仅接受正整数版本，不补充默认版本
+							var versionSuffix = "";
+							if (decodedTls.version !== undefined && decodedTls.version !== null) {
+								var version = String(decodedTls.version).replace(/^[vV]/, "");
+								if (/^[1-9]\d*$/.test(version)) {
+									versionSuffix = ";v" + version + "=1";
+								}
 							}
-							pluginOpts = versionFlag + "host=" + (decodedTls.host || "") + ";passwd=" + (decodedTls.password || "");
+
+							// 合成 SIP003 标准格式：
+							//   有合法版本：host=xxx;passwd=xxx;vN=1
+							//   无合法版本：host=xxx;passwd=xxx
+							var stHost = (decodedTls.host !== undefined && decodedTls.host !== null) ? String(decodedTls.host) : "";
+							pluginOpts = "host=" + stHost + ";passwd=" + stPasswd + versionSuffix;
 						} catch (e) {
 							console.log("shadow-tls decode failed:", e);
 						}
